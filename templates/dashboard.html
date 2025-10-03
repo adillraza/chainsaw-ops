@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Chainsaw Ops{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+        <p class="text-muted">Welcome to your Chainsaw Ops dashboard</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-clock"></i> Recent Logins</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_logins %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Login Time</th>
+                                    <th>IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for login in recent_logins %}
+                                <tr>
+                                    <td>{{ login.login_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>{{ login.ip_address or 'Unknown' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No recent logins found.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary" onclick="loadContent('rex-po-orders', event)">
+                        <i class="fas fa-shopping-cart"></i> REX PO Orders
+                    </button>
+                    {% if current_user.is_admin %}
+                    <a href="{{ url_for('admin') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-users-cog"></i> Manage Users
+                    </a>
+                    {% endif %}
+                    <button class="btn btn-outline-primary" disabled>
+                        <i class="fas fa-chart-bar"></i> Reports (Coming Soon)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-tasks"></i> System Overview</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-user-check text-success fa-2x"></i>
+                            <p class="mt-2 mb-0">User Authentication</p>
+                            <small class="text-success">Active</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-database text-success fa-2x"></i>
+                            <p class="mt-2 mb-0">BigQuery</p>
+                            <small class="text-success">Connected</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-chart-line text-warning fa-2x"></i>
+                            <p class="mt-2 mb-0">Retail Express API</p>
+                            <small class="text-warning">Pending Setup</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <i class="fas fa-sticky-note text-warning fa-2x"></i>
+                            <p class="mt-2 mb-0">Notes System</p>
+                            <small class="text-warning">Pending Setup</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

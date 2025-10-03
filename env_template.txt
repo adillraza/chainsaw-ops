@@ -1,0 +1,14 @@
+# Copy this file to .env and update the values
+
+# Flask Configuration
+SECRET_KEY=your-secret-key-change-this-in-production-12345
+
+# BigQuery Configuration (to be configured later)
+# GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account-key.json
+# BIGQUERY_PROJECT_ID=your-project-id
+
+# Retail Express API Configuration (to be configured later)
+# RETAIL_EXPRESS_API_KEY=your-api-key
+# RETAIL_EXPRESS_BASE_URL=https://api.retailexpress.com.au
+
+

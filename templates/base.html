@@ -1,0 +1,3196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Chainsawspares Operations{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .top-bar {
+            height: 60px;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        
+        .top-bar .brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .top-bar .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            width: 250px;
+            height: calc(100vh - 60px);
+            background-color: #34495e;
+            color: white;
+            overflow-y: auto;
+            z-index: 999;
+        }
+        
+        .sidebar .menu-item {
+            display: block;
+            padding: 15px 20px;
+            color: #ecf0f1;
+            text-decoration: none;
+            border-bottom: 1px solid #2c3e50;
+            transition: background-color 0.3s;
+        }
+        
+        .sidebar .menu-item:hover {
+            background-color: #2c3e50;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .sidebar .menu-item.active {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .sidebar .menu-item i {
+            margin-right: 10px;
+            width: 20px;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            margin-top: 60px;
+            padding: 20px;
+            min-height: calc(100vh - 60px);
+        }
+        
+        .right-panel {
+            position: fixed;
+            top: 60px;
+            right: 0;
+            width: 400px;
+            min-width: 300px;
+            max-width: 600px;
+            height: calc(100vh - 60px);
+            background-color: #f8f9fa;
+            border-left: 1px solid #dee2e6;
+            padding: 20px;
+            overflow-y: auto;
+            z-index: 998;
+            transition: width 0.2s ease;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background-color: #dee2e6;
+            cursor: col-resize;
+            z-index: 999;
+            transition: background-color 0.2s ease;
+        }
+        
+        .resize-handle:hover {
+            background-color: #007bff;
+        }
+        
+        .resize-handle:active {
+            background-color: #0056b3;
+        }
+        
+        .content-area {
+            margin-right: 400px;
+            transition: margin-right 0.2s ease;
+        }
+        
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        
+        .btn-primary {
+            background-color: #3498db;
+            border-color: #3498db;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+        
+        .badge {
+            font-size: 0.75rem;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+            }
+            
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .content-area {
+                margin-right: 0;
+            }
+            
+            .right-panel {
+                display: none;
+            }
+        }
+        
+        /* Custom scrollbar styling for items table */
+        .table-responsive::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .table-responsive::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        .table-responsive::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        .table-responsive::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        /* Ensure table header stays visible when scrolling */
+        .table-responsive table thead th {
+            position: sticky;
+            top: 0;
+            background-color: #212529;
+            z-index: 10;
+        }
+        
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .sortable:hover {
+            background-color: rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        .sortable i {
+            margin-left: 5px;
+            opacity: 0.7;
+        }
+        
+        .sortable:hover i {
+            opacity: 1;
+        }
+        
+        /* Modern Compact Table Styling */
+        .table-modern {
+            font-size: 0.875rem;
+            margin-bottom: 0;
+        }
+        
+        .table-modern th {
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.5rem 0.4rem;
+            border-bottom: 2px solid #dee2e6;
+            background-color: #f8f9fa;
+            color: #495057;
+        }
+        
+        .table-modern thead.sticky-top th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .table-modern td {
+            padding: 0.4rem 0.4rem;
+            vertical-align: middle;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .table-modern tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .table-modern tbody tr.non-clickable-row {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .table-modern tbody tr.non-clickable-row:hover {
+            background-color: #f8f9fa;
+            opacity: 0.8;
+        }
+        
+        /* Column Alignment */
+        .text-center {
+            text-align: center !important;
+        }
+        
+        .text-end {
+            text-align: right !important;
+        }
+        
+        /* Numeric columns - center aligned */
+        .numeric-column {
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-weight: 500;
+        }
+        
+        /* Price/Cost columns - right aligned */
+        .price-column {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-weight: 500;
+        }
+        
+        /* Compact badges */
+        .badge {
+            font-size: 0.7rem;
+            padding: 0.25rem 0.4rem;
+        }
+        
+        /* Compact table responsive wrapper */
+        .table-responsive-modern {
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            overflow: hidden;
+        }
+        
+        /* Item Details and Notes Styling */
+        .item-summary-content {
+            font-size: 0.875rem;
+        }
+        
+        .item-summary-content .row {
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #9ca3af;
+        }
+        
+        .item-summary-content .row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .item-summary-content .col-4 {
+            font-weight: 600;
+            color: #6c757d;
+        }
+        
+        .item-summary-content .col-8 {
+            color: #495057;
+        }
+        
+        .notes-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .note-item {
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .note-header {
+            display: flex;
+            justify-content-between;
+            align-items-center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .note-author {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.875rem;
+            margin-right: 1rem;
+        }
+        
+        .note-timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+            flex-grow: 1;
+            text-align: right;
+        }
+        
+        .note-delete-btn {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            padding: 0.25rem;
+            margin-left: 0.5rem;
+            border-radius: 0.25rem;
+            transition: background-color 0.2s ease;
+        }
+        
+        .note-delete-btn:hover {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .note-content {
+            color: #495057;
+            font-size: 0.875rem;
+            line-height: 1.4;
+        }
+        
+        .clickable-row {
+            cursor: pointer;
+        }
+        
+        .clickable-row:hover {
+            background-color: #f8f9fa !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <a href="{{ url_for('dashboard') }}" class="brand">
+            <i class="fas fa-chainsaw"></i> Chainsawspares Operations
+        </a>
+        {% if current_user.is_authenticated %}
+        <div class="user-info">
+            <span>
+                Welcome, {{ current_user.username }}
+                {% if current_user.is_admin %}
+                    <span class="badge bg-warning text-dark">Admin</span>
+                {% endif %}
+            </span>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    {% if current_user.is_authenticated %}
+    <div class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="menu-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </a>
+        <a href="#" class="menu-item" onclick="loadContent('rex-po-orders', event)">
+            <i class="fas fa-shopping-cart"></i> REX PO Orders
+        </a>
+        <a href="#" class="menu-item" onclick="loadContent('cost-price-check', event)">
+            <i class="fas fa-dollar-sign"></i> Cost Price Check
+        </a>
+        {% if current_user.is_admin %}
+        <a href="{{ url_for('admin') }}" class="menu-item {% if request.endpoint == 'admin' %}active{% endif %}">
+            <i class="fas fa-users-cog"></i> User Management
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <div class="content-area">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Right Panel -->
+    {% if current_user.is_authenticated %}
+    <div class="right-panel" id="right-panel">
+        <div class="resize-handle" id="resize-handle"></div>
+        <!-- Default Quick Info Panel -->
+        <div id="quick-info-panel">
+            <h6 class="text-muted mb-3">Quick Info</h6>
+            
+            <!-- Cache Status Card -->
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <i class="fas fa-database me-2"></i>Data Cache
+                    </h6>
+                    <div id="sidebarCacheStatus">
+                        <div class="text-center">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <small class="d-block mt-1">Loading...</small>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 mt-2" style="display: none;" id="sidebarCacheButtons">
+                        <button id="sidebarRefreshBtn" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="sidebarClearBtn" class="btn btn-outline-danger btn-sm">
+                            <i class="fas fa-trash"></i> Clear Cache
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+            <!-- PO All Notes Panel (hidden by default) -->
+            <div id="po-details-panel" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="text-muted mb-0"><i class="fas fa-list me-2"></i>All Item Notes</h6>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="closePODetails()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <!-- PO Info Header -->
+                <div id="po-info-header" class="mb-3 p-2" style="background-color: #f8f9fa; border-radius: 4px; border: 1px solid #bbdefb;">
+                    <!-- PO ID and Order ID will be populated here -->
+                </div>
+                
+                <!-- All Item Notes -->
+                <div class="card" style="background-color: #f3e5f5; border-left: 4px solid #7b1fa2; border-radius: 8px;">
+                    <div class="card-body" style="background-color: #f3e5f5;">
+                        <h6 class="card-title" style="color: #7b1fa2;">
+                            <i class="fas fa-list me-2"></i>All Item Notes for this PO 
+                            <span id="all-item-notes-count" class="badge bg-primary ms-1">0</span>
+                        </h6>
+                        
+                        <div id="all-item-notes-list" class="notes-list" style="padding: 15px; max-height: 500px; overflow-y: auto;">
+                            <div class="text-center text-muted">
+                                <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Item Details Panel (hidden by default) -->
+            <div id="item-details-panel" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="text-muted mb-0"><i class="fas fa-sticky-note me-2"></i>Add Item Note</h6>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="closeItemDetails()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <!-- Item Info Header -->
+                <div id="item-info-header" class="mb-3 p-2" style="background-color: #f8f9fa; border-radius: 4px; border: 1px solid #ffcc02;">
+                    <!-- PO ID, SKU, and Product Name will be populated here -->
+                </div>
+                
+                <!-- Add Note Input Section (Top) -->
+                <div class="card mb-3" style="background-color: #fff8e1; border-left: 4px solid #f57c00; border-radius: 8px;">
+                    <div class="card-body" style="background-color: #fff8e1; padding: 15px;">
+                        <h6 class="card-title mb-2" style="color: #f57c00;"><i class="fas fa-edit me-2"></i>Add Comment</h6>
+                        <textarea id="new-note" class="form-control mb-2" rows="3" placeholder="Add a comment..." style="border: 1px solid #ffb74d;"></textarea>
+                        <button class="btn btn-sm btn-primary w-100" onclick="saveNote()" style="background-color: #f57c00; border-color: #f57c00;">
+                            <i class="fas fa-save"></i> Save Note
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- All Notes Section (Bottom - Scrollable) -->
+                <div class="card" style="background-color: #f3e5f5; border-left: 4px solid #7b1fa2; border-radius: 8px;">
+                    <div class="card-body" style="background-color: #f3e5f5; padding: 15px;">
+                        <h6 class="card-title mb-2" style="color: #7b1fa2;"><i class="fas fa-list me-2"></i>All Notes for this Item</h6>
+                        <div id="notes-list" class="notes-list" style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ce93d8; max-height: 300px; overflow-y: auto;">
+                            <div class="text-center text-muted">
+                                <small>No notes yet for this item.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    </div>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function loadContent(contentType, event) {
+            const contentArea = document.querySelector('.content-area');
+            const quickInfoPanel = document.getElementById('quick-info-panel');
+            
+            if (contentType === 'rex-po-orders') {
+                // Hide Quick Info panel when viewing REX PO Orders
+                if (quickInfoPanel) {
+                    quickInfoPanel.style.display = 'none';
+                }
+                
+                // Update active menu item
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                if (event && event.target) {
+                    event.target.classList.add('active');
+                }
+                
+                // Load BigQuery data content
+                contentArea.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2><i class="fas fa-shopping-cart"></i> Purchase Orders - Summary</h2>
+                        <div>
+                            <button id="testConnectionBtn" class="btn btn-outline-info btn-sm me-2">
+                                <i class="fas fa-plug"></i> Test Connection
+                            </button>
+                            <button id="refreshDataBtn" class="btn btn-primary btn-sm">
+                                <i class="fas fa-sync-alt"></i> Refresh Data
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Search and Filter -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="searchInput" placeholder="Enter PO ID or Order ID...">
+                                        <button class="btn btn-outline-secondary" type="button" id="clearMainSearchBtn">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="skuSearchInput" placeholder="Enter SKU or Manufacturer SKU..." title="Search by SKU or Manufacturer SKU">
+                                        <button class="btn btn-outline-primary" type="button" id="skuSearchBtn">
+                                            <i class="fas fa-search"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" type="button" id="clearSkuSearchBtn">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <button id="searchBtn" class="btn btn-outline-primary me-2">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                    <button id="clearAllSearchBtn" class="btn btn-outline-secondary">
+                                        <i class="fas fa-eraser"></i> Clear All
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Connection Status -->
+                    <div id="connectionStatus" class="alert alert-info" style="display: none;">
+                        <i class="fas fa-info-circle"></i> <span id="connectionMessage"></span>
+                    </div>
+                    
+                    <!-- Loading Spinner -->
+                    <div id="loadingSpinner" class="text-center" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading data from BigQuery...</p>
+                    </div>
+                    
+                    <!-- Summary Table -->
+                    <div class="card mb-4" style="background-color: #f8f9fa;">
+                        <div class="card-header" style="background-color: #e9ecef; border-bottom: 1px solid #dee2e6;">
+                            <h5><i class="fas fa-list-alt"></i> Purchase Orders</h5>
+                        </div>
+                        <div class="card-body" style="background-color: #f8f9fa;">
+                            <div id="summaryContainer">
+                                <div class="text-center text-muted">
+                                    <i class="fas fa-database fa-3x mb-3"></i>
+                                    <p>Click "Refresh Data" to load purchase order summary from BigQuery</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+        <!-- Comparison Table -->
+        <div class="card mb-4" id="comparisonCard" style="display: none; background-color: #fff8f0;">
+            <div class="card-header" style="background-color: #fff3e0; border-bottom: 1px solid #ffcc02;">
+                <h5><i class="fas fa-balance-scale"></i> Comparison <span class="badge bg-secondary ms-2" style="font-size: 0.9em;">0</span></h5>
+            </div>
+            <div class="card-body" style="background-color: #fff8f0;">
+                <div id="comparisonContainer">
+                    <div class="text-center text-muted">
+                        <p>Select a purchase order from the summary table to view comparison data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+                    
+                    <!-- Pagination -->
+                    <nav id="paginationNav" style="display: none;">
+                        <ul class="pagination justify-content-center">
+                            <li class="page-item" id="prevPage">
+                                <a class="page-link" href="#" onclick="changePage(-1)">Previous</a>
+                            </li>
+                            <li class="page-item active" id="currentPage">
+                                <span class="page-link">1</span>
+                            </li>
+                            <li class="page-item" id="nextPage">
+                                <a class="page-link" href="#" onclick="changePage(1)">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                    
+                    <!-- Data Info -->
+                    <div id="dataInfo" class="mt-3" style="display: none;">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i>
+                            <span id="dataCount"></span> records loaded at <span id="dataTimestamp"></span>
+                        </small>
+                    </div>
+                `;
+                
+                // Initialize the BigQuery functionality
+                initializeBigQueryPage();
+            } else if (contentType === 'cost-price-check') {
+                // Hide Quick Info panel when viewing Cost Price Check
+                if (quickInfoPanel) {
+                    quickInfoPanel.style.display = 'none';
+                }
+                
+                // Update active menu item
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                if (event && event.target) {
+                    event.target.classList.add('active');
+                }
+                
+                // Load Cost Price Check content
+                contentArea.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2><i class="fas fa-dollar-sign"></i> Cost Price Check</h2>
+                    </div>
+                    
+                    <!-- Search and Filter -->
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-5">
+                                    <label class="form-label"><strong>Search by PO ID</strong></label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="costPricePoSearch" placeholder="Enter PO ID...">
+                                        <button class="btn btn-primary" type="button" id="costPricePoSearchBtn">
+                                            <i class="fas fa-search"></i> Search
+                                        </button>
+                                        <button class="btn btn-outline-secondary" type="button" id="costPriceClearPoSearchBtn">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end justify-content-center">
+                                    <span class="text-muted">OR</span>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label"><strong>Search by SKU</strong></label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="costPriceSkuSearch" placeholder="Enter SKU or Manufacturer SKU...">
+                                        <button class="btn btn-primary" type="button" id="costPriceSkuSearchBtn">
+                                            <i class="fas fa-search"></i> Search
+                                        </button>
+                                        <button class="btn btn-outline-secondary" type="button" id="costPriceClearSkuSearchBtn">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Loading Spinner -->
+                    <div id="costPriceLoadingSpinner" class="text-center" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading cost price data...</p>
+                    </div>
+                    
+                    <!-- Items Table -->
+                    <div class="card mb-4" id="costPriceItemsCard" style="display: none; background-color: #f0f8ff;">
+                        <div class="card-header" style="background-color: #e3f2fd; border-bottom: 1px solid #bbdefb;">
+                            <h5><i class="fas fa-dollar-sign"></i> Cost Price Check Results <span class="badge bg-secondary ms-2" style="font-size: 0.9em;" id="costPriceCount">0</span></h5>
+                        </div>
+                        <div class="card-body" style="background-color: #f0f8ff;">
+                            <div id="costPriceItemsContainer">
+                                <div class="text-center text-muted">
+                                    <i class="fas fa-search fa-3x mb-3"></i>
+                                    <p>Search by PO ID, Order ID, or SKU to view cost price data</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Initialize the Cost Price Check functionality
+                initializeCostPriceCheckPage();
+            }
+        }
+        
+        // Global variables for pagination
+        let currentPage = 1;
+        let pageSize = 10;
+        let totalCount = 0;
+        let searchTerm = '';
+        
+        function initializeBigQueryPage() {
+            const testConnectionBtn = document.getElementById('testConnectionBtn');
+            const refreshDataBtn = document.getElementById('refreshDataBtn');
+            const searchBtn = document.getElementById('searchBtn');
+            const searchInput = document.getElementById('searchInput');
+            // pageSizeSelect removed - no longer using page size dropdown
+            
+            // Test connection
+            testConnectionBtn.addEventListener('click', testConnection);
+            
+            // Refresh data
+            refreshDataBtn.addEventListener('click', refreshData);
+            
+            // Search functionality
+            searchBtn.addEventListener('click', performSearch);
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+            
+            // SKU search functionality
+            console.log('Setting up SKU search functionality...');
+            const skuSearchInput = document.getElementById('skuSearchInput');
+            console.log('SKU search input element:', skuSearchInput);
+            const skuSearchBtn = document.getElementById('skuSearchBtn');
+            const clearSkuSearchBtn = document.getElementById('clearSkuSearchBtn');
+            const clearAllSearchBtn = document.getElementById('clearAllSearchBtn');
+            
+            skuSearchInput.addEventListener('keydown', function(e) {
+                console.log('SKU search keydown event triggered, key:', e.key);
+                if (e.key === 'Enter') {
+                    console.log('Enter key pressed, calling performSkuSearch');
+                    performSkuSearch();
+                }
+            });
+            
+            // Also add a click event for testing
+            skuSearchInput.addEventListener('click', function(e) {
+                console.log('SKU search input clicked!');
+            });
+            
+            // Add input event for testing
+            skuSearchInput.addEventListener('input', function(e) {
+                console.log('SKU search input changed:', e.target.value);
+            });
+            
+            skuSearchBtn.addEventListener('click', function() {
+                console.log('SKU search button clicked!');
+                performSkuSearch();
+            });
+            
+            clearSkuSearchBtn.addEventListener('click', clearSkuSearch);
+            clearAllSearchBtn.addEventListener('click', clearAllSearches);
+            
+            // Clear main search functionality
+            const clearMainSearchBtn = document.getElementById('clearMainSearchBtn');
+            clearMainSearchBtn.addEventListener('click', clearMainSearch);
+            
+            // Page size functionality removed
+            
+            // Individual table search functionality removed - now using global search
+            
+            // Load initial data
+            loadData();
+        }
+        
+        function testConnection() {
+            const btn = document.getElementById('testConnectionBtn');
+            const status = document.getElementById('connectionStatus');
+            const message = document.getElementById('connectionMessage');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            
+            fetch('/api/bigquery/test')
+                .then(response => response.json())
+                .then(data => {
+                    status.style.display = 'block';
+                    if (data.success) {
+                        status.className = 'alert alert-success';
+                        message.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
+                    } else {
+                        status.className = 'alert alert-danger';
+                        message.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + data.message;
+                    }
+                })
+                .catch(error => {
+                    status.style.display = 'block';
+                    status.className = 'alert alert-danger';
+                    message.innerHTML = '<i class="fas fa-exclamation-circle"></i> Connection test failed: ' + error.message;
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-plug"></i> Test Connection';
+                });
+        }
+        
+        function initializeCostPriceCheckPage() {
+            const poSearchBtn = document.getElementById('costPricePoSearchBtn');
+            const poSearchInput = document.getElementById('costPricePoSearch');
+            const clearPoSearchBtn = document.getElementById('costPriceClearPoSearchBtn');
+            const skuSearchBtn = document.getElementById('costPriceSkuSearchBtn');
+            const skuSearchInput = document.getElementById('costPriceSkuSearch');
+            const clearSkuSearchBtn = document.getElementById('costPriceClearSkuSearchBtn');
+            
+            // PO ID/Order ID search
+            poSearchBtn.addEventListener('click', performCostPricePoSearch);
+            poSearchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performCostPricePoSearch();
+                }
+            });
+            clearPoSearchBtn.addEventListener('click', function() {
+                poSearchInput.value = '';
+                skuSearchInput.value = '';
+                loadAllCostPriceItems();
+            });
+            
+            // SKU search
+            skuSearchBtn.addEventListener('click', performCostPriceSkuSearch);
+            skuSearchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performCostPriceSkuSearch();
+                }
+            });
+            clearSkuSearchBtn.addEventListener('click', function() {
+                skuSearchInput.value = '';
+                poSearchInput.value = '';
+                loadAllCostPriceItems();
+            });
+            
+            // Load all items initially
+            loadAllCostPriceItems();
+        }
+        
+        function loadAllCostPriceItems() {
+            const loadingSpinner = document.getElementById('costPriceLoadingSpinner');
+            const itemsCard = document.getElementById('costPriceItemsCard');
+            const itemsContainer = document.getElementById('costPriceItemsContainer');
+            
+            loadingSpinner.style.display = 'block';
+            itemsCard.style.display = 'none';
+            
+            // Fetch all items from the cache
+            fetch('/api/bigquery/items')
+                .then(response => response.json())
+                .then(data => {
+                    loadingSpinner.style.display = 'none';
+                    
+                    if (data.success && data.data && data.data.length > 0) {
+                        displayAllCostPriceItems(data.data);
+                    } else {
+                        itemsContainer.innerHTML = `
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> No cost price data available. Please refresh the cache from the Dashboard.
+                            </div>
+                        `;
+                        itemsCard.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    loadingSpinner.style.display = 'none';
+                    itemsContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle"></i> Error loading data: ${error.message}
+                        </div>
+                    `;
+                    itemsCard.style.display = 'block';
+                });
+        }
+        
+        function displayAllCostPriceItems(data) {
+            const itemsContainer = document.getElementById('costPriceItemsContainer');
+            const itemsCard = document.getElementById('costPriceItemsCard');
+            const costPriceCount = document.getElementById('costPriceCount');
+            
+            itemsCard.style.display = 'block';
+            costPriceCount.textContent = data.length;
+            
+            let tableHTML = `
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i> Showing all ${data.length} cost price records. Use the search above to filter results.
+                </div>
+                <div style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-striped table-hover">
+                        <thead style="position: sticky; top: 0; background-color: #e3f2fd; z-index: 10;">
+                            <tr>
+                                <th>PO ID</th>
+                                <th>Order ID</th>
+                                <th>SKU</th>
+                                <th>Description</th>
+                                <th>NETO Cost Price</th>
+                                <th>REX Supplier Buy Ex</th>
+                                <th>Difference</th>
+                                <th>Disparity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.forEach(item => {
+                const rowClass = item.disparity ? 'table-warning' : '';
+                const difference = item.difference !== null && item.difference !== undefined ? item.difference.toFixed(2) : '-';
+                const disparityBadge = item.disparity 
+                    ? '<span class="badge bg-danger">true</span>' 
+                    : '<span class="badge bg-success">false</span>';
+                
+                tableHTML += `
+                    <tr class="${rowClass}">
+                        <td>${item.po_id || '-'}</td>
+                        <td>${item.OrderID || '-'}</td>
+                        <td>${item.sku || '-'}</td>
+                        <td>${item.short_description || '-'}</td>
+                        <td>$${item.neto_cost_price !== null ? item.neto_cost_price.toFixed(2) : '0.00'}</td>
+                        <td>$${item.rex_supplier_buy_ex !== null ? item.rex_supplier_buy_ex.toFixed(2) : '0.00'}</td>
+                        <td>$${difference}</td>
+                        <td>${disparityBadge}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            itemsContainer.innerHTML = tableHTML;
+        }
+        
+        function performCostPricePoSearch() {
+            const poSearchInput = document.getElementById('costPricePoSearch');
+            const searchValue = poSearchInput.value.trim();
+            
+            if (!searchValue) {
+                alert('Please enter a PO ID');
+                return;
+            }
+            
+            const loadingSpinner = document.getElementById('costPriceLoadingSpinner');
+            const itemsCard = document.getElementById('costPriceItemsCard');
+            const itemsContainer = document.getElementById('costPriceItemsContainer');
+            
+            loadingSpinner.style.display = 'block';
+            itemsCard.style.display = 'none';
+            
+            // Search by PO ID only
+            fetch(`/api/bigquery/items?po_id=${encodeURIComponent(searchValue)}`)
+                .then(response => response.json())
+                .then(data => {
+                    loadingSpinner.style.display = 'none';
+                    
+                    if (data.success && data.data && data.data.length > 0) {
+                        displayCostPriceItems(data.data, searchValue, 'PO ID');
+                    } else {
+                        itemsContainer.innerHTML = `
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i> No cost price data found for PO ID: ${searchValue}
+                            </div>
+                        `;
+                        itemsCard.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    loadingSpinner.style.display = 'none';
+                    itemsContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle"></i> Error loading data: ${error.message}
+                        </div>
+                    `;
+                    itemsCard.style.display = 'block';
+                });
+        }
+        
+        function performCostPriceSkuSearch() {
+            const skuSearchInput = document.getElementById('costPriceSkuSearch');
+            const searchValue = skuSearchInput.value.trim();
+            
+            if (!searchValue) {
+                alert('Please enter a SKU or Manufacturer SKU');
+                return;
+            }
+            
+            const loadingSpinner = document.getElementById('costPriceLoadingSpinner');
+            const itemsCard = document.getElementById('costPriceItemsCard');
+            const itemsContainer = document.getElementById('costPriceItemsContainer');
+            
+            loadingSpinner.style.display = 'block';
+            itemsCard.style.display = 'none';
+            
+            fetch(`/api/bigquery/items?sku_search=${encodeURIComponent(searchValue)}`)
+                .then(response => response.json())
+                .then(data => {
+                    loadingSpinner.style.display = 'none';
+                    
+                    if (data.success && data.data && data.data.length > 0) {
+                        displayCostPriceItems(data.data, searchValue, 'SKU');
+                    } else {
+                        itemsContainer.innerHTML = `
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i> No cost price data found for SKU: ${searchValue}
+                            </div>
+                        `;
+                        itemsCard.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    loadingSpinner.style.display = 'none';
+                    itemsContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle"></i> Error loading data: ${error.message}
+                        </div>
+                    `;
+                    itemsCard.style.display = 'block';
+                });
+        }
+        
+        function displayCostPriceItems(data, searchValue, searchType) {
+            const itemsContainer = document.getElementById('costPriceItemsContainer');
+            const itemsCard = document.getElementById('costPriceItemsCard');
+            const costPriceCount = document.getElementById('costPriceCount');
+            
+            itemsCard.style.display = 'block';
+            costPriceCount.textContent = data.length;
+            
+            let tableHTML = `
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i> Showing ${data.length} results for ${searchType}: <strong>${searchValue}</strong>
+                </div>
+                <div style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-striped table-hover">
+                        <thead style="position: sticky; top: 0; background-color: #e3f2fd; z-index: 10;">
+                            <tr>
+                                <th>PO ID</th>
+                                <th>Order ID</th>
+                                <th>SKU</th>
+                                <th>Description</th>
+                                <th>NETO Cost Price</th>
+                                <th>REX Supplier Buy Ex</th>
+                                <th>Difference</th>
+                                <th>Disparity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.forEach(item => {
+                const rowClass = item.disparity ? 'table-warning' : '';
+                const difference = item.difference !== null && item.difference !== undefined ? item.difference.toFixed(2) : '-';
+                const disparityBadge = item.disparity 
+                    ? '<span class="badge bg-danger">true</span>' 
+                    : '<span class="badge bg-success">false</span>';
+                
+                tableHTML += `
+                    <tr class="${rowClass}">
+                        <td>${item.po_id || '-'}</td>
+                        <td>${item.OrderID || '-'}</td>
+                        <td>${item.sku || '-'}</td>
+                        <td>${item.short_description || '-'}</td>
+                        <td>$${item.neto_cost_price !== null ? item.neto_cost_price.toFixed(2) : '0.00'}</td>
+                        <td>$${item.rex_supplier_buy_ex !== null ? item.rex_supplier_buy_ex.toFixed(2) : '0.00'}</td>
+                        <td>$${difference}</td>
+                        <td>${disparityBadge}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            itemsContainer.innerHTML = tableHTML;
+        }
+        
+        function clearCostPriceResults() {
+            const itemsContainer = document.getElementById('costPriceItemsContainer');
+            const itemsCard = document.getElementById('costPriceItemsCard');
+            const costPriceCount = document.getElementById('costPriceCount');
+            
+            itemsCard.style.display = 'none';
+            costPriceCount.textContent = '0';
+            itemsContainer.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="fas fa-search fa-3x mb-3"></i>
+                    <p>Search by PO ID, Order ID, or SKU to view cost price data</p>
+                </div>
+            `;
+        }
+        
+        function loadData() {
+            const refreshBtn = document.getElementById('refreshDataBtn');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const summaryContainer = document.getElementById('summaryContainer');
+            const dataInfo = document.getElementById('dataInfo');
+            const paginationNav = document.getElementById('paginationNav');
+            
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            loadingSpinner.style.display = 'block';
+            summaryContainer.innerHTML = '';
+            dataInfo.style.display = 'none';
+            paginationNav.style.display = 'none';
+            
+            // Request cached data (no pagination needed)
+            const url = `/api/bigquery/summary${searchTerm ? '?search=' + encodeURIComponent(searchTerm) : ''}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    loadingSpinner.style.display = 'none';
+                    
+                    if (data.success) {
+                        displaySummaryData(data.data);
+                        // Hide pagination since we're using scrollable table
+                        paginationNav.style.display = 'none';
+                        // Show data info
+                        updateDataInfo(data.count, data.total_count, data.timestamp);
+                    } else {
+                        summaryContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle"></i> Error loading data: ${data.error}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    loadingSpinner.style.display = 'none';
+                    summaryContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle"></i> Error loading data: ${error.message}
+                        </div>
+                    `;
+                })
+                .finally(() => {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
+                });
+        }
+        
+        function performSearch() {
+            const searchInput = document.getElementById('searchInput');
+            searchTerm = searchInput.value.trim();
+            currentPage = 1;
+            loadData();
+            
+            // Also filter comparison and items tables if they have data
+            filterAllTablesBySearchTerm(searchTerm);
+        }
+        
+        function performSkuSearch() {
+            console.log('performSkuSearch function called!');
+            const skuSearchInput = document.getElementById('skuSearchInput');
+            const skuSearchTerm = skuSearchInput.value.trim();
+            
+            console.log('SKU search term:', skuSearchTerm);
+            
+            if (!skuSearchTerm) {
+                console.log('No SKU search term provided');
+                return;
+            }
+            
+            // Search BigQuery directly for SKU across all data
+            searchBigQueryForSku(skuSearchTerm);
+        }
+        
+        // Global function for testing - you can call this from console
+        window.testSkuSearch = function(sku) {
+            console.log('Testing SKU search with:', sku);
+            searchBigQueryForSku(sku);
+        };
+        
+        function searchBigQueryForSku(skuTerm) {
+            console.log('Starting SKU search for:', skuTerm);
+            // Show loading spinner
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            loadingSpinner.style.display = 'block';
+            
+            // Search summary data with SKU filter
+            fetch(`/api/bigquery/summary?sku_search=${encodeURIComponent(skuTerm)}`, {
+                credentials: 'include'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Summary search result:', data);
+                    if (data.success && data.data) {
+                        // Display filtered summary data
+                        displaySummaryData(data.data);
+                        
+                        // Also search items and comparison data
+                        searchItemsAndComparisonForSku(skuTerm);
+                    } else {
+                        console.error('Error searching summary data:', data.message);
+                        loadingSpinner.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error searching summary data:', error);
+                    loadingSpinner.style.display = 'none';
+                });
+        }
+        
+        function searchItemsAndComparisonForSku(skuTerm) {
+            console.log('Searching items for SKU:', skuTerm);
+            // Search items data with SKU filter
+            fetch(`/api/bigquery/items?sku_search=${encodeURIComponent(skuTerm)}`, {
+                credentials: 'include'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Items search result:', data);
+                    if (data.success && data.data) {
+                        // Display all items that match the SKU search
+                        if (data.data && data.data.length > 0) {
+                            currentItemsData = data.data;
+                            // For SKU search, we don't have a specific PO, so use the first item's PO
+                            currentItemsPoId = data.data[0].po_id;
+                            currentItemsOrderId = data.data[0].order_id || null;
+                            displayItemsData(data.data, data.data.length, currentItemsPoId, currentItemsOrderId);
+                        } else {
+                            // No items found for this SKU
+                            displayItemsData([], 0, null, null);
+                        }
+                        
+                        // Search comparison data
+                        searchComparisonForSku(skuTerm);
+                    } else {
+                        console.error('Error searching items data:', data.message);
+                        document.getElementById('loadingSpinner').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error searching items data:', error);
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                });
+        }
+        
+        function searchComparisonForSku(skuTerm) {
+            console.log('Searching comparison for SKU:', skuTerm);
+            // Search comparison data with SKU filter
+            fetch(`/api/bigquery/comparison?sku_search=${encodeURIComponent(skuTerm)}`, {
+                credentials: 'include'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Comparison search result:', data);
+                    if (data.success && data.data) {
+                        displayComparisonData(data.data, data.data.length);
+                    } else {
+                        console.error('Error searching comparison data:', data.message);
+                    }
+                    // Hide loading spinner
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error searching comparison data:', error);
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                });
+        }
+        
+        function filterAllTablesBySearchTerm(searchTerm) {
+            if (!searchTerm) {
+                return;
+            }
+            
+            // Check if search term looks like a PO ID (numeric)
+            const isPoId = /^\d+$/.test(searchTerm);
+            
+            if (isPoId) {
+                // If searching for a PO ID, try to find it in the summary data and load its details
+                loadDataForPoId(searchTerm);
+            } else {
+                // For non-PO ID searches, filter existing data
+                filterExistingData(searchTerm);
+            }
+        }
+        
+        function loadDataForPoId(poId) {
+            // First, check if we have summary data loaded
+            if (window.currentSummaryData && window.currentSummaryData.length > 0) {
+                // Find the PO in the summary data
+                const poData = window.currentSummaryData.find(item => 
+                    item.po_id && item.po_id.toString() === poId
+                );
+                
+                if (poData) {
+                    // Load items and comparison data for this PO
+                    loadItems(poId, poData.order_id);
+                    return;
+                }
+            }
+            
+            // If not found in current data, filter existing data
+            filterExistingData(poId);
+        }
+        
+        function filterExistingData(searchTerm) {
+            // Filter comparison table if it has data
+            if (window.currentComparisonData && window.currentComparisonData.length > 0) {
+                const filteredComparisonData = window.currentComparisonData.filter(item => 
+                    (item.po_id && item.po_id.toString().includes(searchTerm)) ||
+                    (item.sku && item.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                    (item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                );
+                displayComparisonData(filteredComparisonData, filteredComparisonData.length);
+            }
+            
+            // Filter items table if it has data
+            if (currentItemsData && currentItemsData.length > 0) {
+                const filteredItemsData = currentItemsData.filter(item => 
+                    (item.po_id && item.po_id.toString().includes(searchTerm)) ||
+                    (item.sku && item.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                    (item.short_description && item.short_description.toLowerCase().includes(searchTerm.toLowerCase()))
+                );
+                displayItemsData(filteredItemsData, filteredItemsData.length, currentItemsPoId, currentItemsOrderId);
+            }
+        }
+        
+        function clearAllSearches() {
+            // Clear main search
+            const searchInput = document.getElementById('searchInput');
+            searchInput.value = '';
+            searchTerm = '';
+            currentPage = 1;
+            loadData();
+            
+            // Clear SKU search
+            const skuSearchInput = document.getElementById('skuSearchInput');
+            skuSearchInput.value = '';
+            
+            // Reset all tables to show all data
+            if (window.currentSummaryData) {
+                displaySummaryData(window.currentSummaryData);
+            }
+            if (window.currentComparisonData) {
+                displayComparisonData(window.currentComparisonData, window.currentComparisonData.length);
+            }
+            if (currentItemsData && currentItemsData.length > 0) {
+                displayItemsData(currentItemsData, currentItemsData.length, currentItemsPoId, currentItemsOrderId);
+            }
+        }
+        
+        function clearMainSearch() {
+            const searchInput = document.getElementById('searchInput');
+            searchInput.value = '';
+            searchTerm = '';
+            currentPage = 1;
+            loadData();
+        }
+        
+        function clearSkuSearch() {
+            const skuSearchInput = document.getElementById('skuSearchInput');
+            skuSearchInput.value = '';
+            
+            // Reset tables to show all data
+            if (window.currentSummaryData) {
+                displaySummaryData(window.currentSummaryData);
+            }
+            if (window.currentComparisonData) {
+                displayComparisonData(window.currentComparisonData, window.currentComparisonData.length);
+            }
+            if (currentItemsData && currentItemsData.length > 0) {
+                displayItemsData(currentItemsData, currentItemsData.length, currentItemsPoId, currentItemsOrderId);
+            }
+        }
+        
+        function refreshData() {
+            // Redirect to progress screen to show cache refresh progress
+            window.location.href = '/dashboard-progress';
+        }
+        
+        // Global variable to store current items data for filtering
+        let currentItemsData = [];
+        let currentItemsPoId = null;
+        let currentItemsOrderId = null;
+        
+        // Individual comparison search functions removed - now using global search
+        
+        function addComparisonTableSorting() {
+            const sortableHeaders = document.querySelectorAll('#comparisonContainer .sortable');
+            let currentSort = { column: null, direction: 'asc' };
+            
+            sortableHeaders.forEach(header => {
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', function() {
+                    const column = this.getAttribute('data-sort');
+                    const tbody = document.querySelector('#comparisonContainer tbody');
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    
+                    // Determine sort direction
+                    if (currentSort.column === column) {
+                        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort.direction = 'asc';
+                    }
+                    currentSort.column = column;
+                    
+                    // Update sort icons
+                    sortableHeaders.forEach(h => {
+                        const icon = h.querySelector('i');
+                        icon.className = 'fas fa-sort';
+                    });
+                    const currentIcon = this.querySelector('i');
+                    currentIcon.className = currentSort.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                    
+                    // Sort rows
+                    rows.sort((a, b) => {
+                        const aVal = getCellValue(a, column);
+                        const bVal = getCellValue(b, column);
+                        
+                        // Handle numeric values
+                        if (!isNaN(aVal) && !isNaN(bVal)) {
+                            return currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+                        }
+                        
+                        // Handle string values
+                        const aStr = String(aVal).toLowerCase();
+                        const bStr = String(bVal).toLowerCase();
+                        
+                        if (currentSort.direction === 'asc') {
+                            return aStr.localeCompare(bStr);
+                        } else {
+                            return bStr.localeCompare(aStr);
+                        }
+                    });
+                    
+                    // Reorder rows in table
+                    rows.forEach(row => tbody.appendChild(row));
+                });
+            });
+        }
+        
+        function getCellValue(row, column) {
+            const cellIndex = getColumnIndex(column);
+            if (cellIndex === -1) return '';
+            
+            const cell = row.cells[cellIndex];
+            if (!cell) return '';
+            
+            // Extract text content, handling badges
+            let text = cell.textContent || cell.innerText || '';
+            
+            // Handle numeric values
+            if (!isNaN(text) && text !== '') {
+                return parseFloat(text);
+            }
+            
+            return text;
+        }
+        
+        function getColumnIndex(column) {
+            const headers = document.querySelectorAll('#comparisonContainer thead th');
+            for (let i = 0; i < headers.length; i++) {
+                if (headers[i].getAttribute('data-sort') === column) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+        
+        function addItemsTableSorting() {
+            const sortableHeaders = document.querySelectorAll('#itemsContainer .sortable');
+            let currentSort = { column: null, direction: 'asc' };
+            
+            sortableHeaders.forEach(header => {
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', function() {
+                    const column = this.getAttribute('data-sort');
+                    const tbody = document.querySelector('#itemsContainer tbody');
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    
+                    // Determine sort direction
+                    if (currentSort.column === column) {
+                        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort.direction = 'asc';
+                    }
+                    currentSort.column = column;
+                    
+                    // Update sort icons
+                    sortableHeaders.forEach(h => {
+                        const icon = h.querySelector('i');
+                        icon.className = 'fas fa-sort';
+                    });
+                    const currentIcon = this.querySelector('i');
+                    currentIcon.className = currentSort.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                    
+                    // Sort rows
+                    rows.sort((a, b) => {
+                        const aVal = getItemsCellValue(a, column);
+                        const bVal = getItemsCellValue(b, column);
+                        
+                        // Handle numeric values
+                        if (!isNaN(aVal) && !isNaN(bVal)) {
+                            return currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+                        }
+                        
+                        // Handle string values
+                        const aStr = String(aVal).toLowerCase();
+                        const bStr = String(bVal).toLowerCase();
+                        
+                        if (currentSort.direction === 'asc') {
+                            return aStr.localeCompare(bStr);
+                        } else {
+                            return bStr.localeCompare(aStr);
+                        }
+                    });
+                    
+                    // Reorder rows in table
+                    rows.forEach(row => tbody.appendChild(row));
+                });
+            });
+        }
+        
+        function getItemsCellValue(row, column) {
+            const cellIndex = getItemsColumnIndex(column);
+            if (cellIndex === -1) return '';
+            
+            const cell = row.cells[cellIndex];
+            if (!cell) return '';
+            
+            // Extract text content, handling badges and currency
+            let text = cell.textContent || cell.innerText || '';
+            
+            // Remove currency symbols and parse numeric values
+            if (text.includes('$')) {
+                text = text.replace('$', '');
+            }
+            
+            // Handle numeric values
+            if (!isNaN(text) && text !== '') {
+                return parseFloat(text);
+            }
+            
+            return text;
+        }
+        
+        function getItemsColumnIndex(column) {
+            const headers = document.querySelectorAll('#itemsContainer thead th');
+            for (let i = 0; i < headers.length; i++) {
+                if (headers[i].getAttribute('data-sort') === column) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // Individual search functions removed - now using global search
+        
+        function displaySummaryData(data) {
+            const summaryContainer = document.getElementById('summaryContainer');
+            
+            // Store summary data globally for search functionality
+            window.currentSummaryData = data;
+            
+            if (!data || data.length === 0) {
+                summaryContainer.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No data found${searchTerm ? ' for search term: ' + searchTerm : ''}.
+                    </div>
+                `;
+                return;
+            }
+
+            // Define the columns we want to show in the summary table
+            const summaryColumns = [
+                'po_id', 'requested_date', 'OrderID', 'order_link', 'entered_date', 'received_date',
+                'neto_order_created_by', 'completed_date', 'completion_status', 'order_status', 'disparity'
+            ];
+            
+            // Create table HTML with scrollbar (max 200 rows, 10 visible)
+            const maxRows = 200;
+            const visibleRows = 10;
+            const shouldScroll = data.length > visibleRows;
+            const maxHeight = shouldScroll ? 'max-height: 400px; overflow-y: auto;' : '';
+            
+            let tableHTML = `
+                <div class="table-responsive-modern" style="${maxHeight}">
+                    <table class="table table-modern">
+                        <thead>
+                            <tr>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested" class="text-center">Requested Date</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from the system" class="text-center">OrderID</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">Entered Date</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received" class="text-center">Received Date</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was completed" class="text-center">Date Completed</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current completion status of the order" class="text-center">Completion Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the order" class="text-center">Order Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates if there's a price difference between REX and NETO" class="text-center">Disparity?</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // Add data rows
+            data.forEach((row, index) => {
+                const rowClass = index % 2 === 0 ? 'table-light' : '';
+                // Escape single quotes in data for onclick handler
+                const requestedDateRaw = row.requested_date ? row.requested_date.replace(/'/g, "\\'") : '';
+                const enteredDateRaw = row.entered_date ? row.entered_date.replace(/'/g, "\\'") : '';
+                const receivedDateRaw = row.received_date ? row.received_date.replace(/'/g, "\\'") : '';
+                const createdByRaw = (row.neto_order_created_by || '').replace(/'/g, "\\'");
+                const completedDateRaw = row.completed_date ? row.completed_date.replace(/'/g, "\\'") : '';
+                const completionStatusRaw = (row.completion_status || '').replace(/'/g, "\\'");
+                const orderStatusRaw = (row.order_status || '').replace(/'/g, "\\'");
+                
+                tableHTML += `<tr class="${rowClass}" onclick="showPODetails('${row.po_id}', '${row.OrderID}', '${requestedDateRaw}', '${enteredDateRaw}', '${receivedDateRaw}', '${createdByRaw}', '${completedDateRaw}', '${completionStatusRaw}', '${orderStatusRaw}', ${row.disparity || false})" style="cursor: pointer;">`;
+                
+                // Format each field
+                const poId = row.po_id || '-';
+                const requestedDate = row.requested_date ? new Date(row.requested_date).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                }) + ', ' + new Date(row.requested_date).toLocaleTimeString('en-GB', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                }) : '-';
+                const orderId = row.OrderID ? `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>` : '-';
+                const enteredDate = row.entered_date ? new Date(row.entered_date).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                }) : '-';
+                const receivedDate = row.received_date ? new Date(row.received_date).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                }) + ', ' + new Date(row.received_date).toLocaleTimeString('en-GB', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                }) : '-';
+                const createdBy = row.neto_order_created_by || '-';
+                const completedDate = row.completed_date ? new Date(row.completed_date).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                }) : '-';
+                const completionStatus = row.completion_status || '-';
+                const orderStatus = row.order_status || '-';
+                const disparity = row.disparity ? 
+                    '<span class="badge bg-danger">true</span>' : 
+                    '<span class="badge bg-success">false</span>';
+                
+                tableHTML += `
+                    <td class="numeric-column">${poId}</td>
+                    <td class="text-center">${requestedDate}</td>
+                    <td class="text-center">${orderId}</td>
+                    <td class="text-center">${enteredDate}</td>
+                    <td class="text-center">${receivedDate}</td>
+                    <td>${createdBy}</td>
+                    <td class="text-center">${completedDate}</td>
+                    <td class="text-center">${completionStatus}</td>
+                    <td class="text-center">${orderStatus}</td>
+                    <td class="text-center">${disparity}</td>
+                `;
+                tableHTML += '</tr>';
+            });
+            
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            summaryContainer.innerHTML = tableHTML;
+            
+            // Initialize tooltips for the summary table
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#summaryContainer [data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+        
+        function loadComparison(poId, orderId) {
+            const comparisonCard = document.getElementById('comparisonCard');
+            const comparisonContainer = document.getElementById('comparisonContainer');
+            const comparisonSearchInput = document.getElementById('comparisonSearchInput');
+            
+            // Clear search when loading new comparison data
+            if (comparisonSearchInput) {
+                comparisonSearchInput.value = '';
+            }
+            
+            // Show the comparison card
+            comparisonCard.style.display = 'block';
+            
+            // Show loading with progress indicator
+            comparisonContainer.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading comparison data for PO: ${poId}</p>
+                    <div class="progress mt-3" style="height: 4px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Checking cache first, then BigQuery if needed...</small>
+                </div>
+            `;
+            
+            // Fetch comparison data with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            fetch(`/api/bigquery/comparison?po_id=${poId}&order_id=${orderId}`, {
+                credentials: 'include',
+                signal: controller.signal
+            })
+                .then(response => {
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // Show data source information
+                        const dataSource = data.from_cache ? 'cache' : 'BigQuery';
+                        const loadTime = data.load_time ? ` (${data.load_time}ms)` : '';
+                        
+                        // Update loading message to show data source
+                        comparisonContainer.innerHTML = `
+                            <div class="text-center">
+                                <div class="spinner-border text-success" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-success">✓ Loaded from ${dataSource}${loadTime}</p>
+                                <small class="text-muted">Rendering comparison table...</small>
+                            </div>
+                        `;
+                        
+                        // Small delay to show the success message
+                        setTimeout(() => {
+                            displayComparisonData(data.data, data.total_count);
+                            // Store comparison data globally for search
+                            window.currentComparisonData = data.data;
+                        }, 500);
+                    } else {
+                        comparisonContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle"></i> Error loading comparison data: ${data.error || 'Unknown error'}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    clearTimeout(timeoutId);
+                    let errorMessage = error.message;
+                    if (error.name === 'AbortError') {
+                        errorMessage = 'Request timed out after 30 seconds. The comparison data is taking too long to load.';
+                    }
+                    comparisonContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle"></i> Error loading comparison data: ${errorMessage}
+                            <br><small class="text-muted">Try refreshing the page or contact support if the issue persists.</small>
+                        </div>
+                    `;
+                });
+        }
+
+        function loadItems(poId, orderId) {
+            const itemsCard = document.getElementById('itemsCard');
+            const itemsContainer = document.getElementById('itemsContainer');
+            const itemsSearchInput = document.getElementById('itemsSearchInput');
+            
+            // Clear search when loading new items
+            if (itemsSearchInput) {
+                itemsSearchInput.value = '';
+            }
+            
+            // Clear any existing notes and close item details panel
+            document.getElementById('item-details-panel').style.display = 'none';
+            // Don't show Quick Info panel - keep it hidden in REX PO Orders view
+            // document.getElementById('quick-info-panel').style.display = 'block';
+            document.getElementById('notes-list').innerHTML = `
+                <div class="text-center text-muted">
+                    <small>No notes yet. Click on an item to add notes.</small>
+                </div>
+            `;
+            document.getElementById('new-note').value = '';
+            currentItemData = null;
+            
+            // Show the items card
+            itemsCard.style.display = 'block';
+            
+            // Show loading
+            itemsContainer.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading items for PO: ${poId}</p>
+                    <small class="text-muted">Checking cache first, then BigQuery if needed...</small>
+                </div>
+            `;
+            
+            // Load items data
+            const url = `/api/bigquery/items?po_id=${encodeURIComponent(poId)}&order_id=${encodeURIComponent(orderId)}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Show data source information
+                        const dataSource = data.from_cache ? 'cache' : 'BigQuery';
+                        const loadTime = data.load_time ? ` (${data.load_time}ms)` : '';
+                        
+                        // Update loading message to show data source
+                        itemsContainer.innerHTML = `
+                            <div class="text-center">
+                                <div class="spinner-border text-success" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-success">✓ Items loaded from ${dataSource}${loadTime}</p>
+                                <small class="text-muted">Rendering items table...</small>
+                            </div>
+                        `;
+                        
+                        // Store data for search functionality
+                        currentItemsData = data.data;
+                        currentItemsPoId = poId;
+                        currentItemsOrderId = orderId;
+                        
+                        // Small delay to show the success message, then render
+                        setTimeout(() => {
+                            displayItemsData(data.data, data.total_count, poId, orderId);
+                            
+                            // Also load comparison data
+                            loadComparison(poId, orderId);
+                        }, 500);
+                    } else {
+                        itemsContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle"></i> Error loading items: ${data.error}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    itemsContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle"></i> Error loading items: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+        
+        function displayComparisonData(data, totalCount) {
+            const comparisonContainer = document.getElementById('comparisonContainer');
+            
+            console.log('displayComparisonData received data:', data);
+            
+            if (!data || data.length === 0) {
+                comparisonContainer.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No comparison data found for this purchase order.
+                    </div>
+                `;
+                return;
+            }
+            
+            // No need for total items info strip - count will be shown in header
+            
+            // Create table HTML
+            let tableHTML = `
+                <div class="table-responsive-modern" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-modern">
+                        <thead class="sticky-top">
+                            <tr>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID" class="sortable text-center" data-sort="po_id" style="width: 60px;">POID <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Stock Keeping Unit identifier" class="sortable" data-sort="sku" style="width: 100px;">SKU <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Product name and description" class="sortable" data-sort="name" style="width: 200px;">Name <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Type of change or difference" class="sortable text-center" data-sort="change_log" style="width: 120px;">Change Log <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in NETO system" class="sortable text-center" data-sort="neto_qty_available" style="width: 80px;">NETO Qty Available <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Original quantity ordered in REX system" class="sortable text-center" data-sort="original_rex_qty_ordered" style="width: 80px;">Original REX Qty Ordered <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity shipped from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Shipped <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Final quantity ordered in REX" class="sortable text-center" data-sort="final_rex_qty_ordered" style="width: 80px;">Final REX Qty Ordered <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity received in REX" class="sortable text-center" data-sort="rex_qty_received" style="width: 80px;">REX Qty Received <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note or comment" class="text-center" style="width: 250px;">Latest Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.forEach(row => {
+                // Create colored tag for change log
+                const changeLog = row.change_log || '-';
+                let changeLogTag = changeLog;
+                if (changeLog !== '-') {
+                    let badgeClass = 'bg-secondary'; // default
+                    if (changeLog.toLowerCase().includes('receival')) {
+                        badgeClass = 'bg-warning text-dark';
+                    } else if (changeLog.toLowerCase().includes('quantity')) {
+                        badgeClass = 'bg-info';
+                    } else if (changeLog.toLowerCase().includes('price')) {
+                        badgeClass = 'bg-danger';
+                    } else if (changeLog.toLowerCase().includes('difference')) {
+                        badgeClass = 'bg-primary';
+                    } else if (changeLog.toLowerCase().includes('new')) {
+                        badgeClass = 'bg-success';
+                    } else if (changeLog.toLowerCase().includes('removed')) {
+                        badgeClass = 'bg-danger';
+                    } else if (changeLog.toLowerCase().includes('delivery')) {
+                        badgeClass = 'bg-warning text-dark';
+                    } else if (changeLog.toLowerCase().includes('unchanged')) {
+                        badgeClass = 'bg-light text-dark';
+                    } else if (changeLog.toLowerCase().includes('gap')) {
+                        badgeClass = 'bg-warning text-dark';
+                    } else if (changeLog.toLowerCase().includes('changed')) {
+                        badgeClass = 'bg-info';
+                    }
+                    changeLogTag = `<span class="badge ${badgeClass}">${changeLog}</span>`;
+                }
+                
+                // No row background colors - badges provide sufficient visual distinction
+                let rowBgClass = '';
+                
+                // Format latest item note
+                const latestItemNote = row.latest_item_note ? 
+                    `<div class="text-truncate" style="max-width: 200px;" title="${row.latest_item_note} - ${row.latest_item_note_user} (${row.latest_item_note_date ? new Date(row.latest_item_note_date).toLocaleDateString('en-AU') : ''})">
+                        <small class="text-muted">${row.latest_item_note_user}:</small> ${row.latest_item_note}
+                    </div>` : 
+                    '<span class="text-muted">-</span>';
+                
+            // Check if item has valid po_item_id for notes functionality
+            // Since we're using INNER JOIN, all items should have valid po_item_id
+            console.log('Row po_item_id:', row.po_item_id, 'Type:', typeof row.po_item_id);
+            const hasValidPoItemId = row.po_item_id && row.po_item_id !== null && row.po_item_id !== undefined;
+            
+            // Escape JavaScript string values to prevent syntax errors
+            function escapeJsString(str) {
+                return String(str || '')
+                    .replace(/\\/g, '\\\\')     // Backslashes first
+                    .replace(/'/g, "\\'")       // Single quotes
+                    .replace(/"/g, '\\"')       // Double quotes
+                    .replace(/\n/g, '\\n')      // Newlines
+                    .replace(/\r/g, '\\r')      // Carriage returns
+                    .replace(/\t/g, '\\t')      // Tabs
+                    .replace(/`/g, '\\`')       // Backticks
+                    .replace(/\0/g, '\\0')      // Null characters
+                    .replace(/\u2028/g, '\\u2028') // Line separator
+                    .replace(/\u2029/g, '\\u2029'); // Paragraph separator
+            }
+            
+            const escapedPoItemId = escapeJsString(row.po_item_id);
+            const escapedPoId = escapeJsString(row.po_id);
+            const escapedSku = escapeJsString(row.sku);
+            const escapedName = escapeJsString(row.name);
+            const escapedChangeLog = escapeJsString(row.change_log);
+            const escapedNetoQtyAvailable = escapeJsString(row.neto_qty_available);
+            const escapedOriginalRexQtyOrdered = escapeJsString(row.original_rex_qty_ordered);
+            const escapedNetoQtyShipped = escapeJsString(row.neto_qty_shipped);
+            const escapedFinalRexQtyOrdered = escapeJsString(row.final_rex_qty_ordered);
+            const escapedRexQtyReceived = escapeJsString(row.rex_qty_received);
+            
+            // Add clickable class only if item has valid po_item_id
+            const clickableClass = hasValidPoItemId ? 'clickable-row' : 'non-clickable-row';
+            const dataAttributes = hasValidPoItemId ? 
+                `data-po-item-id="${escapedPoItemId}" data-po-id="${escapedPoId}" data-sku="${escapedSku}" data-name="${escapedName}" data-change-log="${escapedChangeLog}" data-neto-qty-available="${escapedNetoQtyAvailable}" data-original-rex-qty-ordered="${escapedOriginalRexQtyOrdered}" data-neto-qty-shipped="${escapedNetoQtyShipped}" data-final-rex-qty-ordered="${escapedFinalRexQtyOrdered}" data-rex-qty-received="${escapedRexQtyReceived}"` : 
+                `data-po-id="${escapedPoId}" data-sku="${escapedSku}" data-name="${escapedName}" data-change-log="${escapedChangeLog}" data-neto-qty-available="${escapedNetoQtyAvailable}" data-original-rex-qty-ordered="${escapedOriginalRexQtyOrdered}" data-neto-qty-shipped="${escapedNetoQtyShipped}" data-final-rex-qty-ordered="${escapedFinalRexQtyOrdered}" data-rex-qty-received="${escapedRexQtyReceived}"`;
+            
+            // Add tooltip for non-clickable rows
+            const tooltipAttr = hasValidPoItemId ? '' : 'data-bs-toggle="tooltip" data-bs-placement="top" title="This item cannot be clicked because it has no item ID. It may be a comparison-only item that doesn\'t exist in the main items table."';
+            
+            tableHTML += `
+                <tr class="${rowBgClass} ${clickableClass}" ${dataAttributes} ${tooltipAttr}>
+                    <td class="numeric-column">${row.po_id || '-'}</td>
+                    <td>${row.sku || '-'}</td>
+                    <td>${row.name || '-'}</td>
+                    <td class="text-center">${changeLogTag}</td>
+                    <td class="numeric-column">${row.neto_qty_available || '-'}</td>
+                    <td class="numeric-column">${row.original_rex_qty_ordered || '-'}</td>
+                    <td class="numeric-column">${row.neto_qty_shipped || '-'}</td>
+                    <td class="numeric-column">${row.final_rex_qty_ordered || '-'}</td>
+                    <td class="numeric-column">${row.rex_qty_received || '-'}</td>
+                    <td class="text-start">${latestItemNote}</td>
+                </tr>
+            `;
+            });
+            
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            comparisonContainer.innerHTML = tableHTML;
+            
+            // Add event listeners for clickable rows
+            const clickableRows = comparisonContainer.querySelectorAll('.clickable-row');
+            clickableRows.forEach(row => {
+                row.addEventListener('click', function() {
+                    const poItemId = this.getAttribute('data-po-item-id');
+                    const poId = this.getAttribute('data-po-id');
+                    const sku = this.getAttribute('data-sku');
+                    const name = this.getAttribute('data-name');
+                    const changeLog = this.getAttribute('data-change-log');
+                    const netoQtyAvailable = this.getAttribute('data-neto-qty-available');
+                    const originalRexQtyOrdered = this.getAttribute('data-original-rex-qty-ordered');
+                    const netoQtyShipped = this.getAttribute('data-neto-qty-shipped');
+                    const finalRexQtyOrdered = this.getAttribute('data-final-rex-qty-ordered');
+                    const rexQtyReceived = this.getAttribute('data-rex-qty-received');
+                    
+                    if (poItemId && poItemId !== 'undefined' && poItemId !== 'null' && poItemId !== 'None') {
+                        showComparisonItemDetails(poItemId, poId, sku, name, changeLog, netoQtyAvailable, originalRexQtyOrdered, netoQtyShipped, finalRexQtyOrdered, rexQtyReceived);
+                    }
+                });
+            });
+            
+            // Update the count badge in the header
+            const comparisonBadge = document.querySelector('#comparisonCard .badge');
+            if (comparisonBadge) {
+                comparisonBadge.textContent = `${totalCount}`;
+            }
+            
+            // Initialize tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#comparisonContainer [data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            
+            // Add sorting functionality
+            addComparisonTableSorting();
+        }
+
+        function displayItemsData(data, totalCount, poId, orderId) {
+            const itemsContainer = document.getElementById('itemsContainer');
+            const itemsCard = document.getElementById('itemsCard');
+            
+            // Show the items card
+            itemsCard.style.display = 'block';
+            
+            if (!data || data.length === 0) {
+                itemsContainer.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No items found for this purchase order.
+                    </div>
+                `;
+                return;
+            }
+
+            // Show total items count at the top
+            // No need for total items info strip - count will be shown in header
+
+            // Create table HTML matching the template format
+            // Add scrollable container if 10+ rows
+            const maxHeight = data.length >= 10 ? 'max-height: 500px; overflow-y: auto;' : '';
+            let tableHTML = `
+                <div class="table-responsive-modern" style="${maxHeight}">
+                    <table class="table table-modern">
+                        <thead class="sticky-top">
+                            <tr>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order number" class="sortable text-center" data-sort="po_id">PO <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Stock Keeping Unit - Product identifier" class="sortable" data-sort="sku">SKU <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Product name and description" class="sortable" data-sort="short_description">Product Name <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Cost price in NETO system" class="sortable text-end" data-sort="neto_cost_price">NETO Cost Price <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Supplier buy price in REX system (excluding tax)" class="sortable text-end" data-sort="rex_supplier_buy_ex">REX Supplier Buy Ex <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Difference between NETO Cost Price and REX Supplier Buy Ex" class="sortable text-end" data-sort="difference">Diff <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Boolean flag indicating if there's a disparity" class="sortable text-center" data-sort="disparity">Disparity <i class="fas fa-sort"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // Add data rows
+            data.forEach((row, index) => {
+                tableHTML += `<tr>`;
+                
+                // Format each field according to the template
+                const po = row.po_id || '-';
+                const sku = row.sku || '-';
+                const productName = row.short_description || '-';
+                const netoCostPrice = row.neto_cost_price ? `$${parseFloat(row.neto_cost_price).toFixed(2)}` : '-';
+                const rexSupplierBuyEx = row.rex_supplier_buy_ex ? `$${parseFloat(row.rex_supplier_buy_ex).toFixed(2)}` : '-';
+                const diff = row.difference ? `$${parseFloat(row.difference).toFixed(2)}` : '-';
+                const disparity = row.disparity ? 
+                    '<span class="badge bg-danger">true</span>' : 
+                    '<span class="badge bg-success">false</span>';
+                
+            tableHTML += `
+                <td class="numeric-column">${po}</td>
+                <td>${sku}</td>
+                <td>${productName}</td>
+                <td class="price-column">${netoCostPrice}</td>
+                <td class="price-column">${rexSupplierBuyEx}</td>
+                <td class="price-column">${diff}</td>
+                <td class="text-center">${disparity}</td>
+            `;
+                tableHTML += '</tr>';
+            });
+            
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            itemsContainer.innerHTML = tableHTML;
+            
+            // Update the count badge in the header
+            const itemsBadge = document.querySelector('#itemsCard .badge');
+            if (itemsBadge) {
+                itemsBadge.textContent = `${totalCount}`;
+            }
+            
+            // Initialize tooltips for the items table
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#itemsContainer [data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            
+            // Add sorting functionality to items table
+            addItemsTableSorting();
+        }
+        
+        function updatePagination(totalCount, limit, offset) {
+            const paginationNav = document.getElementById('paginationNav');
+            const totalPages = Math.ceil(totalCount / limit);
+            
+            if (totalPages <= 1) {
+                paginationNav.style.display = 'none';
+                return;
+            }
+            
+            paginationNav.style.display = 'block';
+            
+            const prevPage = document.getElementById('prevPage');
+            const currentPageSpan = document.getElementById('currentPage');
+            const nextPage = document.getElementById('nextPage');
+            
+            // Update current page display
+            currentPageSpan.innerHTML = `<span class="page-link">${currentPage} of ${totalPages}</span>`;
+            
+            // Update previous button
+            if (currentPage <= 1) {
+                prevPage.classList.add('disabled');
+                prevPage.querySelector('a').onclick = null;
+            } else {
+                prevPage.classList.remove('disabled');
+                prevPage.querySelector('a').onclick = () => changePage(-1);
+            }
+            
+            // Update next button
+            if (currentPage >= totalPages) {
+                nextPage.classList.add('disabled');
+                nextPage.querySelector('a').onclick = null;
+            } else {
+                nextPage.classList.remove('disabled');
+                nextPage.querySelector('a').onclick = () => changePage(1);
+            }
+        }
+        
+        function updateDataInfo(count, totalCount, timestamp) {
+            const dataInfo = document.getElementById('dataInfo');
+            const dataCount = document.getElementById('dataCount');
+            const dataTimestamp = document.getElementById('dataTimestamp');
+            
+            dataCount.textContent = `Showing ${count} of ${totalCount} records`;
+            dataTimestamp.textContent = new Date(timestamp).toLocaleString();
+            dataInfo.style.display = 'block';
+        }
+        
+        function changePage(direction) {
+            const totalPages = Math.ceil(totalCount / pageSize);
+            const newPage = currentPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                loadData();
+            }
+        }
+        
+        // Cache status functionality for sidebar
+        function updateSidebarCacheStatus() {
+            fetch('/api/bigquery/cache-status')
+                .then(response => response.json())
+                .then(data => {
+                    const cacheStatusDiv = document.getElementById('sidebarCacheStatus');
+                    const cacheButtons = document.getElementById('sidebarCacheButtons');
+                    
+                    if (data.success) {
+                        const statusHtml = `
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="fas fa-${data.has_cached_data ? 'check-circle text-success' : 'exclamation-triangle text-warning'} me-2"></i>
+                                <small class="fw-bold">${data.has_cached_data ? 'Cached' : 'No Cache'}</small>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small class="text-muted">Summary:</small>
+                                <small class="fw-bold">${data.summary_count}</small>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small class="text-muted">Items:</small>
+                                <small class="fw-bold">${data.items_count}</small>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small class="text-muted">Comparison:</small>
+                                <small class="fw-bold">${data.comparison_count || 0}</small>
+                            </div>
+                        `;
+                        cacheStatusDiv.innerHTML = statusHtml;
+                        cacheButtons.style.display = 'block';
+                    } else {
+                        cacheStatusDiv.innerHTML = `
+                            <div class="text-center text-danger">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <small class="d-block mt-1">Error</small>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('sidebarCacheStatus').innerHTML = `
+                        <div class="text-center text-danger">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <small class="d-block mt-1">Error</small>
+                        </div>
+                    `;
+                });
+        }
+        
+        function refreshSidebarCache() {
+            const btn = document.getElementById('sidebarRefreshBtn');
+            const originalText = btn.innerHTML;
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+            
+            fetch('/api/bigquery/refresh', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update cache status after refresh
+                    setTimeout(updateSidebarCacheStatus, 1000);
+                }
+            })
+            .catch(error => {
+                console.error('Error refreshing cache:', error);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+        
+        function clearSidebarCache() {
+            if (!confirm('Are you sure you want to clear all cached data?')) {
+                return;
+            }
+            
+            const btn = document.getElementById('sidebarClearBtn');
+            const originalText = btn.innerHTML;
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing...';
+            
+            fetch('/api/bigquery/clear-cache', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update cache status after clearing
+                    setTimeout(updateSidebarCacheStatus, 500);
+                }
+            })
+            .catch(error => {
+                console.error('Error clearing cache:', error);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+        
+        // Initialize cache status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing dashboard...');
+            console.log('Testing if JavaScript is working...');
+            updateSidebarCacheStatus();
+            
+            // Handle sidebar refresh button
+            document.getElementById('sidebarRefreshBtn').addEventListener('click', function() {
+                refreshSidebarCache();
+            });
+            
+            // Handle sidebar clear button
+            document.getElementById('sidebarClearBtn').addEventListener('click', function() {
+                clearSidebarCache();
+            });
+            
+            // Update cache status every 30 seconds
+            setInterval(updateSidebarCacheStatus, 30000);
+        });
+        
+        // Item Details and Notes Functions
+        let currentItemData = null;
+        let currentPOData = null;
+        
+        function showPODetails(poId, orderId, requestedDate, enteredDate, receivedDate, createdBy, completedDate, completionStatus, orderStatus, disparity) {
+            currentPOData = {
+                po_id: poId,
+                order_id: orderId,
+                requested_date: requestedDate,
+                entered_date: enteredDate,
+                received_date: receivedDate,
+                created_by: createdBy,
+                completed_date: completedDate,
+                completion_status: completionStatus,
+                order_status: orderStatus,
+                disparity: disparity
+            };
+            
+            // Hide other panels and show PO details panel
+            document.getElementById('quick-info-panel').style.display = 'none';
+            document.getElementById('item-details-panel').style.display = 'none';
+            document.getElementById('po-details-panel').style.display = 'block';
+            
+            // Populate PO info header
+            populatePOInfoHeader();
+            
+            // Load all item notes for this PO
+            loadAllItemNotesForPO(poId);
+            
+            // Load comparison data for this PO (items moved to separate tab)
+            loadComparison(poId, orderId);
+        }
+        
+        function closePODetails() {
+            document.getElementById('po-details-panel').style.display = 'none';
+            // Don't show Quick Info panel - keep it hidden in REX PO Orders view
+            // document.getElementById('quick-info-panel').style.display = 'block';
+            currentPOData = null;
+            document.getElementById('po-notes-list').innerHTML = `<div class="text-center text-muted"><small>No PO notes yet. Click on a PO to add notes.</small></div>`;
+        }
+        
+        function populatePOInfoHeader() {
+            if (!currentPOData) return;
+            
+            const infoHeader = document.getElementById('po-info-header');
+            infoHeader.innerHTML = `
+                <div class="row">
+                    <div class="col-4"><strong>PO ID:</strong></div>
+                    <div class="col-8">${currentPOData.po_id}</div>
+                </div>
+                <div class="row mt-1">
+                    <div class="col-4"><strong>Order ID:</strong></div>
+                    <div class="col-8">${currentPOData.order_id}</div>
+                </div>
+            `;
+        }
+        
+        function loadPONotes(poId) {
+            fetch(`/api/po-notes/${poId}`, {
+                credentials: 'include'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPONotes(data.notes);
+                    } else {
+                        console.error('Error loading PO notes:', data.error);
+                        displayPONotes([]);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading PO notes:', error);
+                    displayPONotes([]);
+                });
+        }
+        
+        function displayPONotes(notes) {
+            const notesList = document.getElementById('po-notes-list');
+            
+            if (notes.length === 0) {
+                notesList.innerHTML = `
+                    <div class="text-center text-muted">
+                        <small>No PO notes yet. Add a comment below.</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            let notesHTML = '';
+            notes.forEach(note => {
+                const timestamp = new Date(note.created_at).toLocaleString('en-AU', {
+                    timeZone: 'Australia/Melbourne',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                notesHTML += `
+                    <div class="note-item">
+                        <div class="note-header">
+                            <span class="note-author">${note.username}</span>
+                            <span class="note-timestamp">${timestamp}</span>
+                            <button class="note-delete-btn" onclick="deletePONote('${note.note_id}')" title="Delete note">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="note-content">${note.comment}</div>
+                    </div>
+                `;
+            });
+            
+            notesList.innerHTML = notesHTML;
+        }
+        
+        function loadAllItemNotesForPO(poId) {
+            fetch(`/api/po-item-notes/${poId}`, {
+                credentials: 'include'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayAllItemNotes(data.notes);
+                    } else {
+                        console.error('Error loading all item notes:', data.error);
+                        displayAllItemNotes([]);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading all item notes:', error);
+                    displayAllItemNotes([]);
+                });
+        }
+        
+        function displayAllItemNotes(notes) {
+            const notesList = document.getElementById('all-item-notes-list');
+            const notesCount = document.getElementById('all-item-notes-count');
+            
+            // Update the badge count
+            notesCount.textContent = notes.length;
+            
+            if (notes.length === 0) {
+                notesList.innerHTML = `
+                    <div class="text-center text-muted">
+                        <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            let notesHTML = '';
+            notes.forEach(note => {
+                const timestamp = new Date(note.created_at).toLocaleString('en-AU', {
+                    timeZone: 'Australia/Melbourne',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                notesHTML += `
+                    <div class="note-item mb-2" style="border-left: 3px solid #ce93d8; padding: 8px 10px; background-color: #fafafa; border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <strong style="color: #7b1fa2; font-size: 0.95rem;">${note.sku || 'N/A'}</strong>
+                            <button class="note-delete-btn" onclick="deleteNote('${note.note_id}')" title="Delete note" style="padding: 2px 6px; font-size: 0.8rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="note-content mb-2" style="color: #333; font-size: 0.9rem; line-height: 1.4;">${note.comment}</div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #6c757d;">
+                            <span><i class="fas fa-user me-1"></i>${note.username}</span>
+                            <span><i class="fas fa-clock me-1"></i>${timestamp}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            notesList.innerHTML = notesHTML;
+        }
+        
+        function savePONote() {
+            if (!currentPOData) {
+                alert('No PO selected');
+                return;
+            }
+            
+            const comment = document.getElementById('new-po-note').value.trim();
+            if (!comment) {
+                alert('Please enter a comment');
+                return;
+            }
+            
+            fetch('/api/po-notes/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    po_id: currentPOData.po_id,
+                    order_id: currentPOData.order_id,
+                    comment: comment
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Clear the textarea
+                    document.getElementById('new-po-note').value = '';
+                    
+                    // Reload notes
+                    loadPONotes(currentPOData.po_id);
+                } else {
+                    alert('Error saving PO note: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving PO note:', error);
+                alert('Error saving PO note. Please try again.');
+            });
+        }
+        
+        function deletePONote(noteId) {
+            if (!confirm('Are you sure you want to delete this PO note?')) {
+                return;
+            }
+            
+            fetch(`/api/notes/${noteId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reload notes to reflect the deletion
+                    if (currentPOData) {
+                        loadPONotes(currentPOData.po_id);
+                    }
+                } else {
+                    alert('Error deleting PO note: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting PO note:', error);
+                alert('Error deleting PO note. Please try again.');
+            });
+        }
+        
+        // Debounce mechanism to prevent rapid clicks
+        let clickTimeout = null;
+        
+        function showComparisonItemDetails(poItemId, poId, sku, productName, changeLog, netoQtyAvailable, originalRexQtyOrdered, netoQtyShipped, finalRexQtyOrdered, rexQtyReceived) {
+            console.log('showComparisonItemDetails called with:', {poItemId, poId, sku});
+            
+            // Clear any existing timeout
+            if (clickTimeout) {
+                clearTimeout(clickTimeout);
+            }
+            
+            // Debounce the function call
+            clickTimeout = setTimeout(() => {
+                try {
+                    // Check if poItemId is valid
+                    if (!poItemId || poItemId === 'undefined' || poItemId === 'null' || poItemId === 'None') {
+                        console.error('Invalid poItemId:', poItemId);
+                        return;
+                    }
+                    
+                    console.log('Processing click for item:', {poItemId, poId, sku});
+                    
+                    // Store current comparison item data
+                    currentItemData = {
+                        po_item_id: poItemId,
+                        po_id: poId,
+                        sku: sku,
+                        product_name: productName,
+                        change_log: changeLog,
+                        neto_qty_available: netoQtyAvailable,
+                        original_rex_qty_ordered: originalRexQtyOrdered,
+                        neto_qty_shipped: netoQtyShipped,
+                        final_rex_qty_ordered: finalRexQtyOrdered,
+                        rex_qty_received: rexQtyReceived
+                    };
+                    
+                    // Show item details panel
+                    const quickInfoPanel = document.getElementById('quick-info-panel');
+                    const itemDetailsPanel = document.getElementById('item-details-panel');
+                    
+                    if (quickInfoPanel) quickInfoPanel.style.display = 'none';
+                    if (itemDetailsPanel) itemDetailsPanel.style.display = 'block';
+                    
+                    // Clear the notes area first to prevent showing old notes
+                    const notesList = document.getElementById('notes-list');
+                    if (notesList) {
+                        notesList.innerHTML = `
+                            <div class="text-center text-muted">
+                                <small>Loading notes...</small>
+                            </div>
+                        `;
+                    }
+                    
+                    // Clear the note input
+                    const newNoteInput = document.getElementById('new-note');
+                    if (newNoteInput) newNoteInput.value = '';
+                    
+                    // Populate item info header
+                    populateComparisonItemInfoHeader();
+                    
+                    // Load existing notes with a small delay to ensure DOM is updated
+                    console.log('Loading notes for poItemId:', poItemId);
+                    console.log('Current currentItemData before loading notes:', currentItemData);
+                    setTimeout(() => {
+                        loadItemNotes(poItemId);
+                    }, 150);
+                    
+                } catch (error) {
+                    console.error('Error in showComparisonItemDetails:', error);
+                }
+            }, 50); // 50ms debounce
+        }
+        
+        function showItemDetails(poItemId, poId, sku, productName, netoQtyAvailable, netoQtyOrdered, rexQtyOrdered, rexQtyReceived, netoCostPrice, rexSupplierBuyEx, difference, disparity) {
+            // Store current item data
+            currentItemData = {
+                po_item_id: poItemId,
+                po_id: poId,
+                sku: sku,
+                product_name: productName,
+                neto_qty_available: netoQtyAvailable,
+                neto_qty_ordered: netoQtyOrdered,
+                rex_qty_ordered: rexQtyOrdered,
+                rex_qty_received: rexQtyReceived,
+                neto_cost_price: netoCostPrice,
+                rex_supplier_buy_ex: rexSupplierBuyEx,
+                difference: difference,
+                disparity: disparity
+            };
+            
+            // Ensure currentPOData is set (at minimum with po_id)
+            if (!currentPOData || currentPOData.po_id !== poId) {
+                currentPOData = {
+                    po_id: poId,
+                    order_id: null
+                };
+            }
+            
+            // Hide PO details panel if open
+            document.getElementById('po-details-panel').style.display = 'none';
+            
+            // Show item details panel
+            document.getElementById('quick-info-panel').style.display = 'none';
+            document.getElementById('item-details-panel').style.display = 'block';
+            
+            // Clear the notes area first to prevent showing old notes
+            document.getElementById('notes-list').innerHTML = `
+                <div class="text-center text-muted">
+                    <small>Loading notes...</small>
+                </div>
+            `;
+            
+            // Clear the note input
+            document.getElementById('new-note').value = '';
+            
+            // Populate item info header
+            populateItemInfoHeader();
+            
+            // Load existing notes
+            loadItemNotes(poItemId);
+        }
+        
+        function closeItemDetails() {
+            // Hide item details panel - keep Quick Info hidden in REX PO Orders view
+            document.getElementById('item-details-panel').style.display = 'none';
+            // Don't show Quick Info panel - keep it hidden in REX PO Orders view
+            // document.getElementById('quick-info-panel').style.display = 'block';
+            
+            // Clear current item data
+            currentItemData = null;
+            
+            // Clear notes
+            document.getElementById('notes-list').innerHTML = `
+                <div class="text-center text-muted">
+                    <small>No notes yet. Click on an item to add notes.</small>
+                </div>
+            `;
+        }
+        
+        function populateComparisonItemInfoHeader() {
+            if (!currentItemData) return;
+
+            // Create colored badge for change log
+            const changeLog = currentItemData.change_log || '-';
+            let changeLogBadge = changeLog;
+            if (changeLog !== '-') {
+                let badgeClass = 'badge bg-secondary'; // default
+                if (changeLog.toLowerCase().includes('receival')) {
+                    badgeClass = 'badge bg-warning text-dark';
+                } else if (changeLog.toLowerCase().includes('quantity')) {
+                    badgeClass = 'badge bg-info';
+                } else if (changeLog.toLowerCase().includes('price')) {
+                    badgeClass = 'badge bg-danger';
+                } else if (changeLog.toLowerCase().includes('difference')) {
+                    badgeClass = 'badge bg-primary';
+                } else if (changeLog.toLowerCase().includes('new')) {
+                    badgeClass = 'badge bg-success';
+                } else if (changeLog.toLowerCase().includes('removed')) {
+                    badgeClass = 'badge bg-danger';
+                } else if (changeLog.toLowerCase().includes('unchanged')) {
+                    badgeClass = 'badge bg-light text-dark';
+                }
+                changeLogBadge = `<span class="${badgeClass}">${changeLog}</span>`;
+            }
+
+            const infoHeader = document.getElementById('item-info-header');
+            infoHeader.innerHTML = `
+                <div class="table-responsive">
+                    <table class="table table-sm" style="font-size: 0.9em; border-collapse: separate; border-spacing: 0;">
+                        <tbody>
+                            <tr style="background-color: #f8f9fa;">
+                                <td class="fw-bold" style="width: 40%; padding: 8px 12px; border-bottom: 1px solid #dee2e6;">PO ID</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.po_id}</td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">PO Item ID</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.po_item_id}</td>
+                            </tr>
+                            <tr style="background-color: #f8f9fa;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">SKU</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.sku}</td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">Product</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.product_name}</td>
+                            </tr>
+                            <tr style="background-color: #f8f9fa;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">Change Log</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${changeLogBadge}</td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">NETO Qty Available</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.neto_qty_available || '-'}</td>
+                            </tr>
+                            <tr style="background-color: #f8f9fa;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">Original REX Qty Ordered</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.original_rex_qty_ordered || '-'}</td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">NETO Qty Shipped</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.neto_qty_shipped || '-'}</td>
+                            </tr>
+                            <tr style="background-color: #f8f9fa;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">Final REX Qty Ordered</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.final_rex_qty_ordered || '-'}</td>
+                            </tr>
+                            <tr style="background-color: #ffffff;">
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">REX Qty Received</td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.rex_qty_received || '-'}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        
+        function populateItemInfoHeader() {
+            if (!currentItemData) return;
+            
+            const infoHeader = document.getElementById('item-info-header');
+            infoHeader.innerHTML = `
+                <div class="row">
+                    <div class="col-3"><strong>PO ID:</strong></div>
+                    <div class="col-9">${currentItemData.po_id}</div>
+                </div>
+                <div class="row mt-1">
+                    <div class="col-3"><strong>SKU:</strong></div>
+                    <div class="col-9">${currentItemData.sku}</div>
+                </div>
+                <div class="row mt-1">
+                    <div class="col-3"><strong>Product:</strong></div>
+                    <div class="col-9">${currentItemData.product_name}</div>
+                </div>
+            `;
+        }
+        
+        function loadItemNotes(poItemId) {
+            console.log('loadItemNotes called with poItemId:', poItemId);
+            
+            // Validate poItemId
+            if (!poItemId || poItemId === 'undefined' || poItemId === 'null' || poItemId === 'None') {
+                console.error('Invalid poItemId in loadItemNotes:', poItemId);
+                displayNotes([]);
+                return;
+            }
+            
+            fetch(`/api/notes/${poItemId}`, {
+                credentials: 'include'
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Notes API response:', data);
+                    if (data.success) {
+                        console.log('Displaying notes:', data.notes);
+                        displayNotes(data.notes);
+                    } else {
+                        console.error('Error loading notes:', data.error);
+                        displayNotes([]);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading notes:', error);
+                    displayNotes([]);
+                });
+        }
+        
+        function displayNotes(notes) {
+            console.log('displayNotes called with:', notes);
+            const notesList = document.getElementById('notes-list');
+            console.log('notesList element:', notesList);
+            
+            if (!notesList) {
+                console.error('notes-list element not found');
+                return;
+            }
+            
+            if (!notes || notes.length === 0) {
+                console.log('No notes found, showing empty state');
+                notesList.innerHTML = `
+                    <div class="text-center text-muted">
+                        <small>No notes yet. Add a comment below.</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            console.log('Building notes HTML for', notes.length, 'notes');
+            
+            let notesHTML = '';
+            notes.forEach(note => {
+                const timestamp = new Date(note.created_at).toLocaleString('en-AU', {
+                    timeZone: 'Australia/Melbourne',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                notesHTML += `
+                    <div class="note-item">
+                        <div class="note-header">
+                            <span class="note-author">${note.username}</span>
+                            <span class="note-timestamp">${timestamp}</span>
+                            <button class="note-delete-btn" onclick="deleteNote('${note.note_id}')" title="Delete note">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="note-content">${note.comment}</div>
+                    </div>
+                `;
+            });
+            
+            console.log('Setting notesList.innerHTML with HTML length:', notesHTML.length);
+            console.log('HTML preview:', notesHTML.substring(0, 200) + '...');
+            notesList.innerHTML = notesHTML;
+            console.log('notesList.innerHTML set successfully');
+        }
+        
+        function deleteNote(noteId) {
+            if (!confirm('Are you sure you want to delete this note?')) {
+                return;
+            }
+            
+            fetch(`/api/notes/${noteId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reload notes to reflect the deletion
+                    if (currentItemData) {
+                        loadItemNotes(currentItemData.po_item_id);
+                        
+                        // Update the Latest Note column in Comparison table
+                        updateComparisonTableAfterNoteChange(currentItemData.po_item_id);
+                    }
+                } else {
+                    alert('Error deleting note: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting note:', error);
+                alert('Error deleting note. Please try again.');
+            });
+        }
+        
+        function saveNote() {
+            if (!currentItemData) {
+                alert('No item selected');
+                return;
+            }
+            
+            const comment = document.getElementById('new-note').value.trim();
+            if (!comment) {
+                alert('Please enter a comment');
+                return;
+            }
+            
+            const noteData = {
+                po_item_id: currentItemData.po_item_id,
+                po_id: currentItemData.po_id,
+                sku: currentItemData.sku,
+                comment: comment
+            };
+            
+            // Show loading indicator
+            const saveButton = document.querySelector('button[onclick="saveNote()"]');
+            const originalText = saveButton.textContent;
+            saveButton.textContent = 'Saving...';
+            saveButton.disabled = true;
+            
+            fetch('/api/notes/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(noteData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the Latest Note column in Comparison table immediately
+                    updateComparisonTableLatestNote(currentItemData.po_item_id, comment, 'admin', new Date().toISOString());
+                    
+                    // Close item details panel
+                    document.getElementById('item-details-panel').style.display = 'none';
+                    
+                    // Show All Notes panel for the PO
+                    if (currentPOData && currentPOData.po_id) {
+                        // Show PO details panel with all notes
+                        document.getElementById('po-details-panel').style.display = 'block';
+                        document.getElementById('quick-info-panel').style.display = 'none';
+                        
+                        // Reload all item notes for the PO
+                        loadAllItemNotesForPO(currentPOData.po_id);
+                    }
+                } else {
+                    alert('Error saving note: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving note:', error);
+                alert('Error saving note. Please try again.');
+            })
+            .finally(() => {
+                // Restore button state
+                saveButton.textContent = originalText;
+                saveButton.disabled = false;
+            });
+        }
+        
+        function updateComparisonTableAfterNoteChange(poItemId) {
+            // Fetch the latest note for this item to update the comparison table
+            fetch(`/api/notes/${poItemId}`, {
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.notes && data.notes.length > 0) {
+                    // Get the latest note (first in the array, as they're sorted by date desc)
+                    const latestNote = data.notes[0];
+                    updateComparisonTableLatestNote(poItemId, latestNote.comment, latestNote.user, latestNote.created_at);
+                } else {
+                    // No notes, show dash
+                    updateComparisonTableLatestNote(poItemId, null);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching latest note:', error);
+                // On error, show dash
+                updateComparisonTableLatestNote(poItemId, null);
+            });
+        }
+        
+        function updateComparisonTableLatestNote(poItemId, newNote, user = 'admin', date = null) {
+            console.log('updateComparisonTableLatestNote called with:', {poItemId, newNote, user, date});
+            
+            // Find the row in the comparison table that matches the po_item_id
+            const comparisonTable = document.querySelector('#comparisonContainer table tbody');
+            if (!comparisonTable) {
+                console.log('comparisonTable not found');
+                return;
+            }
+            
+            const rows = comparisonTable.querySelectorAll('tr');
+            console.log(`Found ${rows.length} rows in comparison table`);
+            
+            rows.forEach((row, index) => {
+                // Check if this row has the matching po_item_id in its data attribute
+                const rowPoItemId = row.getAttribute('data-po-item-id');
+                console.log(`Row ${index} data-po-item-id:`, rowPoItemId);
+                
+                if (rowPoItemId === poItemId) {
+                    console.log(`Found matching row for poItemId ${poItemId}`);
+                    // Find the Latest Note cell (last cell in the row)
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length > 0) {
+                        const latestNoteCell = cells[cells.length - 1]; // Last cell is Latest Note
+                        
+                        if (newNote) {
+                            // Format the date
+                            const formattedDate = date ? new Date(date).toLocaleDateString('en-AU') : new Date().toLocaleDateString('en-AU');
+                            
+                            // Update the Latest Note cell with the new note
+                            latestNoteCell.innerHTML = `
+                                <div class="text-truncate" style="max-width: 200px;" title="${newNote} - ${user} (${formattedDate})">
+                                    <small class="text-muted">${user}:</small> ${newNote}
+                                </div>
+                            `;
+                        } else {
+                            // No note, show dash
+                            latestNoteCell.innerHTML = '<span class="text-muted">-</span>';
+                        }
+                    }
+                    return; // Exit the forEach loop once we find the matching row
+                }
+            });
+        }
+        
+        // Allow Enter key to save note
+        document.addEventListener('DOMContentLoaded', function() {
+            const newNoteTextarea = document.getElementById('new-note');
+            if (newNoteTextarea) {
+                newNoteTextarea.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' && e.ctrlKey) {
+                        e.preventDefault();
+                        saveNote();
+                    }
+                });
+            }
+        });
+        
+        // Resizable Right Sidebar
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        
+        function initResizableSidebar() {
+            const resizeHandle = document.getElementById('resize-handle');
+            const rightPanel = document.getElementById('right-panel');
+            const contentArea = document.querySelector('.content-area');
+            
+            if (!resizeHandle || !rightPanel || !contentArea) return;
+            
+            resizeHandle.addEventListener('mousedown', function(e) {
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = parseInt(window.getComputedStyle(rightPanel).width, 10);
+                
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizing) return;
+                
+                const newWidth = startWidth - (e.clientX - startX);
+                const minWidth = 300;
+                const maxWidth = 600;
+                
+                if (newWidth >= minWidth && newWidth <= maxWidth) {
+                    rightPanel.style.width = newWidth + 'px';
+                    contentArea.style.marginRight = newWidth + 'px';
+                }
+            });
+            
+            document.addEventListener('mouseup', function() {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    
+                    // Save the width to localStorage
+                    const currentWidth = parseInt(window.getComputedStyle(rightPanel).width, 10);
+                    localStorage.setItem('rightPanelWidth', currentWidth);
+                }
+            });
+            
+            // Load saved width from localStorage
+            const savedWidth = localStorage.getItem('rightPanelWidth');
+            if (savedWidth) {
+                const width = parseInt(savedWidth, 10);
+                if (width >= 300 && width <= 600) {
+                    rightPanel.style.width = width + 'px';
+                    contentArea.style.marginRight = width + 'px';
+                }
+            }
+        }
+        
+        // Initialize resizable sidebar when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            initResizableSidebar();
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

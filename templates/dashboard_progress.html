@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Loading - Chainsaw Ops{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <div class="mb-4">
+                    <i class="fas fa-sync-alt fa-spin fa-3x text-primary"></i>
+                </div>
+                
+                <h3 class="mb-3">Loading Your Data</h3>
+                <p class="text-muted mb-4">We're refreshing your purchase order data from BigQuery. This may take a few moments...</p>
+                
+                <!-- Progress Bar -->
+                <div class="progress mb-4" style="height: 25px;">
+                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        <span id="progress-text">0%</span>
+                    </div>
+                </div>
+                
+                <!-- Status Messages -->
+                <div id="status-messages" class="text-start">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> <strong>Starting data refresh...</strong>
+                    </div>
+                </div>
+                
+                <!-- Cache Status with Individual Progress Bars -->
+                <div class="row mt-4">
+                    <div class="col-md-4">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Summary Data</h5>
+                                <h3 id="summary-count" class="text-primary">0</h3>
+                                <small class="text-muted">Purchase Orders</small>
+                                <div class="progress mt-2" style="height: 8px;">
+                                    <div id="summary-progress" class="progress-bar bg-primary" 
+                                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    </div>
+                                </div>
+                                <small id="summary-status" class="text-muted">Waiting...</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Items Data</h5>
+                                <h3 id="items-count" class="text-primary">0</h3>
+                                <small class="text-muted">Items</small>
+                                <div class="progress mt-2" style="height: 8px;">
+                                    <div id="items-progress" class="progress-bar bg-success" 
+                                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    </div>
+                                </div>
+                                <small id="items-status" class="text-muted">Waiting...</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Comparison Data</h5>
+                                <h3 id="comparison-count" class="text-primary">0</h3>
+                                <small class="text-muted">Comparisons</small>
+                                <div class="progress mt-2" style="height: 8px;">
+                                    <div id="comparison-progress" class="progress-bar bg-warning" 
+                                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    </div>
+                                </div>
+                                <small id="comparison-status" class="text-muted">Waiting...</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <button id="start-refresh-btn" class="btn btn-primary" onclick="startRefresh()">
+                        <i class="fas fa-play"></i> Start Refresh
+                    </button>
+                    <button id="skip-btn" class="btn btn-outline-secondary ms-2" onclick="skipToDashboard()">
+                        <i class="fas fa-forward"></i> Skip to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let refreshInterval;
+let progressInterval;
+let currentProgress = 0;
+let tableProgress = {
+    summary: { current: 0, target: 0, status: 'Waiting...' },
+    items: { current: 0, target: 0, status: 'Waiting...' },
+    comparison: { current: 0, target: 0, status: 'Waiting...' }
+};
+
+function startRefresh() {
+    document.getElementById('start-refresh-btn').disabled = true;
+    document.getElementById('start-refresh-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+    
+    // Start the background refresh
+    fetch('/api/bigquery/start-refresh', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addStatusMessage('Background refresh started successfully!', 'success');
+            startProgressTracking();
+        } else {
+            addStatusMessage('Error starting refresh: ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        addStatusMessage('Error starting refresh: ' + error.message, 'danger');
+    });
+}
+
+function startProgressTracking() {
+    // Start tracking progress
+    refreshInterval = setInterval(checkCacheStatus, 2000);
+    progressInterval = setInterval(updateProgress, 100);
+}
+
+function checkCacheStatus() {
+    fetch('/api/bigquery/cache-status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update counts
+            const summaryCount = data.summary_count || 0;
+            const itemsCount = data.items_count || 0;
+            const comparisonCount = data.comparison_count || 0;
+            
+            document.getElementById('summary-count').textContent = summaryCount;
+            document.getElementById('items-count').textContent = itemsCount;
+            document.getElementById('comparison-count').textContent = comparisonCount;
+            
+            // Update individual table progress
+            updateTableProgress('summary', summaryCount, data.summary_total || 0);
+            updateTableProgress('items', itemsCount, data.items_total || 0);
+            updateTableProgress('comparison', comparisonCount, data.comparison_total || 0);
+            
+            // Check if all tables have completed caching
+            // If we have substantial data (more than 90% of expected), consider it complete
+            const summaryComplete = summaryCount > 0 && summaryCount >= (data.summary_total || 0) * 0.9;
+            const itemsComplete = itemsCount > 0 && itemsCount >= (data.items_total || 0) * 0.9;
+            const comparisonComplete = comparisonCount > 0 && comparisonCount >= (data.comparison_total || 0) * 0.9;
+            
+            // Only redirect when ALL tables are complete
+            if (summaryComplete && itemsComplete && comparisonComplete) {
+                addStatusMessage('All data refresh completed! Redirecting to dashboard...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 3000); // Wait 3 seconds to show completion message
+                clearInterval(refreshInterval);
+                clearInterval(progressInterval);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error checking cache status:', error);
+    });
+}
+
+function updateTableProgress(tableType, current, total) {
+    if (total > 0) {
+        const percentage = Math.round((current / total) * 100);
+        const progressBar = document.getElementById(`${tableType}-progress`);
+        const statusElement = document.getElementById(`${tableType}-status`);
+        
+        progressBar.style.width = percentage + '%';
+        progressBar.setAttribute('aria-valuenow', percentage);
+        
+        if (current === 0) {
+            statusElement.textContent = 'Waiting...';
+            statusElement.className = 'text-muted';
+        } else if (current < total) {
+            statusElement.textContent = `${current}/${total} (${percentage}%)`;
+            statusElement.className = 'text-info';
+        } else {
+            statusElement.textContent = 'Complete!';
+            statusElement.className = 'text-success';
+        }
+    }
+}
+
+function updateProgress() {
+    currentProgress += Math.random() * 3; // Simulate progress
+    if (currentProgress > 95) currentProgress = 95; // Don't go to 100% until actually done
+    
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    
+    progressBar.style.width = currentProgress + '%';
+    progressBar.setAttribute('aria-valuenow', currentProgress);
+    progressText.textContent = Math.round(currentProgress) + '%';
+}
+
+function addStatusMessage(message, type) {
+    const statusContainer = document.getElementById('status-messages');
+    const alertClass = `alert-${type}`;
+    const iconClass = type === 'success' ? 'fa-check-circle' : 
+                     type === 'danger' ? 'fa-exclamation-circle' : 'fa-info-circle';
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `alert ${alertClass} alert-dismissible fade show`;
+    messageDiv.innerHTML = `
+        <i class="fas ${iconClass}"></i> <strong>${message}</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    statusContainer.appendChild(messageDiv);
+    
+    // Auto-dismiss after 10 seconds for better visibility
+    setTimeout(() => {
+        if (messageDiv.parentNode) {
+            messageDiv.remove();
+        }
+    }, 10000);
+}
+
+function skipToDashboard() {
+    window.location.href = '/dashboard';
+}
+
+// Auto-start refresh when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    addStatusMessage('Auto-starting data refresh...', 'info');
+    // Auto-start the refresh after a short delay
+    setTimeout(() => {
+        startRefresh();
+    }, 1000);
+    
+    // Fallback timeout - if progress screen is stuck for more than 5 minutes, redirect to dashboard
+    setTimeout(() => {
+        if (document.querySelector('.progress-screen')) {
+            console.log('Fallback timeout reached - redirecting to dashboard');
+            addStatusMessage('Data refresh taking longer than expected. Redirecting to dashboard...', 'warning');
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 2000);
+        }
+    }, 300000); // 5 minutes
+});
+</script>
+{% endblock %}
+
