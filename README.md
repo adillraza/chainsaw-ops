@@ -2,6 +2,11 @@
 
 A Flask-based operations dashboard for managing purchase orders, tracking inventory, and comparing prices between NETO and REX systems.
 
+**Production URL:** http://82.64.179.76  
+**Deployment:** Automated via GitHub webhook
+
+---
+
 ## Features
 
 - 📊 **Dashboard** - Overview of operations with quick actions
@@ -11,14 +16,16 @@ A Flask-based operations dashboard for managing purchase orders, tracking invent
 - 🔄 **BigQuery Integration** - Real-time data sync with caching for performance
 - 👥 **User Management** - Admin-controlled user access
 
-## Recent Updates
+## Recent Updates (v1.1.0)
 
-- ✅ New "Cost Price Check" tab with filtering by PO ID and SKU
+- 🚀 **Automated Deployment** - GitHub webhook for seamless deployments
+- ✅ Cost Price Check tab with filtering by PO ID and SKU
 - ✅ Refined Notes UI - cleaner, more compact display
 - ✅ Fixed "All Item Notes" display for PO-level notes
 - ✅ Removed unnecessary columns from comparison tables
 - ✅ Hidden Quick Info panel in REX PO Orders view
 - ✅ Improved search functionality (PO ID and Order ID)
+- 🔒 Enhanced security - credentials properly secured
 
 ## Tech Stack
 
@@ -58,7 +65,31 @@ bash run.sh
 
 The app will be available at `http://localhost:5001`
 
-## Deployment
+## 🚀 Deployment
+
+### Automated Deployment (Production)
+
+Simply push to GitHub - webhook handles the rest:
+
+```bash
+git add .
+git commit -m "Your changes"
+git push origin main
+```
+
+Changes go live in 10-20 seconds automatically!
+
+### Detailed Documentation
+
+See [DEPLOY.md](DEPLOY.md) for complete deployment documentation including:
+- Webhook setup and configuration
+- Server monitoring commands
+- Troubleshooting guides
+- Security best practices
+
+---
+
+## 📖 Original Server Setup (For Reference)
 
 ### Server Deployment (Ubuntu/Debian)
 

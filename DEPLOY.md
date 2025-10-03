@@ -1,172 +1,220 @@
 # Deployment Guide
 
-## 🚀 Automated Deployment (GitHub Webhook - Recommended)
+## 🚀 Automated Deployment via GitHub Webhook
 
 ### How It Works
 
-When you push to GitHub, GitHub sends a webhook to your server, and the server automatically pulls the changes and redeploys. No SSH needed!
+Your server runs a webhook service that listens for GitHub push events. When you push code to GitHub:
 
-### Simple 2-Step Process
+1. GitHub sends a webhook notification to your server
+2. The webhook service verifies the request signature
+3. Automatically runs `deploy.sh` which:
+   - Pulls latest code from GitHub
+   - Updates Python dependencies
+   - Restarts the Flask application
 
-**1. Make changes locally and test:**
+**No manual deployment needed!**
+
+---
+
+## 📝 Daily Workflow
+
+### 1. Develop and Test Locally
+
 ```bash
 cd /Users/pmru/chainsaw-ops
 source venv/bin/activate
 python app.py
 ```
 
-**2. Commit and push to GitHub:**
+Visit http://localhost:5000 to test your changes.
+
+### 2. Deploy to Production
+
 ```bash
 git add .
-git commit -m "Your commit message"
+git commit -m "Your change description"
 git push origin main
 ```
 
-**That's it!** The webhook server on your server will:
-- Receive notification from GitHub
-- Pull latest changes
-- Update dependencies if needed
-- Restart the Flask service
+**That's it!** Your changes will be live in 10-20 seconds.
 
 ---
 
-## 🔧 Alternative: GitHub Actions (SSH-Based)
+## 🔧 Webhook Configuration (Already Set Up)
 
-### Simple 2-Step Process
+**GitHub Webhook Settings:**
+- Payload URL: `http://82.64.179.76/webhook`
+- Content type: `application/json`
+- Secret: (stored in server's `.env` file)
+- Events: Just the push event
 
-**1. Make changes locally and test:**
-```bash
-cd /Users/pmru/chainsaw-ops
-source venv/bin/activate
-python app.py
-```
-
-**2. Commit and push to GitHub:**
-```bash
-git add .
-git commit -m "Your commit message"
-git push origin main
-```
-
-**That's it!** GitHub Actions will automatically:
-- Pull latest changes to the server
-- Update dependencies if needed
-- Restart the Flask service
-
-You can watch the deployment progress in the **Actions** tab on GitHub:
-https://github.com/adillraza/chainsaw-ops/actions
+**View webhook deliveries:** https://github.com/adillraza/chainsaw-ops/settings/hooks
 
 ---
 
-## Manual Deployment (Backup Method)
+## 🛠️ Manual Deployment (Emergency Backup)
 
-If GitHub Actions is not set up or you need to deploy manually:
+If you need to deploy manually (webhook issues, emergency fix, etc.):
 
-### Option 1: One-Line Command
 ```bash
 ssh -i ~/Downloads/id_rsa root@82.64.179.76 "cd /opt/chainsaw-ops && ./deploy.sh"
 ```
 
-### Option 2: SSH and Deploy
+---
+
+## 📊 Server Information
+
+- **Production URL**: http://82.64.179.76
+- **Server Directory**: `/opt/chainsaw-ops`
+- **Main App Service**: `chainsaw-ops` (port 5001)
+- **Webhook Service**: `webhook` (port 5002)
+
+---
+
+## 🔍 Monitoring & Debugging
+
+### View Application Logs
 ```bash
-ssh -i ~/Downloads/id_rsa root@82.64.179.76
-cd /opt/chainsaw-ops
-./deploy.sh
+# Main app logs (real-time)
+ssh root@82.64.179.76 "journalctl -u chainsaw-ops -f"
+
+# Webhook deployment logs (real-time)
+ssh root@82.64.179.76 "journalctl -u webhook -f"
+
+# Recent logs (last 50 lines)
+ssh root@82.64.179.76 "journalctl -u chainsaw-ops -n 50"
+```
+
+### Check Service Status
+```bash
+ssh root@82.64.179.76 "systemctl status chainsaw-ops"
+ssh root@82.64.179.76 "systemctl status webhook"
+ssh root@82.64.179.76 "systemctl status nginx"
+```
+
+### Restart Services
+```bash
+# Restart main app
+ssh root@82.64.179.76 "systemctl restart chainsaw-ops"
+
+# Restart webhook server
+ssh root@82.64.179.76 "systemctl restart webhook"
+
+# Restart Nginx
+ssh root@82.64.179.76 "systemctl restart nginx"
 ```
 
 ---
 
-## Server Information
+## 📁 Important Server Files
 
-- **Server IP**: 82.64.179.76
-- **App URL**: http://82.64.179.76
-- **App Directory**: `/opt/chainsaw-ops`
-- **Service Name**: `chainsaw-ops`
-
----
-
-## Useful Server Commands
-
-### View logs (real-time)
-```bash
-journalctl -u chainsaw-ops -f
-```
-
-### View recent logs
-```bash
-journalctl -u chainsaw-ops -n 100 --no-pager
-```
-
-### Check service status
-```bash
-systemctl status chainsaw-ops
-```
-
-### Restart service manually
-```bash
-systemctl restart chainsaw-ops
-```
-
-### Check Nginx status
-```bash
-systemctl status nginx
-```
+| File/Directory | Purpose |
+|---------------|---------|
+| `/opt/chainsaw-ops/` | Application code |
+| `/opt/chainsaw-ops/.env` | Environment variables (secrets) |
+| `/opt/chainsaw-ops/bigquery-credentials.json` | BigQuery service account key |
+| `/opt/chainsaw-ops/instance/users.db` | SQLite database |
+| `/opt/chainsaw-ops/deploy.sh` | Deployment script |
+| `/opt/chainsaw-ops/webhook.py` | Webhook server code |
+| `/etc/systemd/system/chainsaw-ops.service` | Main app service |
+| `/etc/systemd/system/webhook.service` | Webhook service |
+| `/etc/nginx/sites-available/chainsaw-ops` | Nginx configuration |
 
 ---
 
-## Important Files on Server
+## 🚨 Troubleshooting
 
-- **App code**: `/opt/chainsaw-ops/`
-- **BigQuery credentials**: `/opt/chainsaw-ops/bigquery-credentials.json`
-- **Environment variables**: `/opt/chainsaw-ops/.env`
-- **Service file**: `/etc/systemd/system/chainsaw-ops.service`
-- **Nginx config**: `/etc/nginx/sites-available/chainsaw-ops`
-- **Database**: `/opt/chainsaw-ops/instance/users.db`
+### Webhook Not Triggering
+
+1. **Check webhook deliveries** in GitHub:
+   - Go to: https://github.com/adillraza/chainsaw-ops/settings/hooks
+   - Click on the webhook → "Recent Deliveries"
+   - Should show green checkmark (200 response)
+
+2. **Check webhook service logs:**
+   ```bash
+   ssh root@82.64.179.76 "journalctl -u webhook -n 50"
+   ```
+
+3. **Verify webhook secret** matches in both GitHub and server's `.env`
+
+### App Not Updating After Deployment
+
+1. **Clear browser cache**: `Cmd+Shift+R` or `Ctrl+Shift+R`
+
+2. **Check if deployment completed:**
+   ```bash
+   ssh root@82.64.179.76 "journalctl -u webhook -n 20"
+   ```
+
+3. **Manually trigger deployment:**
+   ```bash
+   ssh root@82.64.179.76 "cd /opt/chainsaw-ops && ./deploy.sh"
+   ```
+
+### "502 Bad Gateway" Error
+
+1. **Check main app is running:**
+   ```bash
+   ssh root@82.64.179.76 "systemctl status chainsaw-ops"
+   ```
+
+2. **Check Nginx:**
+   ```bash
+   ssh root@82.64.179.76 "systemctl status nginx"
+   ```
+
+3. **Restart services:**
+   ```bash
+   ssh root@82.64.179.76 "systemctl restart chainsaw-ops && systemctl restart nginx"
+   ```
+
+### BigQuery Connection Errors
+
+1. **Check logs for "invalid_grant" errors:**
+   ```bash
+   ssh root@82.64.179.76 "journalctl -u chainsaw-ops | grep -i bigquery"
+   ```
+
+2. **Verify credentials file exists:**
+   ```bash
+   ssh root@82.64.179.76 "ls -lh /opt/chainsaw-ops/bigquery-credentials.json"
+   ```
+
+3. **If expired**, generate new key from Google Cloud Console and update on server
 
 ---
 
-## Troubleshooting
+## 🔒 Security Best Practices
 
-### If deployment fails:
-1. Check if the service is running: `systemctl status chainsaw-ops`
-2. Check logs for errors: `journalctl -u chainsaw-ops -n 50`
-3. Verify file permissions: `ls -la /opt/chainsaw-ops/`
-4. Test BigQuery connection: Check for "invalid_grant" errors in logs
+- ✅ **Never commit** credentials (`.json`, `.env`) to GitHub
+- ✅ **`.gitignore`** properly configured to block sensitive files
+- ✅ **Webhook secret** protects against unauthorized deployments
+- ✅ **SSH keys** stored locally, never in repository
+- ✅ **BigQuery credentials** manually placed on server only
+- ✅ **Public repository** safe - all secrets excluded
 
-### If changes don't appear:
-1. Clear your browser cache (Cmd+Shift+R or Ctrl+Shift+R)
-2. Check if deploy.sh actually ran successfully
-3. Verify the correct branch: `git branch` on server
+### Rotating Credentials
 
-### If you get "502 Bad Gateway":
-1. Check Flask service: `systemctl status chainsaw-ops`
-2. Check Nginx: `systemctl status nginx`
-3. Verify port in Nginx config matches Flask port (5001)
+**BigQuery Credentials:**
+1. Generate new key in Google Cloud Console
+2. Test locally first
+3. Update on server via SSH copy-paste
+4. Delete old key from Google Cloud
 
----
-
-## Security Notes
-
-- **Never commit** `bigquery-credentials.json` to GitHub
-- **Never commit** `.env` file to GitHub  
-- **Keep** your SSH key (`id_rsa`) secure and never share it
-- The BigQuery credentials file must be manually placed on the server
-- If credentials expire, generate new ones from Google Cloud Console and update on server
+**Webhook Secret:**
+1. Generate new secret: `openssl rand -hex 32`
+2. Update in server's `.env` file
+3. Update in GitHub webhook settings
+4. Restart webhook service: `systemctl restart webhook`
 
 ---
 
-## Initial Server Setup (Already Done)
+## 📚 Additional Resources
 
-For reference, here's what was set up:
-
-1. Cloned GitHub repo to `/opt/chainsaw-ops`
-2. Created Python virtual environment
-3. Installed dependencies from `requirements.txt`
-4. Created systemd service file
-5. Configured Nginx as reverse proxy
-6. Added BigQuery credentials
-7. Configured environment variables
-8. Enabled and started services
-
-If you need to set up a new server, follow these steps again.
+- **GitHub Repository**: https://github.com/adillraza/chainsaw-ops
+- **Webhook Settings**: https://github.com/adillraza/chainsaw-ops/settings/hooks
+- **Flask Documentation**: https://flask.palletsprojects.com/
+- **BigQuery API**: https://cloud.google.com/bigquery/docs
 
