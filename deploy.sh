@@ -7,29 +7,31 @@ set -e  # Exit on any error
 echo "🚀 Starting deployment..."
 
 # Navigate to app directory
-cd /root/chainsaw-ops
-
-# Stop the service
-echo "⏸️  Stopping chainsaw-ops service..."
-systemctl stop chainsaw-ops
+cd /opt/chainsaw-ops
 
 # Pull latest changes from GitHub
 echo "📥 Pulling latest changes from GitHub..."
 git pull origin main
 
 # Install/update dependencies (if requirements.txt changed)
-echo "📦 Checking dependencies..."
+echo "📦 Updating dependencies..."
 source venv/bin/activate
 pip install -r requirements.txt --quiet
 
 # Restart the service
-echo "▶️  Starting chainsaw-ops service..."
-systemctl start chainsaw-ops
+echo "♻️  Restarting chainsaw-ops service..."
+systemctl restart chainsaw-ops
+
+# Wait a moment for service to start
+sleep 2
 
 # Check service status
 echo "✅ Checking service status..."
-systemctl status chainsaw-ops --no-pager
+systemctl status chainsaw-ops --no-pager -l
 
+echo ""
 echo "🎉 Deployment complete!"
-echo "📊 App is running at: https://ops.jonoandjohno.com.au"
+echo "📊 App is running at: http://82.64.179.76"
+echo ""
+echo "💡 To view logs: journalctl -u chainsaw-ops -f"
 
