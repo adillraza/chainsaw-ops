@@ -1,6 +1,36 @@
 # Deployment Guide
 
-## 🚀 Automated Deployment (GitHub Actions)
+## 🚀 Automated Deployment (GitHub Webhook - Recommended)
+
+### How It Works
+
+When you push to GitHub, GitHub sends a webhook to your server, and the server automatically pulls the changes and redeploys. No SSH needed!
+
+### Simple 2-Step Process
+
+**1. Make changes locally and test:**
+```bash
+cd /Users/pmru/chainsaw-ops
+source venv/bin/activate
+python app.py
+```
+
+**2. Commit and push to GitHub:**
+```bash
+git add .
+git commit -m "Your commit message"
+git push origin main
+```
+
+**That's it!** The webhook server on your server will:
+- Receive notification from GitHub
+- Pull latest changes
+- Update dependencies if needed
+- Restart the Flask service
+
+---
+
+## 🔧 Alternative: GitHub Actions (SSH-Based)
 
 ### Simple 2-Step Process
 

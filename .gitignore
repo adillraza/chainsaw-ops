@@ -39,6 +39,11 @@ Thumbs.db
 *-credentials.json
 service-account*.json
 
+# SSH Keys
+*.pem
+id_rsa*
+*deploy-key*
+
 # Logs
 *.log
 

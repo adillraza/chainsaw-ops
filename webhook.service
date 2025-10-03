@@ -1,0 +1,16 @@
+[Unit]
+Description=GitHub Webhook Server for Chainsaw Ops
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chainsaw-ops
+Environment="WEBHOOK_SECRET=your-webhook-secret-change-this"
+ExecStart=/opt/chainsaw-ops/venv/bin/python /opt/chainsaw-ops/webhook.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
