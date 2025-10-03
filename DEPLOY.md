@@ -1,43 +1,47 @@
 # Deployment Guide
 
-## Quick Deployment Process
+## 🚀 Automated Deployment (GitHub Actions)
 
-### 1. Local Development
-Make your changes locally and test them:
+### Simple 2-Step Process
+
+**1. Make changes locally and test:**
 ```bash
 cd /Users/pmru/chainsaw-ops
 source venv/bin/activate
 python app.py
 ```
 
-### 2. Commit and Push to GitHub
+**2. Commit and push to GitHub:**
 ```bash
 git add .
 git commit -m "Your commit message"
 git push origin main
 ```
 
-### 3. Deploy to Server
-SSH into the server and run the deployment script:
+**That's it!** GitHub Actions will automatically:
+- Pull latest changes to the server
+- Update dependencies if needed
+- Restart the Flask service
+
+You can watch the deployment progress in the **Actions** tab on GitHub:
+https://github.com/adillraza/chainsaw-ops/actions
+
+---
+
+## Manual Deployment (Backup Method)
+
+If GitHub Actions is not set up or you need to deploy manually:
+
+### Option 1: One-Line Command
+```bash
+ssh -i ~/Downloads/id_rsa root@82.64.179.76 "cd /opt/chainsaw-ops && ./deploy.sh"
+```
+
+### Option 2: SSH and Deploy
 ```bash
 ssh -i ~/Downloads/id_rsa root@82.64.179.76
 cd /opt/chainsaw-ops
 ./deploy.sh
-```
-
-That's it! The script will:
-- Pull latest changes from GitHub
-- Update dependencies if needed
-- Restart the Flask service
-- Show you the service status
-
----
-
-## One-Line Deployment Command
-
-You can also deploy directly from your local machine:
-```bash
-ssh -i ~/Downloads/id_rsa root@82.64.179.76 "cd /opt/chainsaw-ops && ./deploy.sh"
 ```
 
 ---
