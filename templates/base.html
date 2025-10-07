@@ -78,20 +78,40 @@
             top: 60px;
             left: 0;
             width: 400px;
+            min-width: 300px;
+            max-width: 600px;
             height: calc(100vh - 60px);
             background-color: #34495e;
             color: white;
             overflow-y: auto;
             z-index: 998;
             padding: 20px;
-            display: none;
+            border-right: 1px solid #2c3e50;
+            transition: width 0.2s ease;
+        }
+        
+        .left-resize-handle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 4px;
+            height: 100%;
+            background-color: #2c3e50;
+            cursor: col-resize;
+            z-index: 999;
+            transition: background-color 0.2s ease;
+        }
+        
+        .left-resize-handle:hover {
+            background-color: #3498db;
         }
         
         .main-content {
-            margin-left: 0;
+            margin-left: 400px;
             margin-top: 60px;
             padding: 20px;
             min-height: calc(100vh - 60px);
+            transition: margin-left 0.2s ease;
         }
         
         .right-panel {
@@ -461,19 +481,23 @@
     <!-- Left Panel (All Item Notes) -->
     {% if current_user.is_authenticated %}
     <div class="left-panel" id="allItemNotesCard">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 style="color: #fff; margin-bottom: 0;">
-                <i class="fas fa-list me-2"></i>All Item Notes for this PO 
-                <span id="all-item-notes-count" class="badge bg-primary ms-2">0</span>
-            </h5>
-        </div>
-        <!-- PO Info inline -->
-        <div id="po-info-inline" class="mb-3" style="color: #bbb; font-size: 0.9rem; padding: 10px; background-color: #1a252f; border-radius: 4px;">
-            <!-- PO ID and Order ID will be populated here -->
-        </div>
-        <div id="all-item-notes-list" class="notes-list" style="padding: 10px; max-height: calc(100vh - 250px); overflow-y: auto; background-color: #1a252f; border-radius: 4px;">
-            <div class="text-center" style="color: #bbb;">
-                <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
+        <div class="left-resize-handle"></div>
+        <div id="leftPanelContent">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 style="color: #fff; margin-bottom: 0;">
+                    <i class="fas fa-list me-2"></i>All Item Notes 
+                    <span id="all-item-notes-count" class="badge bg-primary ms-2">0</span>
+                </h5>
+            </div>
+            <!-- PO Info inline (hidden until PO selected) -->
+            <div id="po-info-inline" class="mb-3" style="color: #bbb; font-size: 0.9rem; padding: 10px; background-color: #1a252f; border-radius: 4px; display: none;">
+                <!-- PO ID and Order ID will be populated here -->
+            </div>
+            <div id="all-item-notes-list" class="notes-list" style="padding: 10px; max-height: calc(100vh - 200px); overflow-y: auto; background-color: #1a252f; border-radius: 4px;">
+                <div class="text-center" style="color: #bbb; padding: 40px 20px;">
+                    <i class="fas fa-sticky-note fa-3x mb-3" style="opacity: 0.3;"></i>
+                    <p>Select a purchase order from the summary table to view all item notes.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -2415,10 +2439,10 @@
                 disparity: disparity
             };
             
-            // Show All Item Notes card in the main content area
-            const allItemNotesCard = document.getElementById('allItemNotesCard');
-            if (allItemNotesCard) {
-                allItemNotesCard.style.display = 'block';
+            // Show PO info inline in left panel
+            const poInfoInline = document.getElementById('po-info-inline');
+            if (poInfoInline) {
+                poInfoInline.style.display = 'block';
             }
             
             // Populate PO info inline
@@ -3151,8 +3175,9 @@
             }
         });
         
-        // Resizable Right Sidebar
-        let isResizing = false;
+        // Resizable Sidebars
+        let isResizingRight = false;
+        let isResizingLeft = false;
         let startX = 0;
         let startWidth = 0;
         
@@ -3164,7 +3189,7 @@
             if (!resizeHandle || !rightPanel || !contentArea) return;
             
             resizeHandle.addEventListener('mousedown', function(e) {
-                isResizing = true;
+                isResizingRight = true;
                 startX = e.clientX;
                 startWidth = parseInt(window.getComputedStyle(rightPanel).width, 10);
                 
@@ -3175,7 +3200,7 @@
             });
             
             document.addEventListener('mousemove', function(e) {
-                if (!isResizing) return;
+                if (!isResizingRight) return;
                 
                 const newWidth = startWidth - (e.clientX - startX);
                 const minWidth = 300;
@@ -3188,8 +3213,8 @@
             });
             
             document.addEventListener('mouseup', function() {
-                if (isResizing) {
-                    isResizing = false;
+                if (isResizingRight) {
+                    isResizingRight = false;
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
                     
@@ -3210,9 +3235,64 @@
             }
         }
         
-        // Initialize resizable sidebar when DOM is loaded
+        function initResizableLeftPanel() {
+            const leftResizeHandle = document.querySelector('.left-resize-handle');
+            const leftPanel = document.querySelector('.left-panel');
+            const mainContent = document.querySelector('.main-content');
+            
+            if (!leftResizeHandle || !leftPanel || !mainContent) return;
+            
+            leftResizeHandle.addEventListener('mousedown', function(e) {
+                isResizingLeft = true;
+                startX = e.clientX;
+                startWidth = parseInt(window.getComputedStyle(leftPanel).width, 10);
+                
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizingLeft) return;
+                
+                const newWidth = startWidth + (e.clientX - startX);
+                const minWidth = 300;
+                const maxWidth = 600;
+                
+                if (newWidth >= minWidth && newWidth <= maxWidth) {
+                    leftPanel.style.width = newWidth + 'px';
+                    mainContent.style.marginLeft = newWidth + 'px';
+                }
+            });
+            
+            document.addEventListener('mouseup', function() {
+                if (isResizingLeft) {
+                    isResizingLeft = false;
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    
+                    // Save the width to localStorage
+                    const currentWidth = parseInt(window.getComputedStyle(leftPanel).width, 10);
+                    localStorage.setItem('leftPanelWidth', currentWidth);
+                }
+            });
+            
+            // Load saved width from localStorage
+            const savedWidth = localStorage.getItem('leftPanelWidth');
+            if (savedWidth) {
+                const width = parseInt(savedWidth, 10);
+                if (width >= 300 && width <= 600) {
+                    leftPanel.style.width = width + 'px';
+                    mainContent.style.marginLeft = width + 'px';
+                }
+            }
+        }
+        
+        // Initialize resizable sidebars when DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
             initResizableSidebar();
+            initResizableLeftPanel();
         });
     </script>
     {% block scripts %}{% endblock %}
