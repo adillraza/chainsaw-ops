@@ -46,7 +46,7 @@
             position: fixed;
             top: 60px;
             left: 0;
-            width: 250px;
+            width: 400px;
             height: calc(100vh - 60px);
             background-color: #34495e;
             color: white;
@@ -80,7 +80,7 @@
         }
         
         .main-content {
-            margin-left: 250px;
+            margin-left: 400px;
             margin-top: 60px;
             padding: 20px;
             min-height: calc(100vh - 60px);
@@ -375,6 +375,35 @@
             line-height: 1.4;
         }
         
+        /* Sidebar notes styling (dark theme) */
+        #allItemNotesCard .note-item {
+            background-color: #1a252f;
+            border: 1px solid #3d5875;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        #allItemNotesCard .note-author {
+            color: #e0e0e0;
+        }
+        
+        #allItemNotesCard .note-timestamp {
+            color: #a0a0a0;
+        }
+        
+        #allItemNotesCard .note-content {
+            color: #e0e0e0;
+        }
+        
+        #allItemNotesCard .note-delete-btn {
+            color: #ff6b6b;
+        }
+        
+        #allItemNotesCard .note-delete-btn:hover {
+            background-color: #3d2828;
+        }
+        
         .clickable-row {
             cursor: pointer;
         }
@@ -422,6 +451,25 @@
             <i class="fas fa-users-cog"></i> User Management
         </a>
         {% endif %}
+        
+        <!-- All Item Notes Section (appears when PO is selected) -->
+        <div id="allItemNotesCard" style="display: none; margin: 20px 15px; padding: 15px; background-color: #2c3e50; border-radius: 8px; border: 2px solid #7b1fa2;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 style="color: #fff; margin-bottom: 0;">
+                    <i class="fas fa-list me-2"></i>All Item Notes for this PO 
+                    <span id="all-item-notes-count" class="badge bg-primary ms-2">0</span>
+                </h6>
+            </div>
+            <!-- PO Info inline -->
+            <div id="po-info-inline" class="mb-3" style="color: #bbb; font-size: 0.85rem; padding: 8px; background-color: #1a252f; border-radius: 4px;">
+                <!-- PO ID and Order ID will be populated here -->
+            </div>
+            <div id="all-item-notes-list" class="notes-list" style="padding: 10px; max-height: 400px; overflow-y: auto; background-color: #1a252f; border-radius: 4px;">
+                <div class="text-center" style="color: #bbb;">
+                    <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
+                </div>
+            </div>
+        </div>
     </div>
     {% endif %}
 
@@ -624,27 +672,6 @@
                 <div id="comparisonContainer">
                     <div class="text-center text-muted">
                         <p>Select a purchase order from the summary table to view comparison data</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- All Item Notes Section (appears below Comparison when PO is selected) -->
-        <div class="card mb-4" id="allItemNotesCard" style="display: none; background-color: #f3e5f5; border-left: 4px solid #7b1fa2;">
-            <div class="card-header d-flex justify-content-between align-items-center" style="background-color: #ede7f6; border-bottom: 1px solid #7b1fa2;">
-                <h5 style="color: #7b1fa2; margin-bottom: 0;">
-                    <i class="fas fa-list me-2"></i>All Item Notes for this PO 
-                    <span id="all-item-notes-count" class="badge bg-primary ms-2">0</span>
-                </h5>
-                <!-- PO Info inline -->
-                <div id="po-info-inline" class="text-muted" style="font-size: 0.9rem;">
-                    <!-- PO ID and Order ID will be populated here -->
-                </div>
-            </div>
-            <div class="card-body" style="background-color: #f3e5f5;">
-                <div id="all-item-notes-list" class="notes-list" style="padding: 15px; max-height: 500px; overflow-y: auto;">
-                    <div class="text-center text-muted">
-                        <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
                     </div>
                 </div>
             </div>
