@@ -573,7 +573,10 @@
                 <!-- Add Note Input Section (Top) -->
                 <div class="card mb-3" style="background-color: #fff8e1; border-left: 4px solid #f57c00; border-radius: 8px;">
                     <div class="card-body" style="background-color: #fff8e1; padding: 15px;">
-                        <h6 class="card-title mb-2" style="color: #f57c00;"><i class="fas fa-edit me-2"></i>Add Comment</h6>
+                        <h6 class="card-title mb-2 d-flex justify-content-between align-items-center" style="color: #f57c00;">
+                            <span><i class="fas fa-edit me-2"></i>Add Comment</span>
+                            <span id="item-sku-badge" class="badge" style="background-color: #f57c00; font-size: 0.85rem;"></span>
+                        </h6>
                         <textarea id="new-note" class="form-control mb-2" rows="3" placeholder="Add a comment..." style="border: 1px solid #ffb74d;"></textarea>
                         <button class="btn btn-sm btn-primary w-100" onclick="saveNote()" style="background-color: #f57c00; border-color: #f57c00;">
                             <i class="fas fa-save"></i> Save Note
@@ -1704,7 +1707,7 @@
             let tableHTML = `
                 <div class="table-responsive-modern" style="${maxHeight}">
                     <table class="table table-modern">
-                        <thead>
+                        <thead class="sticky-top">
                             <tr>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested" class="text-center">Requested Date</th>
@@ -2906,6 +2909,12 @@
                     <div class="col-9">${currentItemData.product_name}</div>
                 </div>
             `;
+            
+            // Also populate SKU badge in Add Comment section
+            const skuBadge = document.getElementById('item-sku-badge');
+            if (skuBadge) {
+                skuBadge.textContent = `SKU: ${currentItemData.sku}`;
+            }
         }
         
         function loadItemNotes(poItemId) {
