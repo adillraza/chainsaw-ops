@@ -5,10 +5,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 from dotenv import load_dotenv
-from purchase_orders_service import purchase_orders_service
 
-# Load environment variables
+# Load environment variables FIRST before importing services that need them
 load_dotenv()
+
+# Now import services that depend on environment variables
+from purchase_orders_service import purchase_orders_service
 
 # Global variable to store actual totals for progress tracking
 actual_totals = {

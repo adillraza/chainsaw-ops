@@ -477,36 +477,6 @@
             </div>
         </div>
         
-            <!-- PO All Notes Panel (hidden by default) -->
-            <div id="po-details-panel" style="display: none;">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-muted mb-0"><i class="fas fa-list me-2"></i>All Item Notes</h6>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="closePODetails()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                
-                <!-- PO Info Header -->
-                <div id="po-info-header" class="mb-3 p-2" style="background-color: #f8f9fa; border-radius: 4px; border: 1px solid #bbdefb;">
-                    <!-- PO ID and Order ID will be populated here -->
-                </div>
-                
-                <!-- All Item Notes -->
-                <div class="card" style="background-color: #f3e5f5; border-left: 4px solid #7b1fa2; border-radius: 8px;">
-                    <div class="card-body" style="background-color: #f3e5f5;">
-                        <h6 class="card-title" style="color: #7b1fa2;">
-                            <i class="fas fa-list me-2"></i>All Item Notes for this PO 
-                            <span id="all-item-notes-count" class="badge bg-primary ms-1">0</span>
-                        </h6>
-                        
-                        <div id="all-item-notes-list" class="notes-list" style="padding: 15px; max-height: 500px; overflow-y: auto;">
-                            <div class="text-center text-muted">
-                                <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <!-- Item Details Panel (hidden by default) -->
             <div id="item-details-panel" style="display: none;">
@@ -654,6 +624,27 @@
                 <div id="comparisonContainer">
                     <div class="text-center text-muted">
                         <p>Select a purchase order from the summary table to view comparison data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- All Item Notes Section (appears below Comparison when PO is selected) -->
+        <div class="card mb-4" id="allItemNotesCard" style="display: none; background-color: #f3e5f5; border-left: 4px solid #7b1fa2;">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background-color: #ede7f6; border-bottom: 1px solid #7b1fa2;">
+                <h5 style="color: #7b1fa2; margin-bottom: 0;">
+                    <i class="fas fa-list me-2"></i>All Item Notes for this PO 
+                    <span id="all-item-notes-count" class="badge bg-primary ms-2">0</span>
+                </h5>
+                <!-- PO Info inline -->
+                <div id="po-info-inline" class="text-muted" style="font-size: 0.9rem;">
+                    <!-- PO ID and Order ID will be populated here -->
+                </div>
+            </div>
+            <div class="card-body" style="background-color: #f3e5f5;">
+                <div id="all-item-notes-list" class="notes-list" style="padding: 15px; max-height: 500px; overflow-y: auto;">
+                    <div class="text-center text-muted">
+                        <small>No item notes yet. Click on items in the Comparison table to add notes.</small>
                     </div>
                 </div>
             </div>
@@ -2391,43 +2382,45 @@
                 disparity: disparity
             };
             
-            // Hide other panels and show PO details panel
-            document.getElementById('quick-info-panel').style.display = 'none';
-            document.getElementById('item-details-panel').style.display = 'none';
-            document.getElementById('po-details-panel').style.display = 'block';
+            // Show All Item Notes card in the main content area
+            const allItemNotesCard = document.getElementById('allItemNotesCard');
+            if (allItemNotesCard) {
+                allItemNotesCard.style.display = 'block';
+            }
             
-            // Populate PO info header
-            populatePOInfoHeader();
+            // Populate PO info inline
+            populatePOInfoInline();
             
             // Load all item notes for this PO
             loadAllItemNotesForPO(poId);
             
-            // Load comparison data for this PO (items moved to separate tab)
+            // Load comparison data for this PO
             loadComparison(poId, orderId);
         }
         
         function closePODetails() {
-            document.getElementById('po-details-panel').style.display = 'none';
-            // Don't show Quick Info panel - keep it hidden in REX PO Orders view
-            // document.getElementById('quick-info-panel').style.display = 'block';
+            // Hide the All Item Notes card
+            const allItemNotesCard = document.getElementById('allItemNotesCard');
+            if (allItemNotesCard) {
+                allItemNotesCard.style.display = 'none';
+            }
             currentPOData = null;
-            document.getElementById('po-notes-list').innerHTML = `<div class="text-center text-muted"><small>No PO notes yet. Click on a PO to add notes.</small></div>`;
         }
         
-        function populatePOInfoHeader() {
+        function populatePOInfoInline() {
             if (!currentPOData) return;
             
-            const infoHeader = document.getElementById('po-info-header');
-            infoHeader.innerHTML = `
-                <div class="row">
-                    <div class="col-4"><strong>PO ID:</strong></div>
-                    <div class="col-8">${currentPOData.po_id}</div>
-                </div>
-                <div class="row mt-1">
-                    <div class="col-4"><strong>Order ID:</strong></div>
-                    <div class="col-8">${currentPOData.order_id}</div>
-                </div>
-            `;
+            const infoInline = document.getElementById('po-info-inline');
+            if (infoInline) {
+                infoInline.innerHTML = `
+                    <strong>PO ID:</strong> ${currentPOData.po_id} | <strong>Order ID:</strong> ${currentPOData.order_id}
+                `;
+            }
+        }
+        
+        // Legacy function - kept for compatibility
+        function populatePOInfoHeader() {
+            populatePOInfoInline();
         }
         
         function loadPONotes(poId) {
@@ -2723,10 +2716,7 @@
                 };
             }
             
-            // Hide PO details panel if open
-            document.getElementById('po-details-panel').style.display = 'none';
-            
-            // Show item details panel
+            // Show item details panel in the right sidebar
             document.getElementById('quick-info-panel').style.display = 'none';
             document.getElementById('item-details-panel').style.display = 'block';
             
@@ -3022,11 +3012,12 @@
                     // Close item details panel
                     document.getElementById('item-details-panel').style.display = 'none';
                     
-                    // Show All Notes panel for the PO
+                    // Show All Notes card for the PO (if not already visible)
                     if (currentPOData && currentPOData.po_id) {
-                        // Show PO details panel with all notes
-                        document.getElementById('po-details-panel').style.display = 'block';
-                        document.getElementById('quick-info-panel').style.display = 'none';
+                        const allItemNotesCard = document.getElementById('allItemNotesCard');
+                        if (allItemNotesCard) {
+                            allItemNotesCard.style.display = 'block';
+                        }
                         
                         // Reload all item notes for the PO
                         loadAllItemNotesForPO(currentPOData.po_id);
