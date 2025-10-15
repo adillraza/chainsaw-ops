@@ -47,61 +47,38 @@ class BigQueryService:
             self.client = None
     
     def get_purchase_order_summary(self, limit=100, offset=0, search_term=None):
-        """Fetch purchase order summary data (1 row per PO) with calculated fields"""
+        """Fetch purchase order summary data from ops_po table (pre-aggregated)"""
         if not self.client:
             return None, "BigQuery client not initialized"
         
         try:
-            # Build the summary query with calculated fields
-            base_query = f"""
-            SELECT 
-                COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) as po_id,
-                requested_date,
-                OrderID,
-                CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', OrderID) as order_link,
-                entered_in_neto as entered_date,
-                received_date,
-                neto_entered_by as neto_order_created_by,
-                completed_date,
-                neto_complete_status as completion_status,
-                neto_order_status as order_status,
-                ROUND(SUM(rex_supplier_buy_ex), 2) - ROUND(SUM(neto_cost_price), 2) as difference,
-                CASE 
-                    WHEN ABS(ROUND(SUM(rex_supplier_buy_ex), 2) - ROUND(SUM(neto_cost_price), 2)) > 0 
-                    THEN true 
-                    ELSE false 
-                END as disparity,
-                COUNT(*) as item_count,
-                SUM(quantity_ordered) as total_quantity_ordered,
-                SUM(quantity_received) as total_quantity_received,
-                ROUND(SUM(rex_supplier_buy_ex), 2) as total_rex_cost,
-                ROUND(SUM(neto_cost_price), 2) as total_neto_cost
-            FROM `{self.project_id}.dataform.neto_rex_purchase_order_report`
-            """
-            
             # Add search filter if provided
             where_clause = ""
             if search_term:
                 where_clause = f"""
-                WHERE CAST(COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) AS STRING) LIKE '%{search_term}%' 
-                   OR CAST(OrderID AS STRING) LIKE '%{search_term}%'
+                WHERE CAST(po_id AS STRING) LIKE '%{search_term}%' 
+                   OR CAST(order_id AS STRING) LIKE '%{search_term}%'
                 """
             
-            # Complete query with grouping, ordering, pagination, and latest PO note
+            # Build the query from ops_po table with latest PO notes
             query = f"""
             WITH po_summary AS (
-                {base_query}
-                {where_clause}
-                GROUP BY 
-                    COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber),
+                SELECT 
+                    CAST(po_id AS STRING) as po_id,
                     requested_date,
-                    OrderID,
-                    entered_in_neto,
+                    order_id as OrderID,
+                    CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', order_id) as order_link,
+                    entered_in_neto as entered_date,
                     received_date,
-                    neto_entered_by,
+                    neto_entered_by as neto_order_created_by,
                     completed_date,
-                    neto_complete_status,
-                    neto_order_status
+                    neto_complete_status as completion_status,
+                    neto_order_status as order_status,
+                    disparity,
+                    po_item_count as item_count,
+                    po_item_qty as total_quantity_ordered
+                FROM `{self.project_id}.dataform.ops_po`
+                {where_clause}
             ),
             latest_po_notes AS (
                 SELECT 
@@ -128,7 +105,7 @@ class BigQueryService:
                 lpn.latest_po_note_user,
                 lpn.latest_po_note_date
             FROM po_summary ps
-            LEFT JOIN latest_po_notes lpn ON CAST(ps.po_id AS STRING) = lpn.po_id
+            LEFT JOIN latest_po_notes lpn ON ps.po_id = lpn.po_id
             ORDER BY ps.entered_date DESC
             """
             
@@ -526,15 +503,15 @@ class BigQueryService:
         
         try:
             base_query = f"""
-            SELECT COUNT(DISTINCT COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber)) as total
-            FROM `{self.project_id}.dataform.neto_rex_purchase_order_report`
+            SELECT COUNT(*) as total
+            FROM `{self.project_id}.dataform.ops_po`
             """
             
             where_clause = ""
             if search_term:
                 where_clause = f"""
-                WHERE CAST(COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) AS STRING) LIKE '%{search_term}%' 
-                   OR CAST(OrderID AS STRING) LIKE '%{search_term}%'
+                WHERE CAST(po_id AS STRING) LIKE '%{search_term}%' 
+                   OR CAST(order_id AS STRING) LIKE '%{search_term}%'
                 """
             
             query = f"{base_query} {where_clause}"

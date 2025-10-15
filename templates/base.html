@@ -455,6 +455,9 @@
             <a href="#" class="menu-item" onclick="loadContent('rex-po-orders', event)">
                 <i class="fas fa-shopping-cart"></i> REX PO Orders
             </a>
+            <a href="#" class="menu-item" onclick="loadContent('comparison', event)">
+                <i class="fas fa-balance-scale"></i> Comparison
+            </a>
             <a href="#" class="menu-item" onclick="loadContent('cost-price-check', event)">
                 <i class="fas fa-dollar-sign"></i> Cost Price Check
             </a>
@@ -696,20 +699,6 @@
                         </div>
                     </div>
                     
-        <!-- Comparison Table -->
-        <div class="card mb-4" id="comparisonCard" style="display: none; background-color: #fff8f0;">
-            <div class="card-header" style="background-color: #fff3e0; border-bottom: 1px solid #ffcc02;">
-                <h5><i class="fas fa-balance-scale"></i> Comparison <span class="badge bg-secondary ms-2" style="font-size: 0.9em;">0</span></h5>
-            </div>
-            <div class="card-body" style="background-color: #fff8f0;">
-                <div id="comparisonContainer">
-                    <div class="text-center text-muted">
-                        <p>Select a purchase order from the summary table to view comparison data</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-                    
                     <!-- Pagination -->
                     <nav id="paginationNav" style="display: none;">
                         <ul class="pagination justify-content-center">
@@ -817,6 +806,45 @@
                 
                 // Initialize the Cost Price Check functionality
                 initializeCostPriceCheckPage();
+            } else if (contentType === 'comparison') {
+                // Hide Quick Info panel when viewing Comparison
+                if (quickInfoPanel) {
+                    quickInfoPanel.style.display = 'none';
+                }
+                
+                // Update active menu item
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                if (event && event.target) {
+                    event.target.classList.add('active');
+                }
+                
+                // Load Comparison content
+                contentArea.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2><i class="fas fa-balance-scale"></i> Comparison</h2>
+                    </div>
+                    
+                    <!-- Comparison Table -->
+                    <div class="card" id="comparisonCard" style="background-color: #fff8f0; height: calc(100vh - 200px);">
+                        <div class="card-header" style="background-color: #fff3e0; border-bottom: 1px solid #ffcc02;">
+                            <h5><i class="fas fa-balance-scale"></i> Comparison Data <span class="badge bg-secondary ms-2" style="font-size: 0.9em;" id="comparisonCount">0</span></h5>
+                        </div>
+                        <div class="card-body" style="background-color: #fff8f0; height: 100%; overflow-y: auto;">
+                            <div id="comparisonContainer">
+                                <div class="text-center text-muted" style="padding-top: 100px;">
+                                    <i class="fas fa-balance-scale fa-3x mb-3"></i>
+                                    <p>Select a purchase order from the REX PO Orders Summary table to view comparison data</p>
+                                    <p class="text-secondary"><small>Or the comparison data will appear here when you search by SKU</small></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Initialize the Comparison page functionality
+                initializeComparisonPage();
             }
         }
         
@@ -891,6 +919,26 @@
             
             // Load initial data
             loadData();
+        }
+        
+        function initializeComparisonPage() {
+            // The comparison page is simple - it just displays comparison data
+            // when loadComparison is called from showPODetails
+            console.log('Comparison page initialized');
+            
+            // Ensure the Comparison menu item is highlighted
+            document.querySelectorAll('.menu-item').forEach(item => {
+                if (item.textContent.includes('Comparison')) {
+                    item.classList.add('active');
+                }
+            });
+            
+            // Check if we have current PO data and load it
+            if (currentPOData && currentPOData.po_id) {
+                setTimeout(() => {
+                    loadComparison(currentPOData.po_id, currentPOData.order_id);
+                }, 100);
+            }
         }
         
         function testConnection() {
@@ -1694,7 +1742,7 @@
 
             // Define the columns we want to show in the summary table
             const summaryColumns = [
-                'po_id', 'requested_date', 'OrderID', 'order_link', 'entered_date', 'received_date',
+                'po_id', 'requested_date', 'OrderID', 'item_count', 'total_quantity_ordered', 'order_link', 'entered_date', 'received_date',
                 'neto_order_created_by', 'completed_date', 'completion_status', 'order_status', 'disparity'
             ];
             
@@ -1712,12 +1760,14 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested" class="text-center">Requested Date</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from the system" class="text-center">OrderID</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items in this purchase order" class="text-center">Item Count</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Total quantity of all items ordered" class="text-center">Total Qty</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">Entered Date</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received" class="text-center">Received Date</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was completed" class="text-center">Date Completed</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched" class="text-center">Date Dispatched</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current completion status of the order" class="text-center">Completion Status</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the order" class="text-center">Order Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the order in NETO" class="text-center">Neto Order Status</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates if there's a price difference between REX and NETO" class="text-center">Disparity?</th>
                             </tr>
                         </thead>
@@ -1746,6 +1796,8 @@
                     hour: '2-digit', minute: '2-digit', second: '2-digit'
                 }) : '-';
                 const orderId = row.OrderID ? `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>` : '-';
+                const itemCount = row.item_count || '0';
+                const totalQty = row.total_quantity_ordered || '0';
                 const enteredDate = row.entered_date ? new Date(row.entered_date).toLocaleDateString('en-GB', {
                     day: '2-digit', month: 'short', year: 'numeric'
                 }) : '-';
@@ -1768,6 +1820,8 @@
                     <td class="numeric-column">${poId}</td>
                     <td class="text-center">${requestedDate}</td>
                     <td class="text-center">${orderId}</td>
+                    <td class="text-center">${itemCount}</td>
+                    <td class="text-center">${totalQty}</td>
                     <td class="text-center">${enteredDate}</td>
                     <td class="text-center">${receivedDate}</td>
                     <td>${createdBy}</td>
@@ -1987,7 +2041,7 @@
             
             // Create table HTML
             let tableHTML = `
-                <div class="table-responsive-modern" style="max-height: 300px; overflow-y: auto;">
+                <div class="table-responsive-modern" style="height: calc(100vh - 320px); overflow-y: auto;">
                     <table class="table table-modern">
                         <thead class="sticky-top">
                             <tr>
@@ -2442,6 +2496,19 @@
                 disparity: disparity
             };
             
+            // Switch to Comparison tab
+            loadContent('comparison', null);
+            
+            // Manually activate the Comparison menu item
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelectorAll('.menu-item').forEach(item => {
+                if (item.textContent.includes('Comparison')) {
+                    item.classList.add('active');
+                }
+            });
+            
             // Show PO info inline in left panel
             const poInfoInline = document.getElementById('po-info-inline');
             if (poInfoInline) {
@@ -2455,7 +2522,9 @@
             loadAllItemNotesForPO(poId);
             
             // Load comparison data for this PO
-            loadComparison(poId, orderId);
+            setTimeout(() => {
+                loadComparison(poId, orderId);
+            }, 100);
         }
         
         function closePODetails() {
