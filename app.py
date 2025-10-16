@@ -59,6 +59,7 @@ class LoginLog(db.Model):
 class CachedPurchaseOrderSummary(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     po_id = db.Column(db.String(50), nullable=False)
+    po_status = db.Column(db.String(50))
     requested_date = db.Column(db.DateTime)
     order_id = db.Column(db.String(50))
     order_link = db.Column(db.String(200))
@@ -84,6 +85,7 @@ class CachedPurchaseOrderSummary(db.Model):
     def to_dict(self):
         return {
             'po_id': self.po_id,
+            'po_status': self.po_status,
             'requested_date': self.requested_date.isoformat() if self.requested_date else None,
             'OrderID': self.order_id,
             'order_link': self.order_link,
@@ -164,6 +166,7 @@ class CachedPurchaseOrderComparison(db.Model):
     sku = db.Column(db.String(100))
     name = db.Column(db.String(500))
     change_log = db.Column(db.String(100))
+    rex_available_qty = db.Column(db.Float)  # REX available quantity
     neto_qty_available = db.Column(db.Float)  # Changed from Integer to Float
     original_rex_qty_ordered = db.Column(db.Float)  # Changed from Integer to Float
     neto_qty_shipped = db.Column(db.Float)  # Changed from Integer to Float
@@ -183,6 +186,7 @@ class CachedPurchaseOrderComparison(db.Model):
             'sku': self.sku,
             'name': self.name,
             'change_log': self.change_log,
+            'rex_available_qty': self.rex_available_qty,
             'neto_qty_available': self.neto_qty_available,
             'original_rex_qty_ordered': self.original_rex_qty_ordered,
             'neto_qty_shipped': self.neto_qty_shipped,
@@ -353,6 +357,7 @@ def cache_purchase_order_data():
                     try:
                         cached_row = CachedPurchaseOrderSummary(
                             po_id=row.get('po_id'),
+                            po_status=row.get('po_status'),
                             requested_date=safe_parse_date(row.get('requested_date')),
                             order_id=row.get('OrderID'),
                             order_link=row.get('order_link'),
@@ -462,6 +467,7 @@ def cache_purchase_order_data():
                             sku=comp.get('sku'),
                             name=comp.get('name'),
                             change_log=comp.get('change_log'),
+                            rex_available_qty=convert_decimal_to_float(comp.get('rex_available_qty')),
                             neto_qty_available=convert_decimal_to_float(comp.get('neto_qty_available')),
                             original_rex_qty_ordered=convert_decimal_to_float(comp.get('original_rex_qty_ordered')),
                             neto_qty_shipped=convert_decimal_to_float(comp.get('neto_qty_shipped')),
@@ -605,6 +611,7 @@ def cache_comparison_data(po_id, order_id, comparison_data):
                 sku=item.get('sku'),
                 name=item.get('name'),
                 change_log=item.get('change_log'),
+                rex_available_qty=convert_decimal_to_float(item.get('rex_available_qty')),
                 neto_qty_available=convert_decimal_to_float(item.get('neto_qty_available')),
                 original_rex_qty_ordered=convert_decimal_to_float(item.get('original_rex_qty_ordered')),
                 neto_qty_shipped=convert_decimal_to_float(item.get('neto_qty_shipped')),

@@ -271,8 +271,12 @@
             border-bottom: 1px solid #e9ecef;
         }
         
+        .table-modern.table-striped tbody tr:hover {
+            background-color: #e9ecef !important;
+        }
+        
         .table-modern tbody tr:hover {
-            background-color: #f8f9fa;
+            background-color: #e9ecef;
         }
         
         .table-modern tbody tr.non-clickable-row {
@@ -281,8 +285,17 @@
         }
         
         .table-modern tbody tr.non-clickable-row:hover {
-            background-color: #f8f9fa;
+            background-color: #e9ecef;
             opacity: 0.8;
+        }
+        
+        /* Ensure alternating rows have proper colors */
+        .table-modern.table-striped > tbody > tr:nth-of-type(odd) > * {
+            background-color: #ffffff;
+        }
+        
+        .table-modern.table-striped > tbody > tr:nth-of-type(even) > * {
+            background-color: #f8f9fa;
         }
         
         /* Column Alignment */
@@ -626,12 +639,15 @@
                 contentArea.innerHTML = `
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <h2><i class="fas fa-shopping-cart"></i> Purchase Orders - Summary</h2>
-                        <div>
-                            <button id="testConnectionBtn" class="btn btn-outline-info btn-sm me-2">
-                                <i class="fas fa-plug"></i> Test Connection
-                            </button>
-                            <button id="refreshDataBtn" class="btn btn-primary btn-sm">
+                        <div class="d-flex align-items-center">
+                            <small class="text-muted me-3">
+                                <i class="fas fa-info-circle"></i> Refresh data if information appears outdated or after new orders are added
+                            </small>
+                            <button id="refreshDataBtn" class="btn btn-primary btn-sm me-2">
                                 <i class="fas fa-sync-alt"></i> Refresh Data
+                            </button>
+                            <button id="testConnectionBtn" class="btn btn-outline-info btn-sm">
+                                <i class="fas fa-plug"></i> Test Connection
                             </button>
                         </div>
                     </div>
@@ -685,13 +701,13 @@
                     </div>
                     
                     <!-- Summary Table -->
-                    <div class="card mb-4" style="background-color: #f8f9fa;">
-                        <div class="card-header" style="background-color: #e9ecef; border-bottom: 1px solid #dee2e6;">
+                    <div class="card mb-4" style="background-color: #ffffff; height: calc(100vh - 200px);">
+                        <div class="card-header" style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
                             <h5><i class="fas fa-list-alt"></i> Purchase Orders</h5>
                         </div>
-                        <div class="card-body" style="background-color: #f8f9fa;">
-                            <div id="summaryContainer">
-                                <div class="text-center text-muted">
+                        <div class="card-body" style="background-color: #ffffff; height: 100%; overflow-y: auto; padding: 0;">
+                            <div id="summaryContainer" style="height: 100%;">
+                                <div class="text-center text-muted" style="padding-top: 100px;">
                                     <i class="fas fa-database fa-3x mb-3"></i>
                                     <p>Click "Refresh Data" to load purchase order summary from BigQuery</p>
                                 </div>
@@ -827,12 +843,12 @@
                     </div>
                     
                     <!-- Comparison Table -->
-                    <div class="card" id="comparisonCard" style="background-color: #fff8f0; height: calc(100vh - 200px);">
-                        <div class="card-header" style="background-color: #fff3e0; border-bottom: 1px solid #ffcc02;">
+                    <div class="card" id="comparisonCard" style="background-color: #ffffff; height: calc(100vh - 200px);">
+                        <div class="card-header" style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
                             <h5><i class="fas fa-balance-scale"></i> Comparison Data <span class="badge bg-secondary ms-2" style="font-size: 0.9em;" id="comparisonCount">0</span></h5>
                         </div>
-                        <div class="card-body" style="background-color: #fff8f0; height: 100%; overflow-y: auto;">
-                            <div id="comparisonContainer">
+                        <div class="card-body" style="background-color: #ffffff; height: 100%; overflow-y: auto; padding: 0;">
+                            <div id="comparisonContainer" style="height: 100%;">
                                 <div class="text-center text-muted" style="padding-top: 100px;">
                                     <i class="fas fa-balance-scale fa-3x mb-3"></i>
                                     <p>Select a purchase order from the REX PO Orders Summary table to view comparison data</p>
@@ -1742,31 +1758,25 @@
 
             // Define the columns we want to show in the summary table
             const summaryColumns = [
-                'po_id', 'requested_date', 'OrderID', 'item_count', 'total_quantity_ordered', 'order_link', 'entered_date', 'received_date',
-                'neto_order_created_by', 'completed_date', 'completion_status', 'order_status', 'disparity'
+                'po_id', 'po_status', 'requested_date', 'OrderID', 'item_count', 'order_link', 'entered_date', 'received_date',
+                'neto_order_created_by', 'completed_date', 'order_status', 'disparity'
             ];
             
-            // Create table HTML with scrollbar (max 200 rows, 10 visible)
-            const maxRows = 200;
-            const visibleRows = 10;
-            const shouldScroll = data.length > visibleRows;
-            const maxHeight = shouldScroll ? 'max-height: 400px; overflow-y: auto;' : '';
-            
+            // Create table HTML with full height
             let tableHTML = `
-                <div class="table-responsive-modern" style="${maxHeight}">
-                    <table class="table table-modern">
+                <div class="table-responsive-modern" style="height: 100%; overflow-y: auto;">
+                    <table class="table table-modern table-striped table-hover">
                         <thead class="sticky-top">
                             <tr>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested" class="text-center">Requested Date</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the purchase order in REX" class="text-center">REX PO Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested in REX" class="text-center">REX Date Requested</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from the system" class="text-center">OrderID</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items in this purchase order" class="text-center">Item Count</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Total quantity of all items ordered" class="text-center">Total Qty</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">Entered Date</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received" class="text-center">Received Date</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (order lines) in this purchase order from REX" class="text-center">REX Order Lines</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">NETO Date Entered</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received in REX" class="text-center">REX Date Received</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched" class="text-center">Date Dispatched</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current completion status of the order" class="text-center">Completion Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched in NETO" class="text-center">NETO Date Dispatched</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the order in NETO" class="text-center">Neto Order Status</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates if there's a price difference between REX and NETO" class="text-center">Disparity?</th>
                             </tr>
@@ -1776,7 +1786,6 @@
             
             // Add data rows
             data.forEach((row, index) => {
-                const rowClass = index % 2 === 0 ? 'table-light' : '';
                 // Escape single quotes in data for onclick handler
                 const requestedDateRaw = row.requested_date ? row.requested_date.replace(/'/g, "\\'") : '';
                 const enteredDateRaw = row.entered_date ? row.entered_date.replace(/'/g, "\\'") : '';
@@ -1786,10 +1795,11 @@
                 const completionStatusRaw = (row.completion_status || '').replace(/'/g, "\\'");
                 const orderStatusRaw = (row.order_status || '').replace(/'/g, "\\'");
                 
-                tableHTML += `<tr class="${rowClass}" onclick="showPODetails('${row.po_id}', '${row.OrderID}', '${requestedDateRaw}', '${enteredDateRaw}', '${receivedDateRaw}', '${createdByRaw}', '${completedDateRaw}', '${completionStatusRaw}', '${orderStatusRaw}', ${row.disparity || false})" style="cursor: pointer;">`;
+                tableHTML += `<tr onclick="showPODetails('${row.po_id}', '${row.OrderID}', '${requestedDateRaw}', '${enteredDateRaw}', '${receivedDateRaw}', '${createdByRaw}', '${completedDateRaw}', '${completionStatusRaw}', '${orderStatusRaw}', ${row.disparity || false})" style="cursor: pointer;">`;
                 
                 // Format each field
                 const poId = row.po_id || '-';
+                const poStatus = (row.po_status && row.po_status !== 'null') ? row.po_status : '-';
                 const requestedDate = row.requested_date ? new Date(row.requested_date).toLocaleDateString('en-GB', {
                     day: '2-digit', month: 'short', year: 'numeric'
                 }) + ', ' + new Date(row.requested_date).toLocaleTimeString('en-GB', {
@@ -1818,15 +1828,14 @@
                 
                 tableHTML += `
                     <td class="numeric-column">${poId}</td>
+                    <td class="text-center">${poStatus}</td>
                     <td class="text-center">${requestedDate}</td>
                     <td class="text-center">${orderId}</td>
                     <td class="text-center">${itemCount}</td>
-                    <td class="text-center">${totalQty}</td>
                     <td class="text-center">${enteredDate}</td>
                     <td class="text-center">${receivedDate}</td>
                     <td>${createdBy}</td>
                     <td class="text-center">${completedDate}</td>
-                    <td class="text-center">${completionStatus}</td>
                     <td class="text-center">${orderStatus}</td>
                     <td class="text-center">${disparity}</td>
                 `;
@@ -2041,14 +2050,15 @@
             
             // Create table HTML
             let tableHTML = `
-                <div class="table-responsive-modern" style="height: calc(100vh - 320px); overflow-y: auto;">
-                    <table class="table table-modern">
+                <div class="table-responsive-modern" style="height: 100%; overflow-y: auto;">
+                    <table class="table table-modern table-striped table-hover">
                         <thead class="sticky-top">
                             <tr>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID" class="sortable text-center" data-sort="po_id" style="width: 60px;">POID <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Stock Keeping Unit identifier" class="sortable" data-sort="sku" style="width: 100px;">SKU <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Product name and description" class="sortable" data-sort="name" style="width: 200px;">Name <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Type of change or difference" class="sortable text-center" data-sort="change_log" style="width: 120px;">Change Log <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in REX system" class="sortable text-center" data-sort="rex_available_qty" style="width: 80px;">REX Qty Available <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in NETO system" class="sortable text-center" data-sort="neto_qty_available" style="width: 80px;">NETO Qty Available <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Original quantity ordered in REX system" class="sortable text-center" data-sort="original_rex_qty_ordered" style="width: 80px;">Original REX Qty Ordered <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity shipped from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Shipped <i class="fas fa-sort"></i></th>
@@ -2146,6 +2156,7 @@
                     <td>${row.sku || '-'}</td>
                     <td>${row.name || '-'}</td>
                     <td class="text-center">${changeLogTag}</td>
+                    <td class="numeric-column">${row.rex_available_qty || '-'}</td>
                     <td class="numeric-column">${row.neto_qty_available || '-'}</td>
                     <td class="numeric-column">${row.original_rex_qty_ordered || '-'}</td>
                     <td class="numeric-column">${row.neto_qty_shipped || '-'}</td>
@@ -3377,7 +3388,7 @@
     
     <!-- Version Footer -->
     <div style="position: fixed; bottom: 10px; right: 20px; font-size: 0.75rem; color: #95a5a6; z-index: 1000;">
-        v1.1.0 - Production Ready! ✨
+        v2.0 - Production Ready! ✨
     </div>
 </body>
 </html>

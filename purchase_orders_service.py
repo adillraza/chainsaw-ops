@@ -65,6 +65,7 @@ class BigQueryService:
             WITH po_summary AS (
                 SELECT 
                     CAST(po_id AS STRING) as po_id,
+                    po_status,
                     requested_date,
                     order_id as OrderID,
                     CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', order_id) as order_link,
@@ -126,8 +127,13 @@ class BigQueryService:
                         row_dict[key] = value.isoformat()
                 data.append(row_dict)
             
-            return data, None
+            # Debug: Print first row to check if po_status is present
+            if data and len(data) > 0:
+                print(f"DEBUG: First row keys: {data[0].keys()}")
+                print(f"DEBUG: po_status value: {data[0].get('po_status', 'KEY NOT FOUND')}")
             
+            return data, None
+                
         except Exception as e:
             return None, f"Error fetching summary data: {str(e)}"
     
@@ -689,6 +695,7 @@ class BigQueryService:
                 c.manufacturer_sku,
                 c.short_description,
                 c.change_type,
+                c.rex_available_qty,
                 c.neto_qty_available,
                 c.original_po_quantity_ordered,
                 c.neto_quantity_shipped,
@@ -742,6 +749,7 @@ class BigQueryService:
                     'sku': row.manufacturer_sku,
                     'name': row.short_description,
                     'change_log': row.change_type,
+                    'rex_available_qty': row.rex_available_qty,
                     'neto_qty_available': row.neto_qty_available,
                     'original_rex_qty_ordered': row.original_po_quantity_ordered,
                     'neto_qty_shipped': row.neto_quantity_shipped,
@@ -778,6 +786,7 @@ class BigQueryService:
                 c.manufacturer_sku,
                 c.short_description,
                 c.change_type,
+                c.rex_available_qty,
                 c.neto_qty_available,
                 c.original_po_quantity_ordered,
                 c.neto_quantity_shipped,
@@ -808,6 +817,7 @@ class BigQueryService:
                     'sku': row.manufacturer_sku,
                     'name': row.short_description,
                     'change_log': row.change_type,
+                    'rex_available_qty': row.rex_available_qty,
                     'neto_qty_available': row.neto_qty_available,
                     'original_rex_qty_ordered': row.original_po_quantity_ordered,
                     'neto_qty_shipped': row.neto_quantity_shipped,
