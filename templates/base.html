@@ -1769,15 +1769,15 @@
                         <thead class="sticky-top">
                             <tr>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the purchase order in REX" class="text-center">REX PO Status</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested in REX" class="text-center">REX Date Requested</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from the system" class="text-center">OrderID</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (order lines) in this purchase order from REX" class="text-center">REX Order Lines</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">NETO Date Entered</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received in REX" class="text-center">REX Date Received</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the purchase order in REX">REX PO Created By</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was created in REX" class="text-center">REX Date Created</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested in REX" class="text-center">REX Date Requested</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">NETO Date Entered</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched in NETO" class="text-center">NETO Date Dispatched</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the order in NETO" class="text-center">Neto Order Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received in REX" class="text-center">REX Date Received</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates if there's a price difference between REX and NETO" class="text-center">Disparity?</th>
                             </tr>
                         </thead>
@@ -1799,16 +1799,24 @@
                 
                 // Format each field
                 const poId = row.po_id || '-';
-                const poStatus = (row.po_status && row.po_status !== 'null') ? row.po_status : '-';
+                const orderId = row.OrderID ? `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>` : '-';
+                const itemCount = row.item_count || '0';
+                const netoCreatedBy = row.neto_order_created_by || '-';
+                const rexPOCreatedBy = row.rex_po_created_by || '-';
+                const createdDate = row.created_date ? new Date(row.created_date).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                }) + ', ' + new Date(row.created_date).toLocaleTimeString('en-GB', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                }) : '-';
                 const requestedDate = row.requested_date ? new Date(row.requested_date).toLocaleDateString('en-GB', {
                     day: '2-digit', month: 'short', year: 'numeric'
                 }) + ', ' + new Date(row.requested_date).toLocaleTimeString('en-GB', {
                     hour: '2-digit', minute: '2-digit', second: '2-digit'
                 }) : '-';
-                const orderId = row.OrderID ? `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>` : '-';
-                const itemCount = row.item_count || '0';
-                const totalQty = row.total_quantity_ordered || '0';
                 const enteredDate = row.entered_date ? new Date(row.entered_date).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                }) : '-';
+                const completedDate = row.completed_date ? new Date(row.completed_date).toLocaleDateString('en-GB', {
                     day: '2-digit', month: 'short', year: 'numeric'
                 }) : '-';
                 const receivedDate = row.received_date ? new Date(row.received_date).toLocaleDateString('en-GB', {
@@ -1816,27 +1824,21 @@
                 }) + ', ' + new Date(row.received_date).toLocaleTimeString('en-GB', {
                     hour: '2-digit', minute: '2-digit', second: '2-digit'
                 }) : '-';
-                const createdBy = row.neto_order_created_by || '-';
-                const completedDate = row.completed_date ? new Date(row.completed_date).toLocaleDateString('en-GB', {
-                    day: '2-digit', month: 'short', year: 'numeric'
-                }) : '-';
-                const completionStatus = row.completion_status || '-';
-                const orderStatus = row.order_status || '-';
                 const disparity = row.disparity ? 
                     '<span class="badge bg-danger">true</span>' : 
                     '<span class="badge bg-success">false</span>';
                 
                 tableHTML += `
                     <td class="numeric-column">${poId}</td>
-                    <td class="text-center">${poStatus}</td>
-                    <td class="text-center">${requestedDate}</td>
                     <td class="text-center">${orderId}</td>
                     <td class="text-center">${itemCount}</td>
+                    <td>${netoCreatedBy}</td>
+                    <td>${rexPOCreatedBy}</td>
+                    <td class="text-center">${createdDate}</td>
+                    <td class="text-center">${requestedDate}</td>
                     <td class="text-center">${enteredDate}</td>
-                    <td class="text-center">${receivedDate}</td>
-                    <td>${createdBy}</td>
                     <td class="text-center">${completedDate}</td>
-                    <td class="text-center">${orderStatus}</td>
+                    <td class="text-center">${receivedDate}</td>
                     <td class="text-center">${disparity}</td>
                 `;
                 tableHTML += '</tr>';
