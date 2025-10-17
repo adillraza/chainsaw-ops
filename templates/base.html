@@ -1773,7 +1773,6 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (order lines) in this purchase order from REX" class="text-center">REX Order Lines</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the purchase order in REX">REX PO Created By</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was created in REX" class="text-center">REX Date Created</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested in REX" class="text-center">REX Date Requested</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">NETO Date Entered</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched in NETO" class="text-center">NETO Date Dispatched</th>
@@ -1803,11 +1802,6 @@
                 const itemCount = row.item_count || '0';
                 const netoCreatedBy = row.neto_order_created_by || '-';
                 const rexPOCreatedBy = row.rex_po_created_by || '-';
-                const createdDate = row.created_date ? new Date(row.created_date).toLocaleDateString('en-GB', {
-                    day: '2-digit', month: 'short', year: 'numeric'
-                }) + ', ' + new Date(row.created_date).toLocaleTimeString('en-GB', {
-                    hour: '2-digit', minute: '2-digit', second: '2-digit'
-                }) : '-';
                 const requestedDate = row.requested_date ? new Date(row.requested_date).toLocaleDateString('en-GB', {
                     day: '2-digit', month: 'short', year: 'numeric'
                 }) + ', ' + new Date(row.requested_date).toLocaleTimeString('en-GB', {
@@ -1834,7 +1828,6 @@
                     <td class="text-center">${itemCount}</td>
                     <td>${netoCreatedBy}</td>
                     <td>${rexPOCreatedBy}</td>
-                    <td class="text-center">${createdDate}</td>
                     <td class="text-center">${requestedDate}</td>
                     <td class="text-center">${enteredDate}</td>
                     <td class="text-center">${completedDate}</td>

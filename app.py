@@ -61,7 +61,6 @@ class CachedPurchaseOrderSummary(db.Model):
     po_id = db.Column(db.String(50), nullable=False)
     po_status = db.Column(db.String(50))
     rex_po_created_by = db.Column(db.String(100))
-    created_date = db.Column(db.DateTime)
     requested_date = db.Column(db.DateTime)
     order_id = db.Column(db.String(50))
     order_link = db.Column(db.String(200))
@@ -89,7 +88,6 @@ class CachedPurchaseOrderSummary(db.Model):
             'po_id': self.po_id,
             'po_status': self.po_status,
             'rex_po_created_by': self.rex_po_created_by,
-            'created_date': self.created_date.isoformat() if self.created_date else None,
             'requested_date': self.requested_date.isoformat() if self.requested_date else None,
             'OrderID': self.order_id,
             'order_link': self.order_link,
@@ -363,7 +361,6 @@ def cache_purchase_order_data():
                             po_id=row.get('po_id'),
                             po_status=row.get('po_status'),
                             rex_po_created_by=row.get('rex_po_created_by'),
-                            created_date=safe_parse_date(row.get('created_date')),
                             requested_date=safe_parse_date(row.get('requested_date')),
                             order_id=row.get('OrderID'),
                             order_link=row.get('order_link'),

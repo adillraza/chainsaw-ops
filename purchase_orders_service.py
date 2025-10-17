@@ -67,7 +67,6 @@ class BigQueryService:
                     CAST(po_id AS STRING) as po_id,
                     po_status,
                     rex_po_created_by,
-                    created_date,
                     requested_date,
                     order_id as OrderID,
                     CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', order_id) as order_link,
