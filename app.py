@@ -1068,6 +1068,13 @@ def cache_status():
         items_count = CachedPurchaseOrderItem.query.count()
         comparison_count = CachedPurchaseOrderComparison.query.count()
         
+        # Get the most recent cached_at timestamp
+        last_cached = None
+        latest_record = CachedPurchaseOrderSummary.query.order_by(CachedPurchaseOrderSummary.cached_at.desc()).first()
+        if latest_record and latest_record.cached_at:
+            # Add 'Z' to indicate UTC time so JavaScript parses it correctly
+            last_cached = latest_record.cached_at.isoformat() + 'Z'
+        
         # Use actual totals from BigQuery count queries
         global actual_totals
         totals = {
@@ -1084,7 +1091,8 @@ def cache_status():
             'summary_total': totals['summary_total'],
             'items_total': totals['items_total'],
             'comparison_total': totals['comparison_total'],
-            'has_cached_data': summary_count > 0
+            'has_cached_data': summary_count > 0,
+            'last_cached': last_cached
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
