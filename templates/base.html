@@ -979,6 +979,9 @@
             
             // Individual table search functionality removed - now using global search
             
+            // Update the timestamp immediately
+            updateSidebarCacheStatus();
+            
             // Load initial data
             loadData();
         }
@@ -2237,7 +2240,7 @@
                     <td>${row.sku || '-'}</td>
                     <td>${row.name || '-'}</td>
                     <td class="text-center">${changeLogTag}</td>
-                    <td class="numeric-column">${row.rex_available_qty || '-'}</td>
+                    <td class="numeric-column">${row.rex_available_qty !== null && row.rex_available_qty !== undefined ? row.rex_available_qty : 0}</td>
                     <td class="numeric-column">${row.neto_qty_available || '-'}</td>
                     <td class="numeric-column">${row.original_rex_qty_ordered || '-'}</td>
                     <td class="numeric-column">${row.neto_qty_shipped || '-'}</td>
