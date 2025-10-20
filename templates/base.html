@@ -463,7 +463,7 @@
         {% if current_user.is_authenticated %}
         <div class="nav-menu">
             <a href="{{ url_for('dashboard') }}" class="menu-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
-                <i class="fas fa-tachometer-alt"></i> Dashboard
+                <i class="fas fa-home"></i> Home
             </a>
             <a href="#" class="menu-item" onclick="loadContent('rex-po-orders', event)">
                 <i class="fas fa-shopping-cart"></i> REX PO Orders
@@ -473,6 +473,9 @@
             </a>
             <a href="#" class="menu-item" onclick="loadContent('cost-price-check', event)">
                 <i class="fas fa-dollar-sign"></i> Cost Price Check
+            </a>
+            <a href="#" class="menu-item" onclick="loadContent('ops-dashboard', event)">
+                <i class="fas fa-chart-line"></i> OPS Dashboard
             </a>
             {% if current_user.is_admin %}
             <a href="{{ url_for('admin') }}" class="menu-item {% if request.endpoint == 'admin' %}active{% endif %}">
@@ -622,10 +625,26 @@
             const quickInfoPanel = document.getElementById('quick-info-panel');
             
             if (contentType === 'rex-po-orders') {
-                // Hide Quick Info panel when viewing REX PO Orders
-                if (quickInfoPanel) {
-                    quickInfoPanel.style.display = 'none';
+                // Restore left and right panels
+                const leftPanel = document.querySelector('.left-panel');
+                const rightPanel = document.getElementById('right-panel');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (leftPanel) {
+                    leftPanel.style.display = 'block';
                 }
+                if (rightPanel) {
+                    rightPanel.style.display = 'none'; // Hide Quick Info for this page
+                }
+                
+                // Restore content area margins
+                if (mainContent) {
+                    mainContent.style.marginLeft = '';
+                    mainContent.style.marginRight = '';
+                }
+                contentArea.style.marginLeft = '';
+                contentArea.style.marginRight = '';
+                contentArea.style.width = '';
                 
                 // Update active menu item
                 document.querySelectorAll('.menu-item').forEach(item => {
@@ -750,10 +769,26 @@
                 // Initialize the BigQuery functionality
                 initializeBigQueryPage();
             } else if (contentType === 'cost-price-check') {
-                // Hide Quick Info panel when viewing Cost Price Check
-                if (quickInfoPanel) {
-                    quickInfoPanel.style.display = 'none';
+                // Restore left and right panels
+                const leftPanel = document.querySelector('.left-panel');
+                const rightPanel = document.getElementById('right-panel');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (leftPanel) {
+                    leftPanel.style.display = 'block';
                 }
+                if (rightPanel) {
+                    rightPanel.style.display = 'none'; // Hide Quick Info for this page
+                }
+                
+                // Restore content area margins
+                if (mainContent) {
+                    mainContent.style.marginLeft = '';
+                    mainContent.style.marginRight = '';
+                }
+                contentArea.style.marginLeft = '';
+                contentArea.style.marginRight = '';
+                contentArea.style.width = '';
                 
                 // Update active menu item
                 document.querySelectorAll('.menu-item').forEach(item => {
@@ -850,10 +885,26 @@
                 // Initialize the Cost Price Check functionality
                 initializeCostPriceCheckPage();
             } else if (contentType === 'comparison') {
-                // Hide Quick Info panel when viewing Comparison
-                if (quickInfoPanel) {
-                    quickInfoPanel.style.display = 'none';
+                // Restore left and right panels
+                const leftPanel = document.querySelector('.left-panel');
+                const rightPanel = document.getElementById('right-panel');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (leftPanel) {
+                    leftPanel.style.display = 'block';
                 }
+                if (rightPanel) {
+                    rightPanel.style.display = 'none'; // Hide Quick Info for this page
+                }
+                
+                // Restore content area margins
+                if (mainContent) {
+                    mainContent.style.marginLeft = '';
+                    mainContent.style.marginRight = '';
+                }
+                contentArea.style.marginLeft = '';
+                contentArea.style.marginRight = '';
+                contentArea.style.width = '';
                 
                 // Update active menu item
                 document.querySelectorAll('.menu-item').forEach(item => {
@@ -907,6 +958,50 @@
                 
                 // Initialize the Comparison page functionality
                 initializeComparisonPage();
+            } else if (contentType === 'ops-dashboard') {
+                // Hide both left and right panels for full-width dashboard
+                const leftPanel = document.querySelector('.left-panel');
+                const rightPanel = document.getElementById('right-panel');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (leftPanel) {
+                    leftPanel.style.display = 'none';
+                }
+                if (rightPanel) {
+                    rightPanel.style.display = 'none';
+                }
+                
+                // Make content area full width by removing all margins
+                if (mainContent) {
+                    mainContent.style.marginLeft = '0';
+                    mainContent.style.marginRight = '0';
+                }
+                contentArea.style.marginLeft = '0';
+                contentArea.style.marginRight = '0';
+                contentArea.style.width = '100%';
+                
+                // Update active menu item
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                if (event && event.target) {
+                    event.target.classList.add('active');
+                }
+                
+                // Load OPS Dashboard content with embedded Looker Studio report
+                contentArea.innerHTML = `
+                    <div style="height: calc(100vh - 60px); width: 100%; padding: 0; margin: 0;">
+                        <iframe 
+                            width="100%" 
+                            height="100%" 
+                            src="https://lookerstudio.google.com/embed/reporting/d2857a7c-1497-4a0d-9cab-58ecfd5242a6/page/p_aol0hf33md" 
+                            frameborder="0" 
+                            style="border:0" 
+                            allowfullscreen 
+                            sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox">
+                        </iframe>
+                    </div>
+                `;
             }
         }
         
@@ -1134,7 +1229,7 @@
                     } else {
                         itemsContainer.innerHTML = `
                             <div class="alert alert-info">
-                                <i class="fas fa-info-circle"></i> No cost price data available. Please refresh the cache from the Dashboard.
+                                <i class="fas fa-info-circle"></i> No cost price data available. Please refresh the cache from the Home page.
                             </div>
                         `;
                         itemsCard.style.display = 'block';
@@ -2911,12 +3006,16 @@
                         rex_qty_received: rexQtyReceived
                     };
                     
-                    // Show item details panel
+                    // Show item details panel and left panel for notes
                     const quickInfoPanel = document.getElementById('quick-info-panel');
                     const itemDetailsPanel = document.getElementById('item-details-panel');
+                    const leftPanel = document.querySelector('.left-panel');
+                    const rightPanel = document.getElementById('right-panel');
                     
                     if (quickInfoPanel) quickInfoPanel.style.display = 'none';
+                    if (rightPanel) rightPanel.style.display = 'block'; // Show right panel (parent of item-details-panel)
                     if (itemDetailsPanel) itemDetailsPanel.style.display = 'block';
+                    if (leftPanel) leftPanel.style.display = 'block'; // Show left panel for notes
                     
                     // Clear the notes area first to prevent showing old notes
                     const notesList = document.getElementById('notes-list');
