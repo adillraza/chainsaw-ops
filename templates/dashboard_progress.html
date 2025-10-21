@@ -82,9 +82,6 @@
                     <button id="start-refresh-btn" class="btn btn-primary" onclick="startRefresh()">
                         <i class="fas fa-play"></i> Start Refresh
                     </button>
-                    <button id="skip-btn" class="btn btn-outline-secondary ms-2" onclick="skipToDashboard()">
-                        <i class="fas fa-forward"></i> Skip to Dashboard
-                    </button>
                 </div>
             </div>
         </div>
@@ -228,10 +225,6 @@ function addStatusMessage(message, type) {
             messageDiv.remove();
         }
     }, 10000);
-}
-
-function skipToDashboard() {
-    window.location.href = '/dashboard';
 }
 
 // Auto-start refresh when page loads
