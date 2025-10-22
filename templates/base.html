@@ -471,6 +471,9 @@
             <a href="#" class="menu-item" onclick="loadContent('comparison', event)">
                 <i class="fas fa-balance-scale"></i> Comparison
             </a>
+            <a href="#" class="menu-item" onclick="loadContent('change-log-guide', event)">
+                <i class="fas fa-info-circle"></i> Change Log Guide
+            </a>
             <a href="#" class="menu-item" onclick="loadContent('cost-price-check', event)">
                 <i class="fas fa-dollar-sign"></i> Cost Price Check
             </a>
@@ -958,6 +961,240 @@
                 
                 // Initialize the Comparison page functionality
                 initializeComparisonPage();
+            } else if (contentType === 'change-log-guide') {
+                // Hide left panel for full-width guide
+                const leftPanel = document.querySelector('.left-panel');
+                const rightPanel = document.getElementById('right-panel');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (leftPanel) {
+                    leftPanel.style.display = 'none';
+                }
+                if (rightPanel) {
+                    rightPanel.style.display = 'none';
+                }
+                
+                // Make content area full width
+                if (mainContent) {
+                    mainContent.style.marginLeft = '0';
+                    mainContent.style.marginRight = '0';
+                }
+                contentArea.style.marginLeft = '0';
+                contentArea.style.marginRight = '0';
+                contentArea.style.width = '100%';
+                
+                // Update active menu item
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                if (event && event.target) {
+                    event.target.closest('.menu-item').classList.add('active');
+                }
+                
+                // Load Change Log Guide content
+                contentArea.innerHTML = `
+                    <div class="container-fluid">
+                        <div class="mb-4">
+                            <h2><i class="fas fa-info-circle"></i> Change Log Guide</h2>
+                            <p class="text-muted">Understanding the different change types in the Comparison table</p>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="card shadow-sm mb-4">
+                                    <div class="card-body">
+                                        <h4 class="mb-4">Change Types Reference</h4>
+                                        
+                                        <!-- Timing Information -->
+                                        <div class="alert alert-info mb-4">
+                                            <h5 class="alert-heading"><i class="fas fa-clock"></i> Timing Context</h5>
+                                            <p class="mb-0">All change types are evaluated <strong>after dispatch in NETO but before receival in REX</strong>. This represents the state of items while they are in transit or awaiting receival.</p>
+                                        </div>
+                                        
+                                        <!-- Change Type Cards -->
+                                        <div class="row g-4">
+                                            <!-- Quantity Changed -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-info">
+                                                    <div class="card-header bg-info bg-opacity-10">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-info text-dark">Quantity Changed</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
+                                                        <p><strong>Original REX Qty Ordered ≠ NETO Qty Invoiced</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>The quantity invoiced in NETO differs from the quantity ordered in REX.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>Original REX ordered: 100 units</li>
+                                                            <li>NETO invoiced: 85 units</li>
+                                                            <li><strong>Result:</strong> Quantity changed from 100 to 85</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Item Removed -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-danger">
+                                                    <div class="card-header bg-danger bg-opacity-10">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-danger">Item Removed</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
+                                                        <p><strong>Item not present on NETO invoice after dispatch</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>The item is not present on the NETO invoice. This usually indicates the item was out of stock or intentionally excluded.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>Item was ordered in REX</li>
+                                                            <li>Item does not appear on NETO invoice</li>
+                                                            <li><strong>Result:</strong> Item was removed from the order</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Receival Difference -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-primary">
+                                                    <div class="card-header bg-primary bg-opacity-10">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-primary">Receival Difference</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition (After Receival)</h6>
+                                                        <p><strong>NETO Qty Invoiced ≠ REX Qty Received</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>The quantity received in REX differs from the quantity invoiced in NETO. This usually indicates an error in what the warehouse has sent or how NETO invoice was updated.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>NETO invoiced: 100 units</li>
+                                                            <li>REX received: 95 units</li>
+                                                            <li><strong>Result:</strong> Warehouse may have reduced the stock quantity before dispatch or they may have picked the wrong quantity</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Delivery Gap -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-warning">
+                                                    <div class="card-header bg-warning bg-opacity-10">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-warning text-dark">Delivery Gap</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition (After Receival)</h6>
+                                                        <p><strong>Original REX Qty Ordered = REX Qty Received, but ≠ NETO Qty Invoiced</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>The order quantity in REX matches the received amount but differs from the NETO invoiced amount. This usually indicates the receiver did not update the final received quantity after the warehouse has received the stock.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>Original REX ordered: 100 units</li>
+                                                            <li>NETO invoiced: 85 units</li>
+                                                            <li>REX received: 100 units (not updated)</li>
+                                                            <li><strong>Result:</strong> Receiver needs to update REX to match actual quantity</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- New Item -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-success">
+                                                    <div class="card-header bg-success bg-opacity-10">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-success">New Item</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
+                                                        <p><strong>Item added to the order that wasn't originally requested</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>A new item has been added to the order that was not part of the original REX purchase order.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>Item was not in original REX PO</li>
+                                                            <li>Item appears on NETO invoice</li>
+                                                            <li><strong>Result:</strong> New item added to the order</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Back-ordered -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-warning">
+                                                    <div class="card-header bg-warning bg-opacity-10">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-warning text-dark">Back-ordered</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
+                                                        <p><strong>Item is marked as back-ordered in the system</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>The item is currently on back-order and waiting for stock to become available.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>Item was ordered</li>
+                                                            <li>Supplier is out of stock</li>
+                                                            <li><strong>Result:</strong> Item is back-ordered until stock arrives</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- No Change -->
+                                            <div class="col-md-6">
+                                                <div class="card h-100 border-secondary">
+                                                    <div class="card-header bg-light">
+                                                        <h5 class="mb-0">
+                                                            <span class="badge bg-light text-dark">No Change</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
+                                                        <p><strong>No discrepancies detected</strong></p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
+                                                        <p>The order has been processed without any changes or discrepancies.</p>
+                                                        
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
+                                                        <ul class="mb-0">
+                                                            <li>Ordered quantity matches invoiced quantity</li>
+                                                            <li>All items processed as expected</li>
+                                                            <li><strong>Result:</strong> No action required</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
             } else if (contentType === 'ops-dashboard') {
                 // Hide both left and right panels for full-width dashboard
                 const leftPanel = document.querySelector('.left-panel');
@@ -2249,32 +2486,29 @@
             `;
             
             data.forEach(row => {
-                // Create colored tag for change log
+                // Create colored tag for change log with specific colors for each type
                 const changeLog = row.change_log || '-';
                 let changeLogTag = changeLog;
                 if (changeLog !== '-') {
                     let badgeClass = 'bg-secondary'; // default
-                    if (changeLog.toLowerCase().includes('receival')) {
-                        badgeClass = 'bg-warning text-dark';
-                    } else if (changeLog.toLowerCase().includes('quantity')) {
-                        badgeClass = 'bg-info';
-                    } else if (changeLog.toLowerCase().includes('price')) {
-                        badgeClass = 'bg-danger';
-                    } else if (changeLog.toLowerCase().includes('difference')) {
-                        badgeClass = 'bg-primary';
-                    } else if (changeLog.toLowerCase().includes('new')) {
-                        badgeClass = 'bg-success';
-                    } else if (changeLog.toLowerCase().includes('removed')) {
-                        badgeClass = 'bg-danger';
-                    } else if (changeLog.toLowerCase().includes('delivery')) {
-                        badgeClass = 'bg-warning text-dark';
-                    } else if (changeLog.toLowerCase().includes('unchanged')) {
-                        badgeClass = 'bg-light text-dark';
-                    } else if (changeLog.toLowerCase().includes('gap')) {
-                        badgeClass = 'bg-warning text-dark';
-                    } else if (changeLog.toLowerCase().includes('changed')) {
-                        badgeClass = 'bg-info';
+                    
+                    // Exact matches for each change type
+                    if (changeLog === 'Back-ordered') {
+                        badgeClass = 'bg-warning text-dark'; // Orange/Yellow
+                    } else if (changeLog === 'Quantity Changed') {
+                        badgeClass = 'bg-info text-dark'; // Light Blue
+                    } else if (changeLog === 'Item Removed') {
+                        badgeClass = 'bg-danger'; // Red
+                    } else if (changeLog === 'No Change') {
+                        badgeClass = 'bg-light text-dark'; // Light Gray
+                    } else if (changeLog === 'Delivery Gap') {
+                        badgeClass = 'bg-warning text-dark'; // Orange
+                    } else if (changeLog === 'New Item') {
+                        badgeClass = 'bg-success'; // Green
+                    } else if (changeLog === 'Receival Difference') {
+                        badgeClass = 'bg-primary'; // Blue/Purple
                     }
+                    
                     changeLogTag = `<span class="badge ${badgeClass}">${changeLog}</span>`;
                 }
                 
