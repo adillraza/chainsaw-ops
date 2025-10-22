@@ -2266,11 +2266,13 @@
             
             summaryContainer.innerHTML = tableHTML;
             
-            // Initialize tooltips for the summary table
-            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#summaryContainer [data-bs-toggle="tooltip"]'));
-            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
+            // Initialize tooltips for the summary table (with safety check)
+            if (typeof bootstrap !== 'undefined') {
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('#summaryContainer [data-bs-toggle="tooltip"]'));
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+            }
         }
         
         function loadComparison(poId, orderId) {
@@ -2595,10 +2597,6 @@
             
             comparisonContainer.innerHTML = tableHTML;
             
-            // Initialize tooltips for change log badges
-            const tooltipTriggerList = comparisonContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-            const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
-            
             // Add event listeners for clickable rows
             const clickableRows = comparisonContainer.querySelectorAll('.clickable-row');
             clickableRows.forEach(row => {
@@ -2626,11 +2624,13 @@
                 comparisonBadge.textContent = `${totalCount}`;
             }
             
-            // Initialize tooltips
-            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#comparisonContainer [data-bs-toggle="tooltip"]'));
-            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
+            // Initialize tooltips (with safety check)
+            if (typeof bootstrap !== 'undefined') {
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('#comparisonContainer [data-bs-toggle="tooltip"]'));
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+            }
             
             // Add sorting functionality
             addComparisonTableSorting();
@@ -2716,11 +2716,13 @@
                 itemsBadge.textContent = `${totalCount}`;
             }
             
-            // Initialize tooltips for the items table
-            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#itemsContainer [data-bs-toggle="tooltip"]'));
-            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
+            // Initialize tooltips for the items table (with safety check)
+            if (typeof bootstrap !== 'undefined') {
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('#itemsContainer [data-bs-toggle="tooltip"]'));
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+            }
             
             // Add sorting functionality to items table
             addItemsTableSorting();
