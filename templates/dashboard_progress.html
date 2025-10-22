@@ -99,6 +99,12 @@ let tableProgress = {
 };
 
 function startRefresh() {
+    if (isRefreshing) {
+        addStatusMessage('Refresh is already in progress. Please wait...', 'warning');
+        return;
+    }
+    
+    isRefreshing = true;
     document.getElementById('start-refresh-btn').disabled = true;
     document.getElementById('start-refresh-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
     
@@ -116,10 +122,16 @@ function startRefresh() {
             startProgressTracking();
         } else {
             addStatusMessage('Error starting refresh: ' + data.message, 'danger');
+            isRefreshing = false;
+            document.getElementById('start-refresh-btn').disabled = false;
+            document.getElementById('start-refresh-btn').innerHTML = '<i class="fas fa-play"></i> Start Refresh';
         }
     })
     .catch(error => {
         addStatusMessage('Error starting refresh: ' + error.message, 'danger');
+        isRefreshing = false;
+        document.getElementById('start-refresh-btn').disabled = false;
+        document.getElementById('start-refresh-btn').innerHTML = '<i class="fas fa-play"></i> Start Refresh';
     });
 }
 
@@ -157,11 +169,12 @@ function checkCacheStatus() {
             // Only redirect when ALL tables are complete
             if (summaryComplete && itemsComplete && comparisonComplete) {
                 addStatusMessage('All data refresh completed! Redirecting to dashboard...', 'success');
+                isRefreshing = false;
+                clearInterval(refreshInterval);
+                clearInterval(progressInterval);
                 setTimeout(() => {
                     window.location.href = '/dashboard';
                 }, 3000); // Wait 3 seconds to show completion message
-                clearInterval(refreshInterval);
-                clearInterval(progressInterval);
             }
         }
     })
@@ -227,23 +240,34 @@ function addStatusMessage(message, type) {
     }, 10000);
 }
 
-// Auto-start refresh when page loads
+// Check if there's already a refresh in progress
+let isRefreshing = false;
+
+// Auto-start refresh when page loads (only if not already refreshing)
 document.addEventListener('DOMContentLoaded', function() {
-    addStatusMessage('Auto-starting data refresh...', 'info');
-    // Auto-start the refresh after a short delay
-    setTimeout(() => {
-        startRefresh();
-    }, 1000);
+    // Check cache status first
+    fetch('/api/bigquery/cache-status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.has_cached_data) {
+            // Data is already cached, redirect to dashboard
+            window.location.href = '/dashboard';
+        } else if (!isRefreshing) {
+            // No cached data and not refreshing, start refresh
+            addStatusMessage('Starting data refresh...', 'info');
+            setTimeout(() => {
+                startRefresh();
+            }, 1000);
+        }
+    });
     
     // Fallback timeout - if progress screen is stuck for more than 5 minutes, redirect to dashboard
     setTimeout(() => {
-        if (document.querySelector('.progress-screen')) {
-            console.log('Fallback timeout reached - redirecting to dashboard');
-            addStatusMessage('Data refresh taking longer than expected. Redirecting to dashboard...', 'warning');
-            setTimeout(() => {
-                window.location.href = '/dashboard';
-            }, 2000);
-        }
+        console.log('Fallback timeout reached - redirecting to dashboard');
+        addStatusMessage('Data refresh taking longer than expected. Redirecting to dashboard...', 'warning');
+        setTimeout(() => {
+            window.location.href = '/dashboard';
+        }, 2000);
     }, 300000); // 5 minutes
 });
 </script>
