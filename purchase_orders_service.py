@@ -627,24 +627,23 @@ class BigQueryService:
             return None, "BigQuery client not initialized"
         
         try:
-            # Build the comparison query with SKU filtering, joining with items table to get po_item_id
+            # Build the comparison query with SKU filtering
+            # po_item_id is now directly in the comparison table
             query = f"""
             SELECT DISTINCT
                 c.po_id,
+                c.po_item_id,
                 c.manufacturer_sku,
                 c.short_description,
                 c.change_type,
+                c.rex_available_qty,
                 c.neto_qty_available,
                 c.original_po_quantity_ordered,
                 c.neto_quantity_shipped,
                 c.latest_po_quantity_ordered,
                 c.quantity_received,
-                c.OrderID,
-                i.po_item_id
+                c.OrderID
             FROM `{self.project_id}.dataform.neto_rex_purchase_order_compared` c
-            INNER JOIN `{self.project_id}.dataform.neto_rex_purchase_order_report` i 
-                ON c.po_id = i.po_id 
-                AND UPPER(c.manufacturer_sku) = UPPER(i.manufacturer_sku)
             WHERE c.manufacturer_sku LIKE '%{sku_search_term}%'
             ORDER BY c.po_id, c.manufacturer_sku
             """
@@ -669,6 +668,7 @@ class BigQueryService:
                     'sku': row.manufacturer_sku,
                     'name': row.short_description,
                     'change_log': row.change_type,
+                    'rex_available_qty': float(row.rex_available_qty) if row.rex_available_qty else 0.0,
                     'neto_qty_available': float(row.neto_qty_available) if row.neto_qty_available else 0.0,
                     'original_rex_qty_ordered': float(row.original_po_quantity_ordered) if row.original_po_quantity_ordered else 0.0,
                     'neto_qty_shipped': float(row.neto_quantity_shipped) if row.neto_quantity_shipped else 0.0,
@@ -689,10 +689,12 @@ class BigQueryService:
             return [], "BigQuery client not initialized"
         
         try:
-            # Build the query with deduplication, joining with items table to get po_item_id and latest notes
+            # Build the query with deduplication, joining with notes to get latest notes
+            # po_item_id is now directly in the comparison table
             query = """
             SELECT DISTINCT
                 c.po_id,
+                c.po_item_id,
                 c.manufacturer_sku,
                 c.short_description,
                 c.change_type,
@@ -703,14 +705,10 @@ class BigQueryService:
                 c.latest_po_quantity_ordered,
                 c.quantity_received,
                 c.OrderID,
-                i.po_item_id,
                 n.comment as latest_item_note,
                 n.username as latest_item_note_user,
                 n.created_at as latest_item_note_date
             FROM `chainsawspares-385722.dataform.neto_rex_purchase_order_compared` c
-            LEFT JOIN `chainsawspares-385722.dataform.neto_rex_purchase_order_report` i 
-                ON c.po_id = i.po_id 
-                AND UPPER(c.manufacturer_sku) = UPPER(i.manufacturer_sku)
             LEFT JOIN (
                 SELECT 
                     po_item_id,
@@ -720,7 +718,7 @@ class BigQueryService:
                     ROW_NUMBER() OVER (PARTITION BY po_item_id ORDER BY created_at DESC) as rn
                 FROM `chainsawspares-385722.operations.item_notes`
                 WHERE deleted_at IS NULL
-            ) n ON CAST(i.po_item_id AS STRING) = n.po_item_id AND n.rn = 1
+            ) n ON CAST(c.po_item_id AS STRING) = n.po_item_id AND n.rn = 1
             WHERE 1=1
             """
             
@@ -780,10 +778,12 @@ class BigQueryService:
             return [], "BigQuery client not initialized"
         
         try:
-            # Use DISTINCT to remove duplicates at the BigQuery level, joining with items table to get po_item_id
+            # Use DISTINCT to remove duplicates at the BigQuery level
+            # po_item_id is now directly in the comparison table
             query = """
             SELECT DISTINCT
                 c.po_id,
+                c.po_item_id,
                 c.manufacturer_sku,
                 c.short_description,
                 c.change_type,
@@ -793,12 +793,8 @@ class BigQueryService:
                 c.neto_quantity_shipped,
                 c.latest_po_quantity_ordered,
                 c.quantity_received,
-                c.OrderID,
-                i.po_item_id
+                c.OrderID
             FROM `chainsawspares-385722.dataform.neto_rex_purchase_order_compared` c
-            INNER JOIN `chainsawspares-385722.dataform.neto_rex_purchase_order_report` i 
-                ON c.po_id = i.po_id 
-                AND UPPER(c.manufacturer_sku) = UPPER(i.manufacturer_sku)
             ORDER BY c.po_id, c.manufacturer_sku
             """
             
