@@ -378,6 +378,12 @@ def cache_purchase_order_data():
             summary_cached = 0
             batch_size = 100
             for i in range(0, len(summary_data), batch_size):
+                # Check if we should stop
+                if sync_state['should_stop']:
+                    print("Sync cancelled during summary caching")
+                    sync_state['is_running'] = False
+                    return False, "Sync cancelled"
+                
                 batch = summary_data[i:i + batch_size]
                 for row in batch:
                     try:
@@ -432,6 +438,12 @@ def cache_purchase_order_data():
             items_cached = 0
             batch_size = 100
             for i in range(0, len(items_data), batch_size):
+                # Check if we should stop
+                if sync_state['should_stop']:
+                    print("Sync cancelled during items caching")
+                    sync_state['is_running'] = False
+                    return False, "Sync cancelled"
+                
                 batch = items_data[i:i + batch_size]
                 for item in batch:
                     try:
@@ -485,6 +497,12 @@ def cache_purchase_order_data():
             comparison_cached = 0
             batch_size = 100
             for i in range(0, len(comparison_data), batch_size):
+                # Check if we should stop
+                if sync_state['should_stop']:
+                    print("Sync cancelled during comparison caching")
+                    sync_state['is_running'] = False
+                    return False, "Sync cancelled"
+                
                 batch = comparison_data[i:i + batch_size]
                 for comp in batch:
                     try:
