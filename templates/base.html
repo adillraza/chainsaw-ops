@@ -2491,25 +2491,35 @@
                 let changeLogTag = changeLog;
                 if (changeLog !== '-') {
                     let badgeClass = 'bg-secondary'; // default
+                    let tooltipText = '';
                     
-                    // Exact matches for each change type
+                    // Exact matches for each change type with tooltip descriptions
                     if (changeLog === 'Back-ordered') {
                         badgeClass = 'bg-dark'; // Blackish/Dark Gray
+                        tooltipText = 'Item is on back-order, waiting for stock availability';
                     } else if (changeLog === 'Quantity Changed') {
                         badgeClass = 'bg-info text-dark'; // Light Blue
+                        tooltipText = 'NETO invoiced quantity differs from REX ordered quantity';
                     } else if (changeLog === 'Item Removed') {
                         badgeClass = 'bg-danger'; // Red
+                        tooltipText = 'Item not present on NETO invoice (out of stock or excluded)';
                     } else if (changeLog === 'No Change') {
                         badgeClass = 'bg-light text-dark'; // Light Gray
+                        tooltipText = ''; // No tooltip for "No Change"
                     } else if (changeLog === 'Delivery Gap') {
                         badgeClass = 'bg-warning text-dark'; // Orange
+                        tooltipText = 'REX received matches ordered but differs from NETO invoiced';
                     } else if (changeLog === 'New Item') {
                         badgeClass = 'bg-success'; // Green
+                        tooltipText = 'New item added that wasn\'t in original REX PO';
                     } else if (changeLog === 'Receival Difference') {
                         badgeClass = 'bg-primary'; // Blue/Purple
+                        tooltipText = 'REX received quantity differs from NETO invoiced quantity';
                     }
                     
-                    changeLogTag = `<span class="badge ${badgeClass}">${changeLog}</span>`;
+                    // Add tooltip only if there's tooltip text
+                    const tooltipAttr = tooltipText ? `data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipText}"` : '';
+                    changeLogTag = `<span class="badge ${badgeClass}" ${tooltipAttr}>${changeLog}</span>`;
                 }
                 
                 // No row background colors - badges provide sufficient visual distinction
@@ -2584,6 +2594,10 @@
             `;
             
             comparisonContainer.innerHTML = tableHTML;
+            
+            // Initialize tooltips for change log badges
+            const tooltipTriggerList = comparisonContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
+            const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
             
             // Add event listeners for clickable rows
             const clickableRows = comparisonContainer.querySelectorAll('.clickable-row');
