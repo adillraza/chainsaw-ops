@@ -2240,8 +2240,7 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in REX system" class="sortable text-center" data-sort="rex_available_qty" style="width: 80px;">REX Qty Available <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in NETO system" class="sortable text-center" data-sort="neto_qty_available" style="width: 80px;">NETO Qty Available <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Original quantity ordered in REX system" class="sortable text-center" data-sort="original_rex_qty_ordered" style="width: 80px;">Original REX Qty Ordered <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity shipped from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Shipped <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Final quantity ordered in REX" class="sortable text-center" data-sort="final_rex_qty_ordered" style="width: 80px;">Final REX Qty Ordered <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity invoiced from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Invoiced <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity received in REX" class="sortable text-center" data-sort="rex_qty_received" style="width: 80px;">REX Qty Received <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note or comment" class="text-center" style="width: 250px;">Latest Note</th>
                             </tr>
@@ -2317,14 +2316,13 @@
             const escapedNetoQtyAvailable = escapeJsString(row.neto_qty_available);
             const escapedOriginalRexQtyOrdered = escapeJsString(row.original_rex_qty_ordered);
             const escapedNetoQtyShipped = escapeJsString(row.neto_qty_shipped);
-            const escapedFinalRexQtyOrdered = escapeJsString(row.final_rex_qty_ordered);
             const escapedRexQtyReceived = escapeJsString(row.rex_qty_received);
             
             // Add clickable class only if item has valid po_item_id
             const clickableClass = hasValidPoItemId ? 'clickable-row' : 'non-clickable-row';
             const dataAttributes = hasValidPoItemId ? 
-                `data-po-item-id="${escapedPoItemId}" data-po-id="${escapedPoId}" data-sku="${escapedSku}" data-name="${escapedName}" data-change-log="${escapedChangeLog}" data-neto-qty-available="${escapedNetoQtyAvailable}" data-original-rex-qty-ordered="${escapedOriginalRexQtyOrdered}" data-neto-qty-shipped="${escapedNetoQtyShipped}" data-final-rex-qty-ordered="${escapedFinalRexQtyOrdered}" data-rex-qty-received="${escapedRexQtyReceived}"` : 
-                `data-po-id="${escapedPoId}" data-sku="${escapedSku}" data-name="${escapedName}" data-change-log="${escapedChangeLog}" data-neto-qty-available="${escapedNetoQtyAvailable}" data-original-rex-qty-ordered="${escapedOriginalRexQtyOrdered}" data-neto-qty-shipped="${escapedNetoQtyShipped}" data-final-rex-qty-ordered="${escapedFinalRexQtyOrdered}" data-rex-qty-received="${escapedRexQtyReceived}"`;
+                `data-po-item-id="${escapedPoItemId}" data-po-id="${escapedPoId}" data-sku="${escapedSku}" data-name="${escapedName}" data-change-log="${escapedChangeLog}" data-neto-qty-available="${escapedNetoQtyAvailable}" data-original-rex-qty-ordered="${escapedOriginalRexQtyOrdered}" data-neto-qty-shipped="${escapedNetoQtyShipped}" data-rex-qty-received="${escapedRexQtyReceived}"` : 
+                `data-po-id="${escapedPoId}" data-sku="${escapedSku}" data-name="${escapedName}" data-change-log="${escapedChangeLog}" data-neto-qty-available="${escapedNetoQtyAvailable}" data-original-rex-qty-ordered="${escapedOriginalRexQtyOrdered}" data-neto-qty-shipped="${escapedNetoQtyShipped}" data-rex-qty-received="${escapedRexQtyReceived}"`;
             
             // Add tooltip for non-clickable rows
             const tooltipAttr = hasValidPoItemId ? '' : 'data-bs-toggle="tooltip" data-bs-placement="top" title="This item cannot be clicked because it has no item ID. It may be a comparison-only item that doesn\'t exist in the main items table."';
@@ -2339,7 +2337,6 @@
                     <td class="numeric-column">${row.neto_qty_available || '-'}</td>
                     <td class="numeric-column">${row.original_rex_qty_ordered || '-'}</td>
                     <td class="numeric-column">${row.neto_qty_shipped || '-'}</td>
-                    <td class="numeric-column">${row.final_rex_qty_ordered || '-'}</td>
                     <td class="numeric-column">${row.rex_qty_received || '-'}</td>
                     <td class="text-start">${latestItemNote}</td>
                 </tr>
@@ -3170,14 +3167,10 @@
                                 <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.original_rex_qty_ordered || '-'}</td>
                             </tr>
                             <tr style="background-color: #ffffff;">
-                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">NETO Qty Shipped</td>
+                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">NETO Qty Invoiced</td>
                                 <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.neto_qty_shipped || '-'}</td>
                             </tr>
                             <tr style="background-color: #f8f9fa;">
-                                <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">Final REX Qty Ordered</td>
-                                <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.final_rex_qty_ordered || '-'}</td>
-                            </tr>
-                            <tr style="background-color: #ffffff;">
                                 <td class="fw-bold" style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">REX Qty Received</td>
                                 <td style="padding: 8px 12px; border-bottom: 1px solid #dee2e6;">${currentItemData.rex_qty_received || '-'}</td>
                             </tr>
