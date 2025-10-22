@@ -19,6 +19,12 @@ actual_totals = {
     'comparison_total': 0
 }
 
+# Global flag to track and control sync state
+sync_state = {
+    'is_running': False,
+    'should_stop': False
+}
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
@@ -306,6 +312,17 @@ def cache_purchase_order_data():
     """Fetch all data from BigQuery and cache it locally"""
     with app.app_context():
         try:
+            global sync_state
+            
+            # Check if already running
+            if sync_state['is_running']:
+                print("Sync already in progress, skipping...")
+                return False, "Sync already in progress"
+            
+            # Mark as running
+            sync_state['is_running'] = True
+            sync_state['should_stop'] = False
+            
             print("Starting to cache all purchase order data...")
             
             # Clear existing cached data
@@ -316,11 +333,18 @@ def cache_purchase_order_data():
             db.session.commit()
             print("Cache cleared successfully")
             
+            # Check if we should stop
+            if sync_state['should_stop']:
+                print("Sync cancelled by user")
+                sync_state['is_running'] = False
+                return False, "Sync cancelled"
+            
             # Get actual counts from BigQuery first
             print("Getting actual data counts from BigQuery...")
             summary_count, error = purchase_orders_service.get_summary_count()
             if error:
                 print(f"Error getting summary count: {error}")
+                sync_state['is_running'] = False
                 return False, error
             
             items_count, error = purchase_orders_service.get_items_count()
@@ -491,11 +515,17 @@ def cache_purchase_order_data():
             
             print(f"Successfully cached {comparison_cached} comparison records")
             
+            # Mark sync as complete
+            sync_state['is_running'] = False
+            sync_state['should_stop'] = False
+            
             return True, f"Cached {summary_cached} summary, {items_cached} items, and {comparison_cached} comparison records"
             
         except Exception as e:
             print(f"Error caching data: {str(e)}")
             db.session.rollback()
+            sync_state['is_running'] = False
+            sync_state['should_stop'] = False
             return False, str(e)
 
 def get_cached_summary_data(search_term=None):
@@ -1076,7 +1106,7 @@ def cache_status():
             last_cached = latest_record.cached_at.isoformat() + 'Z'
         
         # Use actual totals from BigQuery count queries
-        global actual_totals
+        global actual_totals, sync_state
         totals = {
             'summary_total': actual_totals['summary_total'],
             'items_total': actual_totals['items_total'],
@@ -1092,7 +1122,8 @@ def cache_status():
             'items_total': totals['items_total'],
             'comparison_total': totals['comparison_total'],
             'has_cached_data': summary_count > 0,
-            'last_cached': last_cached
+            'last_cached': last_cached,
+            'is_syncing': sync_state['is_running']
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -1100,16 +1131,34 @@ def cache_status():
 @app.route('/api/bigquery/clear-cache', methods=['POST'])
 @login_required
 def clear_cache():
-    """Clear all cached data"""
+    """Clear all cached data and stop any ongoing sync"""
     try:
+        global sync_state
+        
+        # Stop any ongoing sync
+        if sync_state['is_running']:
+            print("Stopping ongoing sync due to cache clear request...")
+            sync_state['should_stop'] = True
+            
+            # Wait a moment for sync to stop
+            import time
+            time.sleep(2)
+        
+        # Clear the cache
         CachedPurchaseOrderSummary.query.delete()
         CachedPurchaseOrderItem.query.delete()
         CachedPurchaseOrderComparison.query.delete()
         db.session.commit()
         
+        # Reset sync state
+        sync_state['is_running'] = False
+        sync_state['should_stop'] = False
+        
+        print("Cache cleared successfully")
+        
         return jsonify({
             'success': True,
-            'message': 'Cache cleared successfully'
+            'message': 'Cache cleared successfully. Any ongoing sync has been stopped.'
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
