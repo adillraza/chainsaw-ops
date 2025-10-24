@@ -1008,7 +1008,11 @@
                                         <!-- Timing Information -->
                                         <div class="alert alert-info mb-4">
                                             <h5 class="alert-heading"><i class="fas fa-clock"></i> Timing Context</h5>
-                                            <p class="mb-0">All change types are evaluated <strong>after dispatch in NETO but before receival in REX</strong>. This represents the state of items while they are in transit or awaiting receival.</p>
+                                            <p class="mb-2">Change types are evaluated at different stages of the order lifecycle:</p>
+                                            <ul class="mb-0">
+                                                <li><strong>After NETO dispatch but before REX receival:</strong> Items are in transit or awaiting receival</li>
+                                                <li><strong>After invoice has been received into REX:</strong> Items have been physically received and quantities updated</li>
+                                            </ul>
                                         </div>
                                         
                                         <!-- Change Type Cards -->
@@ -1028,12 +1032,44 @@
                                                         <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
                                                         <p>The quantity invoiced in NETO differs from the quantity ordered in REX.</p>
                                                         
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>Original REX ordered: 100 units</li>
-                                                            <li>NETO invoiced: 85 units</li>
-                                                            <li><strong>Result:</strong> Quantity changed from 100 to 85</li>
-                                                        </ul>
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Examples</h6>
+                                                        
+                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> Before Receival:</small></p>
+                                                        <table class="table table-sm table-bordered mb-3">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>3</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        
+                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> After Receival:</small></p>
+                                                        <table class="table table-sm table-bordered mb-2">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>10</td>
+                                                                    <td>6</td>
+                                                                    <td>8</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <p class="mb-0"><small><strong>Result:</strong> NETO invoiced a different quantity than originally ordered</small></p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1054,11 +1090,25 @@
                                                         <p>The item is not present on the NETO invoice. This usually indicates the item was out of stock or intentionally excluded.</p>
                                                         
                                                         <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>Item was ordered in REX</li>
-                                                            <li>Item does not appear on NETO invoice</li>
-                                                            <li><strong>Result:</strong> Item was removed from the order</li>
-                                                        </ul>
+                                                        
+                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> Before Receival:</small></p>
+                                                        <table class="table table-sm table-bordered mb-2">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>4</td>
+                                                                    <td>-</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <p class="mb-0"><small><strong>Result:</strong> Item was ordered in REX but not included on NETO invoice (out of stock or excluded)</small></p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1078,12 +1128,40 @@
                                                         <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
                                                         <p>The quantity received in REX differs from the quantity invoiced in NETO. This usually indicates an error in what the warehouse has sent or how NETO invoice was updated.</p>
                                                         
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>NETO invoiced: 100 units</li>
-                                                            <li>REX received: 95 units</li>
-                                                            <li><strong>Result:</strong> Warehouse may have reduced the stock quantity before dispatch or they may have picked the wrong quantity</li>
-                                                        </ul>
+                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Examples</h6>
+                                                        
+                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> After Receival:</small></p>
+                                                        <table class="table table-sm table-bordered mb-2">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                    <th>Scenario</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>4</td>
+                                                                    <td>5</td>
+                                                                    <td><small>Received more than invoiced</small></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>5</td>
+                                                                    <td>3</td>
+                                                                    <td><small>Received less than invoiced</small></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>4</td>
+                                                                    <td>3</td>
+                                                                    <td><small>Received different from both</small></td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <p class="mb-0"><small><strong>Result:</strong> Physical receival doesn't match the invoice - warehouse error or picking mistake</small></p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1104,12 +1182,25 @@
                                                         <p>The order quantity in REX matches the received amount but differs from the NETO invoiced amount. This usually indicates the receiver did not update the final received quantity after the warehouse has received the stock.</p>
                                                         
                                                         <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>Original REX ordered: 100 units</li>
-                                                            <li>NETO invoiced: 85 units</li>
-                                                            <li>REX received: 100 units (not updated)</li>
-                                                            <li><strong>Result:</strong> Receiver needs to update REX to match actual quantity</li>
-                                                        </ul>
+                                                        
+                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> After Receival:</small></p>
+                                                        <table class="table table-sm table-bordered mb-2">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>12</td>
+                                                                    <td>8</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <p class="mb-0"><small><strong>Result:</strong> REX received matches ordered qty but differs from NETO invoice - receiver needs to update REX to match actual received quantity</small></p>
                                                     </div>
                                                 </div>
                                             </div>
