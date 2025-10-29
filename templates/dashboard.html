@@ -14,31 +14,35 @@
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
-                <h5><i class="fas fa-clock"></i> Recent Logins</h5>
+                <h5><i class="fas fa-sync-alt"></i> Data Synchronization</h5>
             </div>
             <div class="card-body">
-                {% if recent_logins %}
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Login Time</th>
-                                    <th>IP Address</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for login in recent_logins %}
-                                <tr>
-                                    <td>{{ login.login_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                    <td>{{ login.ip_address or 'Unknown' }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">Last Data Sync:</span>
+                        <span id="last-sync-time" class="fw-bold text-primary">
+                            <i class="fas fa-spinner fa-spin"></i> Loading...
+                        </span>
                     </div>
-                {% else %}
-                    <p class="text-muted">No recent logins found.</p>
-                {% endif %}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted">Cache Status:</span>
+                        <span id="cache-status" class="fw-bold">
+                            <i class="fas fa-spinner fa-spin"></i> Checking...
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 mt-4">
+                    <button class="btn btn-primary" id="refresh-data-btn" onclick="startDataRefresh()">
+                        <i class="fas fa-sync-alt"></i> Refresh Data
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="testConnection()">
+                        <i class="fas fa-plug"></i> Test Connection
+                    </button>
+                    <button class="btn btn-outline-danger" onclick="clearCacheData()">
+                        <i class="fas fa-trash-alt"></i> Clear Cache
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -108,5 +112,117 @@
         </div>
     </div>
 </div>
+
+<script>
+// Load cache status and last sync time on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadCacheStatus();
+    // Refresh cache status every 30 seconds
+    setInterval(loadCacheStatus, 30000);
+});
+
+function loadCacheStatus() {
+    fetch('/api/bigquery/cache-status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update last sync time
+                const lastSyncElement = document.getElementById('last-sync-time');
+                if (data.last_refresh_time) {
+                    lastSyncElement.innerHTML = '<i class="fas fa-check-circle text-success"></i> ' + data.last_refresh_time;
+                } else {
+                    lastSyncElement.innerHTML = '<i class="fas fa-exclamation-circle text-warning"></i> Never';
+                }
+                
+                // Update cache status
+                const cacheStatusElement = document.getElementById('cache-status');
+                if (data.has_cached_data) {
+                    const totalRecords = (data.summary_count || 0) + (data.items_count || 0) + (data.comparison_count || 0);
+                    cacheStatusElement.innerHTML = '<span class="text-success"><i class="fas fa-database"></i> ' + totalRecords.toLocaleString() + ' records</span>';
+                } else {
+                    cacheStatusElement.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> No data cached</span>';
+                }
+                
+                // Update button state if sync is running
+                const refreshBtn = document.getElementById('refresh-data-btn');
+                if (data.is_syncing) {
+                    refreshBtn.disabled = true;
+                    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+                } else {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading cache status:', error);
+            document.getElementById('last-sync-time').innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i> Error loading';
+            document.getElementById('cache-status').innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Error</span>';
+        });
+}
+
+function startDataRefresh() {
+    // Redirect to the progress page which will auto-start the refresh
+    window.location.href = '/dashboard_progress';
+}
+
+function testConnection() {
+    const btn = event.target;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+    
+    fetch('/api/bigquery/test-connection')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Connection successful!\n\nBigQuery: Connected\nProject: ' + (data.project || 'Unknown'));
+            } else {
+                alert('❌ Connection failed!\n\nError: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            alert('❌ Connection test failed!\n\nError: ' + error.message);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        });
+}
+
+function clearCacheData() {
+    if (!confirm('Are you sure you want to clear the cache? This will remove all cached data and you will need to refresh the data again.')) {
+        return;
+    }
+    
+    const btn = event.target;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing...';
+    
+    fetch('/api/bigquery/clear-cache', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Cache cleared successfully!');
+            loadCacheStatus(); // Reload cache status
+        } else {
+            alert('❌ Failed to clear cache!\n\nError: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('❌ Failed to clear cache!\n\nError: ' + error.message);
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    });
+}
+</script>
 
 {% endblock %}
