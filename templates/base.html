@@ -650,12 +650,7 @@
             if (contentType === 'rex-po-orders') {
                 // Show left panel and hide right panel
                 showLeftPanel();
-                hideRightPanel(); // Hide right panel with proper class management
-                
-                // Restore content area margins
-                contentArea.style.marginLeft = '';
-                contentArea.style.marginRight = '';
-                contentArea.style.width = '';
+                hideRightPanel(); // Hide right panel with proper class management (inline styles cleared automatically)
                 
                 // Update active menu item
                 document.querySelectorAll('.menu-item').forEach(item => {
@@ -782,12 +777,7 @@
             } else if (contentType === 'cost-price-check') {
                 // Show left panel and hide right panel
                 showLeftPanel();
-                hideRightPanel(); // Hide right panel with proper class management
-                
-                // Restore content area margins
-                contentArea.style.marginLeft = '';
-                contentArea.style.marginRight = '';
-                contentArea.style.width = '';
+                hideRightPanel(); // Hide right panel with proper class management (inline styles cleared automatically)
                 
                 // Update active menu item
                 document.querySelectorAll('.menu-item').forEach(item => {
@@ -886,12 +876,7 @@
             } else if (contentType === 'comparison') {
                 // Show left panel and hide right panel
                 showLeftPanel();
-                hideRightPanel(); // Hide right panel with proper class management
-                
-                // Restore content area margins
-                contentArea.style.marginLeft = '';
-                contentArea.style.marginRight = '';
-                contentArea.style.width = '';
+                hideRightPanel(); // Hide right panel with proper class management (inline styles cleared automatically)
                 
                 // Update active menu item
                 document.querySelectorAll('.menu-item').forEach(item => {
@@ -3882,6 +3867,9 @@
             }
             if (mainContent) {
                 mainContent.classList.remove('left-panel-hidden');
+                // Clear any inline styles that might interfere
+                mainContent.style.marginLeft = '';
+                mainContent.style.marginRight = '';
             }
         }
         
@@ -3895,6 +3883,9 @@
             }
             if (mainContent) {
                 mainContent.classList.add('left-panel-hidden');
+                // Clear any inline styles that might interfere
+                mainContent.style.marginLeft = '';
+                mainContent.style.marginRight = '';
             }
         }
         
@@ -3909,6 +3900,10 @@
             }
             if (contentArea) {
                 contentArea.classList.remove('right-panel-hidden');
+                // Clear any inline styles that might interfere
+                contentArea.style.marginRight = '';
+                contentArea.style.marginLeft = '';
+                contentArea.style.width = '';
             }
         }
         
@@ -3922,6 +3917,10 @@
             }
             if (contentArea) {
                 contentArea.classList.add('right-panel-hidden');
+                // Clear any inline styles that might interfere
+                contentArea.style.marginRight = '';
+                contentArea.style.marginLeft = '';
+                contentArea.style.width = '';
             }
         }
         
