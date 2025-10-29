@@ -137,7 +137,12 @@
             padding: 20px;
             overflow-y: auto;
             z-index: 998;
-            transition: width 0.2s ease;
+            transition: width 0.2s ease, transform 0.3s ease;
+        }
+        
+        /* Hide right panel by sliding it out */
+        .right-panel.hidden {
+            transform: translateX(100%);
         }
         
         .resize-handle {
@@ -162,7 +167,12 @@
         
         .content-area {
             margin-right: 400px;
-            transition: margin-right 0.2s ease;
+            transition: margin-right 0.3s ease;
+        }
+        
+        /* When right panel is hidden, expand content area to full width */
+        .content-area.right-panel-hidden {
+            margin-right: 0;
         }
         
         .card {
@@ -537,7 +547,7 @@
 
     <!-- Main Content Area -->
     <div class="main-content left-panel-hidden">
-        <div class="content-area">
+        <div class="content-area right-panel-hidden">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -555,7 +565,7 @@
 
     <!-- Right Panel -->
     {% if current_user.is_authenticated %}
-    <div class="right-panel" id="right-panel">
+    <div class="right-panel hidden" id="right-panel">
         <div class="resize-handle" id="resize-handle"></div>
         <!-- Default Quick Info Panel -->
         <div id="quick-info-panel">
@@ -640,11 +650,7 @@
             if (contentType === 'rex-po-orders') {
                 // Show left panel and hide right panel
                 showLeftPanel();
-                
-                const rightPanel = document.getElementById('right-panel');
-                if (rightPanel) {
-                    rightPanel.style.display = 'none'; // Hide Quick Info for this page
-                }
+                hideRightPanel(); // Hide right panel with proper class management
                 
                 // Restore content area margins
                 contentArea.style.marginLeft = '';
@@ -776,11 +782,7 @@
             } else if (contentType === 'cost-price-check') {
                 // Show left panel and hide right panel
                 showLeftPanel();
-                
-                const rightPanel = document.getElementById('right-panel');
-                if (rightPanel) {
-                    rightPanel.style.display = 'none'; // Hide Quick Info for this page
-                }
+                hideRightPanel(); // Hide right panel with proper class management
                 
                 // Restore content area margins
                 contentArea.style.marginLeft = '';
@@ -884,11 +886,7 @@
             } else if (contentType === 'comparison') {
                 // Show left panel and hide right panel
                 showLeftPanel();
-                
-                const rightPanel = document.getElementById('right-panel');
-                if (rightPanel) {
-                    rightPanel.style.display = 'none'; // Hide Quick Info for this page
-                }
+                hideRightPanel(); // Hide right panel with proper class management
                 
                 // Restore content area margins
                 contentArea.style.marginLeft = '';
@@ -950,11 +948,7 @@
             } else if (contentType === 'change-log-guide') {
                 // Hide both panels for full-width guide
                 hideLeftPanel();
-                
-                const rightPanel = document.getElementById('right-panel');
-                if (rightPanel) {
-                    rightPanel.style.display = 'none';
-                }
+                hideRightPanel();
                 
                 // Make content area full width
                 contentArea.style.marginLeft = '0';
@@ -1267,11 +1261,7 @@
             } else if (contentType === 'ops-dashboard') {
                 // Hide both panels for full-width dashboard
                 hideLeftPanel();
-                
-                const rightPanel = document.getElementById('right-panel');
-                if (rightPanel) {
-                    rightPanel.style.display = 'none';
-                }
+                hideRightPanel();
                 
                 // Make content area full width
                 contentArea.style.marginLeft = '0';
@@ -3317,13 +3307,11 @@
                     // Show item details panel and left panel for notes
                     const quickInfoPanel = document.getElementById('quick-info-panel');
                     const itemDetailsPanel = document.getElementById('item-details-panel');
-                    const leftPanel = document.querySelector('.left-panel');
-                    const rightPanel = document.getElementById('right-panel');
                     
                     if (quickInfoPanel) quickInfoPanel.style.display = 'none';
-                    if (rightPanel) rightPanel.style.display = 'block'; // Show right panel (parent of item-details-panel)
+                    showRightPanel(); // Show right panel with proper class management
                     if (itemDetailsPanel) itemDetailsPanel.style.display = 'block';
-                    if (leftPanel) leftPanel.style.display = 'block'; // Show left panel for notes
+                    showLeftPanel(); // Show left panel for notes
                     
                     // Clear the notes area first to prevent showing old notes
                     const notesList = document.getElementById('notes-list');
@@ -3907,6 +3895,33 @@
             }
             if (mainContent) {
                 mainContent.classList.add('left-panel-hidden');
+            }
+        }
+        
+        // Helper functions to show/hide right panel with proper class management
+        function showRightPanel() {
+            const rightPanel = document.getElementById('right-panel');
+            const contentArea = document.querySelector('.content-area');
+            
+            if (rightPanel) {
+                rightPanel.classList.remove('hidden');
+                rightPanel.style.display = 'block';
+            }
+            if (contentArea) {
+                contentArea.classList.remove('right-panel-hidden');
+            }
+        }
+        
+        function hideRightPanel() {
+            const rightPanel = document.getElementById('right-panel');
+            const contentArea = document.querySelector('.content-area');
+            
+            if (rightPanel) {
+                rightPanel.classList.add('hidden');
+                // Keep display: block but slide it out with transform
+            }
+            if (contentArea) {
+                contentArea.classList.add('right-panel-hidden');
             }
         }
         
