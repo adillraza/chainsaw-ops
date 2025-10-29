@@ -1258,12 +1258,27 @@ def get_notes(po_item_id):
 def delete_note(note_id):
     """Soft delete a note"""
     try:
+        # Get note details before deletion to update cache
+        data = request.get_json()
+        po_item_id = data.get('po_item_id')
+        po_id = data.get('po_id')
+        
+        if not po_item_id or not po_id:
+            return jsonify({'success': False, 'error': 'Missing po_item_id or po_id'}), 400
+        
         success, message = purchase_orders_service.delete_item_note(
             note_id=note_id,
             username=current_user.username
         )
         
         if success:
+            # Update the cache after deletion to reflect the latest notes
+            try:
+                update_cache_with_latest_note(po_item_id, po_id)
+                print(f"Cache updated after deleting note {note_id} for po_item_id {po_item_id}")
+            except Exception as e:
+                print(f"Warning: Failed to update cache after deletion for po_item_id {po_item_id}: {str(e)}")
+            
             return jsonify({'success': True, 'message': message})
         else:
             return jsonify({'success': False, 'error': message}), 500

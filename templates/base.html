@@ -3640,16 +3640,43 @@
                 return;
             }
             
+            if (!currentItemData || !currentItemData.po_item_id || !currentItemData.po_id) {
+                alert('Error: Missing item information');
+                return;
+            }
+            
+            // Freeze UI - disable all buttons and show loading state
+            const deleteButtons = document.querySelectorAll('.delete-note-btn');
+            const saveButton = document.getElementById('save-note-btn');
+            const noteTextarea = document.getElementById('new-note');
+            
+            deleteButtons.forEach(btn => btn.disabled = true);
+            if (saveButton) saveButton.disabled = true;
+            if (noteTextarea) noteTextarea.disabled = true;
+            
+            // Show loading overlay
+            const notesSection = document.getElementById('item-notes-list');
+            if (notesSection) {
+                notesSection.style.opacity = '0.5';
+                notesSection.style.pointerEvents = 'none';
+            }
+            
             fetch(`/api/notes/${noteId}/delete`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include'
+                credentials: 'include',
+                body: JSON.stringify({
+                    po_item_id: currentItemData.po_item_id,
+                    po_id: currentItemData.po_id
+                })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    console.log('Note deleted and cache updated successfully');
+                    
                     // Reload notes to reflect the deletion
                     if (currentItemData) {
                         loadItemNotes(currentItemData.po_item_id);
@@ -3664,6 +3691,18 @@
             .catch(error => {
                 console.error('Error deleting note:', error);
                 alert('Error deleting note. Please try again.');
+            })
+            .finally(() => {
+                // Unfreeze UI after completion
+                deleteButtons.forEach(btn => btn.disabled = false);
+                if (saveButton) saveButton.disabled = false;
+                if (noteTextarea) noteTextarea.disabled = false;
+                
+                // Remove loading overlay
+                if (notesSection) {
+                    notesSection.style.opacity = '1';
+                    notesSection.style.pointerEvents = 'auto';
+                }
             });
         }
         
