@@ -2641,10 +2641,13 @@
             // Add tooltip for non-clickable rows
             const tooltipAttr = hasValidPoItemId ? '' : 'data-bs-toggle="tooltip" data-bs-placement="top" title="This item cannot be clicked because it has no item ID. It may be a comparison-only item that doesn\'t exist in the main items table."';
             
+            // Display "NOT FOUND" in red if SKU is missing
+            const skuDisplay = row.sku ? row.sku : '<span style="color: red; font-weight: bold;">NOT FOUND</span>';
+            
             tableHTML += `
                 <tr class="${rowBgClass} ${clickableClass}" ${dataAttributes} ${tooltipAttr}>
                     <td class="numeric-column">${row.po_id || '-'}</td>
-                    <td>${row.sku || '-'}</td>
+                    <td>${skuDisplay}</td>
                     <td>${row.name || '-'}</td>
                     <td class="text-center">${changeLogTag}</td>
                     <td class="numeric-column">${row.rex_available_qty !== null && row.rex_available_qty !== undefined ? row.rex_available_qty : 0}</td>
