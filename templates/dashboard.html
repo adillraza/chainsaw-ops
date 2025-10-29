@@ -138,8 +138,20 @@ function loadCacheStatus() {
             if (data.success) {
                 // Update last sync time
                 const lastSyncElement = document.getElementById('last-sync-time');
-                if (data.last_refresh_time) {
-                    lastSyncElement.innerHTML = '<i class="fas fa-check-circle text-success"></i> ' + data.last_refresh_time;
+                if (data.last_cached) {
+                    // Format timestamp in Melbourne time like other tabs
+                    const utcDate = new Date(data.last_cached);
+                    const melbourneTime = utcDate.toLocaleString('en-AU', {
+                        timeZone: 'Australia/Melbourne',
+                        year: 'numeric',
+                        month: 'short',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                    });
+                    lastSyncElement.innerHTML = '<i class="fas fa-check-circle text-success"></i> ' + melbourneTime;
                 } else {
                     lastSyncElement.innerHTML = '<i class="fas fa-exclamation-circle text-warning"></i> Never';
                 }
