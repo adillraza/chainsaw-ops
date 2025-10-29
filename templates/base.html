@@ -181,6 +181,26 @@
             max-width: 100%;
         }
         
+        /* Ensure all content within content-area respects the width constraint */
+        .content-area > * {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* Ensure tables and their wrappers respect content-area width */
+        .content-area .card,
+        .content-area .table-responsive {
+            max-width: 100%;
+            overflow-x: auto;
+            box-sizing: border-box;
+        }
+        
+        .content-area table {
+            table-layout: auto;
+            width: 100%;
+            max-width: 100%;
+        }
+        
         .card {
             box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
             border: 1px solid rgba(0, 0, 0, 0.125);
