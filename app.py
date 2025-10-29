@@ -1118,10 +1118,13 @@ def cache_status():
         
         # Get the most recent cached_at timestamp
         last_cached = None
+        last_refresh_time = None
         latest_record = CachedPurchaseOrderSummary.query.order_by(CachedPurchaseOrderSummary.cached_at.desc()).first()
         if latest_record and latest_record.cached_at:
             # Add 'Z' to indicate UTC time so JavaScript parses it correctly
             last_cached = latest_record.cached_at.isoformat() + 'Z'
+            # Format a nice human-readable timestamp for dashboard display
+            last_refresh_time = latest_record.cached_at.strftime('%Y-%m-%d %H:%M:%S')
         
         # Use actual totals from BigQuery count queries
         global actual_totals, sync_state
@@ -1141,6 +1144,7 @@ def cache_status():
             'comparison_total': totals['comparison_total'],
             'has_cached_data': summary_count > 0,
             'last_cached': last_cached,
+            'last_refresh_time': last_cached,  # Same as last_cached for dashboard display
             'is_syncing': sync_state['is_running']
         })
     except Exception as e:
