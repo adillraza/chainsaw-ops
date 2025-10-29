@@ -64,13 +64,13 @@ class LoginLog(db.Model):
 # Cached Purchase Order Summary model
 class CachedPurchaseOrderSummary(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    po_id = db.Column(db.String(50), nullable=False)
+    po_id = db.Column(db.String(50), nullable=False, index=True)  # Index for fast lookups
     po_status = db.Column(db.String(50))
     rex_po_created_by = db.Column(db.String(100))
     requested_date = db.Column(db.DateTime)
-    order_id = db.Column(db.String(50))
+    order_id = db.Column(db.String(50), index=True)  # Index for fast lookups
     order_link = db.Column(db.String(200))
-    entered_date = db.Column(db.DateTime)
+    entered_date = db.Column(db.DateTime, index=True)  # Index for fast sorting
     received_date = db.Column(db.DateTime)
     neto_order_created_by = db.Column(db.String(100))
     completed_date = db.Column(db.DateTime)
@@ -87,7 +87,7 @@ class CachedPurchaseOrderSummary(db.Model):
     latest_po_note = db.Column(db.Text)
     latest_po_note_user = db.Column(db.String(100))
     latest_po_note_date = db.Column(db.DateTime)
-    cached_at = db.Column(db.DateTime, default=datetime.utcnow)
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)  # Index for cache status checks
     
     def to_dict(self):
         return {
@@ -119,9 +119,9 @@ class CachedPurchaseOrderSummary(db.Model):
 # Cached Purchase Order Items model
 class CachedPurchaseOrderItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    po_id = db.Column(db.String(50), nullable=False)
-    po_item_id = db.Column(db.String(50))
-    sku = db.Column(db.String(100))
+    po_id = db.Column(db.String(50), nullable=False, index=True)  # Index for fast lookups
+    po_item_id = db.Column(db.String(50), index=True)  # Index for fast lookups
+    sku = db.Column(db.String(100), index=True)  # Index for SKU searches
     supplier_sku = db.Column(db.String(100))
     manufacturer_sku = db.Column(db.String(100))
     short_description = db.Column(db.String(500))
@@ -133,14 +133,14 @@ class CachedPurchaseOrderItem(db.Model):
     rex_supplier_buy_ex = db.Column(db.Float)
     difference = db.Column(db.Float)
     disparity = db.Column(db.Boolean)
-    order_id = db.Column(db.String(50))
+    order_id = db.Column(db.String(50), index=True)  # Index for fast lookups
     created_on = db.Column(db.DateTime)
     modified_on = db.Column(db.DateTime)
     # Notes columns
     latest_item_note = db.Column(db.Text)
     latest_item_note_user = db.Column(db.String(100))
     latest_item_note_date = db.Column(db.DateTime)
-    cached_at = db.Column(db.DateTime, default=datetime.utcnow)
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)  # Index for cache status checks
     
     def to_dict(self):
         return {
@@ -169,9 +169,9 @@ class CachedPurchaseOrderItem(db.Model):
 
 class CachedPurchaseOrderComparison(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    po_id = db.Column(db.String(50), nullable=False)
+    po_id = db.Column(db.String(50), nullable=False, index=True)  # Index for fast lookups
     modified_on = db.Column(db.DateTime)
-    sku = db.Column(db.String(100))
+    sku = db.Column(db.String(100), index=True)  # Index for SKU searches
     name = db.Column(db.String(500))
     change_log = db.Column(db.String(100))
     rex_available_qty = db.Column(db.Float)  # REX available quantity
@@ -180,12 +180,12 @@ class CachedPurchaseOrderComparison(db.Model):
     neto_qty_shipped = db.Column(db.Float)  # Changed from Integer to Float
     final_rex_qty_ordered = db.Column(db.Float)  # Changed from Integer to Float
     rex_qty_received = db.Column(db.Float)  # Changed from Integer to Float
-    order_id = db.Column(db.String(50))
-    po_item_id = db.Column(db.String(50))  # Added po_item_id field
+    order_id = db.Column(db.String(50), index=True)  # Index for fast lookups
+    po_item_id = db.Column(db.String(50), index=True)  # Index for fast lookups
     latest_item_note = db.Column(db.Text)  # Added latest_item_note field
     latest_item_note_user = db.Column(db.String(100))  # Added latest_item_note_user field
     latest_item_note_date = db.Column(db.DateTime)  # Added latest_item_note_date field
-    cached_at = db.Column(db.DateTime, default=datetime.utcnow)
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)  # Index for cache status checks
     
     def to_dict(self):
         return {
