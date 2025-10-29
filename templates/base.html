@@ -87,7 +87,12 @@
             z-index: 998;
             padding: 20px;
             border-right: 1px solid #2c3e50;
-            transition: width 0.2s ease;
+            transition: width 0.2s ease, transform 0.3s ease;
+        }
+        
+        /* Hide left panel by sliding it out */
+        .left-panel.hidden {
+            transform: translateX(-100%);
         }
         
         .left-resize-handle {
@@ -111,7 +116,12 @@
             margin-top: 60px;
             padding: 20px;
             min-height: calc(100vh - 60px);
-            transition: margin-left 0.2s ease;
+            transition: margin-left 0.3s ease;
+        }
+        
+        /* When left panel is hidden, expand main content to full width */
+        .main-content.left-panel-hidden {
+            margin-left: 0;
         }
         
         .right-panel {
@@ -502,7 +512,7 @@
 
     <!-- Left Panel (All Item Notes) -->
     {% if current_user.is_authenticated %}
-    <div class="left-panel" id="allItemNotesCard">
+    <div class="left-panel hidden" id="allItemNotesCard">
         <div class="left-resize-handle"></div>
         <div id="leftPanelContent">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -526,7 +536,7 @@
     {% endif %}
 
     <!-- Main Content Area -->
-    <div class="main-content">
+    <div class="main-content left-panel-hidden">
         <div class="content-area">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -628,23 +638,15 @@
             const quickInfoPanel = document.getElementById('quick-info-panel');
             
             if (contentType === 'rex-po-orders') {
-                // Restore left and right panels
-                const leftPanel = document.querySelector('.left-panel');
-                const rightPanel = document.getElementById('right-panel');
-                const mainContent = document.querySelector('.main-content');
+                // Show left panel and hide right panel
+                showLeftPanel();
                 
-                if (leftPanel) {
-                    leftPanel.style.display = 'block';
-                }
+                const rightPanel = document.getElementById('right-panel');
                 if (rightPanel) {
                     rightPanel.style.display = 'none'; // Hide Quick Info for this page
                 }
                 
                 // Restore content area margins
-                if (mainContent) {
-                    mainContent.style.marginLeft = '';
-                    mainContent.style.marginRight = '';
-                }
                 contentArea.style.marginLeft = '';
                 contentArea.style.marginRight = '';
                 contentArea.style.width = '';
@@ -772,23 +774,15 @@
                 // Initialize the BigQuery functionality
                 initializeBigQueryPage();
             } else if (contentType === 'cost-price-check') {
-                // Restore left and right panels
-                const leftPanel = document.querySelector('.left-panel');
-                const rightPanel = document.getElementById('right-panel');
-                const mainContent = document.querySelector('.main-content');
+                // Show left panel and hide right panel
+                showLeftPanel();
                 
-                if (leftPanel) {
-                    leftPanel.style.display = 'block';
-                }
+                const rightPanel = document.getElementById('right-panel');
                 if (rightPanel) {
                     rightPanel.style.display = 'none'; // Hide Quick Info for this page
                 }
                 
                 // Restore content area margins
-                if (mainContent) {
-                    mainContent.style.marginLeft = '';
-                    mainContent.style.marginRight = '';
-                }
                 contentArea.style.marginLeft = '';
                 contentArea.style.marginRight = '';
                 contentArea.style.width = '';
@@ -888,23 +882,15 @@
                 // Initialize the Cost Price Check functionality
                 initializeCostPriceCheckPage();
             } else if (contentType === 'comparison') {
-                // Restore left and right panels
-                const leftPanel = document.querySelector('.left-panel');
-                const rightPanel = document.getElementById('right-panel');
-                const mainContent = document.querySelector('.main-content');
+                // Show left panel and hide right panel
+                showLeftPanel();
                 
-                if (leftPanel) {
-                    leftPanel.style.display = 'block';
-                }
+                const rightPanel = document.getElementById('right-panel');
                 if (rightPanel) {
                     rightPanel.style.display = 'none'; // Hide Quick Info for this page
                 }
                 
                 // Restore content area margins
-                if (mainContent) {
-                    mainContent.style.marginLeft = '';
-                    mainContent.style.marginRight = '';
-                }
                 contentArea.style.marginLeft = '';
                 contentArea.style.marginRight = '';
                 contentArea.style.width = '';
@@ -962,23 +948,15 @@
                 // Initialize the Comparison page functionality
                 initializeComparisonPage();
             } else if (contentType === 'change-log-guide') {
-                // Hide left panel for full-width guide
-                const leftPanel = document.querySelector('.left-panel');
-                const rightPanel = document.getElementById('right-panel');
-                const mainContent = document.querySelector('.main-content');
+                // Hide both panels for full-width guide
+                hideLeftPanel();
                 
-                if (leftPanel) {
-                    leftPanel.style.display = 'none';
-                }
+                const rightPanel = document.getElementById('right-panel');
                 if (rightPanel) {
                     rightPanel.style.display = 'none';
                 }
                 
                 // Make content area full width
-                if (mainContent) {
-                    mainContent.style.marginLeft = '0';
-                    mainContent.style.marginRight = '0';
-                }
                 contentArea.style.marginLeft = '0';
                 contentArea.style.marginRight = '0';
                 contentArea.style.width = '100%';
@@ -1287,23 +1265,15 @@
                     </div>
                 `;
             } else if (contentType === 'ops-dashboard') {
-                // Hide both left and right panels for full-width dashboard
-                const leftPanel = document.querySelector('.left-panel');
-                const rightPanel = document.getElementById('right-panel');
-                const mainContent = document.querySelector('.main-content');
+                // Hide both panels for full-width dashboard
+                hideLeftPanel();
                 
-                if (leftPanel) {
-                    leftPanel.style.display = 'none';
-                }
+                const rightPanel = document.getElementById('right-panel');
                 if (rightPanel) {
                     rightPanel.style.display = 'none';
                 }
                 
-                // Make content area full width by removing all margins
-                if (mainContent) {
-                    mainContent.style.marginLeft = '0';
-                    mainContent.style.marginRight = '0';
-                }
+                // Make content area full width
                 contentArea.style.marginLeft = '0';
                 contentArea.style.marginRight = '0';
                 contentArea.style.width = '100%';
@@ -3910,6 +3880,33 @@
                     rightPanel.style.width = width + 'px';
                     contentArea.style.marginRight = width + 'px';
                 }
+            }
+        }
+        
+        // Helper functions to show/hide left panel with proper class management
+        function showLeftPanel() {
+            const leftPanel = document.querySelector('.left-panel');
+            const mainContent = document.querySelector('.main-content');
+            
+            if (leftPanel) {
+                leftPanel.classList.remove('hidden');
+                leftPanel.style.display = 'block';
+            }
+            if (mainContent) {
+                mainContent.classList.remove('left-panel-hidden');
+            }
+        }
+        
+        function hideLeftPanel() {
+            const leftPanel = document.querySelector('.left-panel');
+            const mainContent = document.querySelector('.main-content');
+            
+            if (leftPanel) {
+                leftPanel.classList.add('hidden');
+                // Keep display: block but slide it out with transform
+            }
+            if (mainContent) {
+                mainContent.classList.add('left-panel-hidden');
             }
         }
         
