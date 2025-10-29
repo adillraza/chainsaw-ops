@@ -168,12 +168,12 @@ function checkCacheStatus() {
             
             // Only redirect when ALL tables are complete
             if (summaryComplete && itemsComplete && comparisonComplete) {
-                addStatusMessage('All data refresh completed! Redirecting to dashboard...', 'success');
+                addStatusMessage('All data refresh completed! Redirecting...', 'success');
                 isRefreshing = false;
                 clearInterval(refreshInterval);
                 clearInterval(progressInterval);
                 setTimeout(() => {
-                    window.location.href = '/dashboard';
+                    window.location.href = window.returnUrl || '/dashboard';
                 }, 3000); // Wait 3 seconds to show completion message
             }
         }
@@ -245,28 +245,44 @@ let isRefreshing = false;
 
 // Auto-start refresh when page loads (only if not already refreshing)
 document.addEventListener('DOMContentLoaded', function() {
-    // Check cache status first
-    fetch('/api/bigquery/cache-status')
-    .then(response => response.json())
-    .then(data => {
-        if (data.success && data.has_cached_data) {
-            // Data is already cached, redirect to dashboard
-            window.location.href = '/dashboard';
-        } else if (!isRefreshing) {
-            // No cached data and not refreshing, start refresh
-            addStatusMessage('Starting data refresh...', 'info');
-            setTimeout(() => {
-                startRefresh();
-            }, 1000);
-        }
-    });
+    // Get URL parameters to check if this is a manual refresh
+    const urlParams = new URLSearchParams(window.location.search);
+    const autostart = urlParams.get('autostart') === 'true';
+    const returnUrl = urlParams.get('return') || '/dashboard';
     
-    // Fallback timeout - if progress screen is stuck for more than 5 minutes, redirect to dashboard
-    setTimeout(() => {
-        console.log('Fallback timeout reached - redirecting to dashboard');
-        addStatusMessage('Data refresh taking longer than expected. Redirecting to dashboard...', 'warning');
+    // Store return URL for after completion
+    window.returnUrl = returnUrl;
+    
+    if (autostart) {
+        // Manual refresh requested - always start refresh regardless of cache status
+        addStatusMessage('Starting data refresh...', 'info');
         setTimeout(() => {
-            window.location.href = '/dashboard';
+            startRefresh();
+        }, 1000);
+    } else {
+        // First-time access - check cache status first
+        fetch('/api/bigquery/cache-status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.has_cached_data) {
+                // Data is already cached, redirect to dashboard
+                window.location.href = '/dashboard';
+            } else if (!isRefreshing) {
+                // No cached data and not refreshing, start refresh
+                addStatusMessage('Starting data refresh...', 'info');
+                setTimeout(() => {
+                    startRefresh();
+                }, 1000);
+            }
+        });
+    }
+    
+    // Fallback timeout - if progress screen is stuck for more than 5 minutes, redirect
+    setTimeout(() => {
+        console.log('Fallback timeout reached - redirecting...');
+        addStatusMessage('Data refresh taking longer than expected. Redirecting...', 'warning');
+        setTimeout(() => {
+            window.location.href = window.returnUrl || '/dashboard';
         }, 2000);
     }, 300000); // 5 minutes
 });

@@ -189,8 +189,8 @@ function loadCacheStatus() {
 }
 
 function startDataRefresh() {
-    // Redirect to the progress page which will auto-start the refresh
-    window.location.href = '/dashboard-progress';
+    // Redirect to the progress page which will auto-start the refresh and return to dashboard
+    window.location.href = '/dashboard-progress?autostart=true&return=' + encodeURIComponent('/dashboard');
 }
 
 function testConnection() {

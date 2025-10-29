@@ -2038,8 +2038,18 @@
         }
         
         function refreshData() {
-            // Redirect to progress screen to show cache refresh progress
-            window.location.href = '/dashboard-progress';
+            // Determine current page for return URL after refresh
+            let returnUrl = '/dashboard';
+            if (document.getElementById('summaryContainer')) {
+                returnUrl = '/dashboard'; // REX PO Orders (summary)
+            } else if (document.getElementById('comparisonCard')) {
+                returnUrl = '/dashboard'; // Comparison view
+            } else if (document.getElementById('costPriceContainer')) {
+                returnUrl = '/dashboard'; // Cost Price Check
+            }
+            
+            // Redirect to progress screen with autostart and return URL
+            window.location.href = `/dashboard-progress?autostart=true&return=${encodeURIComponent(returnUrl)}`;
         }
         
         // Global variable to store current items data for filtering
