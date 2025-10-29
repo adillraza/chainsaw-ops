@@ -167,18 +167,14 @@
         
         .content-area {
             margin-right: 400px;
-            width: calc(100% - 400px); /* Explicitly set width to prevent overlap */
-            max-width: calc(100% - 400px);
             box-sizing: border-box;
             overflow-x: auto; /* Add scrolling if content is too wide */
-            transition: margin-right 0.3s ease, width 0.3s ease, max-width 0.3s ease;
+            transition: margin-right 0.3s ease;
         }
         
         /* When right panel is hidden, expand content area to full width */
         .content-area.right-panel-hidden {
             margin-right: 0;
-            width: 100%;
-            max-width: 100%;
         }
         
         /* Ensure all content within content-area respects the width constraint */
