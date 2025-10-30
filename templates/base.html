@@ -2532,10 +2532,26 @@
                 return;
             }
             
-            // No need for total items info strip - count will be shown in header
+            // Get PO ID and Order ID from first row for the info message
+            // Find the first record that has an OrderID (some records may not have it)
+            const poId = data[0]?.po_id || '-';
+            const recordWithOrderId = data.find(row => row.OrderID && row.OrderID !== null && row.OrderID !== '-');
+            const orderId = recordWithOrderId?.OrderID || '-';
             
-            // Create table HTML
+            // Generate order link dynamically from Order ID (no need to store in database)
+            const orderLink = orderId !== '-' ? `https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${orderId}` : null;
+            
+            // Create clickable Order ID link if available
+            const orderIdDisplay = (orderId !== '-' && orderLink) 
+                ? `<strong><a href="${orderLink}" target="_blank" style="color: #0056b3; text-decoration: underline;">${orderId}</a></strong>`
+                : `<strong>${orderId}</strong>`;
+            
+            // Create info message showing which PO is being viewed
             let tableHTML = `
+                <div class="alert alert-info d-flex align-items-center mb-3" style="background-color: #d1ecf1; border-color: #bee5eb;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span>Showing ${totalCount} result${totalCount !== 1 ? 's' : ''} for PO ID: <strong>${poId}</strong> | Order ID: ${orderIdDisplay}</span>
+                </div>
                 <div class="table-responsive-modern" style="height: 100%; overflow-y: auto;">
                     <table class="table table-modern table-striped table-hover">
                         <thead class="sticky-top">
@@ -2549,11 +2565,45 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Original quantity ordered in REX system" class="sortable text-center" data-sort="original_rex_qty_ordered" style="width: 80px;">Original REX Qty Ordered <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity invoiced from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Invoiced <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity received in REX" class="sortable text-center" data-sort="rex_qty_received" style="width: 80px;">REX Qty Received <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note or comment" class="text-center" style="width: 250px;">Latest Note</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note or comment" class="text-start" style="min-width: 250px;">Latest Note</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
+            
+            // Sort data to prioritize items with changes and notes
+            // Priority order:
+            // 1. Items with "Back-ordered" or any change other than "No Change"
+            // 2. Items with "No Change" but have notes
+            // 3. Items with "No Change" and no notes (to the bottom)
+            data.sort((a, b) => {
+                const aChangeLog = a.change_log || 'No Change';
+                const bChangeLog = b.change_log || 'No Change';
+                const aHasNote = a.latest_item_note && a.latest_item_note.trim() !== '';
+                const bHasNote = b.latest_item_note && b.latest_item_note.trim() !== '';
+                
+                // Determine priority (lower number = higher priority)
+                const getPriority = (changeLog, hasNote) => {
+                    if (changeLog !== 'No Change') {
+                        return 1; // Items with changes (including Back-ordered)
+                    } else if (hasNote) {
+                        return 2; // Items with No Change but has notes
+                    } else {
+                        return 3; // Items with No Change and no notes
+                    }
+                };
+                
+                const aPriority = getPriority(aChangeLog, aHasNote);
+                const bPriority = getPriority(bChangeLog, bHasNote);
+                
+                // Sort by priority
+                if (aPriority !== bPriority) {
+                    return aPriority - bPriority;
+                }
+                
+                // If same priority, maintain original order (or sort by SKU if desired)
+                return 0;
+            });
             
             data.forEach(row => {
                 // Create colored tag for change log with specific colors for each type
@@ -2595,9 +2645,9 @@
                 // No row background colors - badges provide sufficient visual distinction
                 let rowBgClass = '';
                 
-                // Format latest item note
+                // Format latest item note - show full note text
                 const latestItemNote = row.latest_item_note ? 
-                    `<div class="text-truncate" style="max-width: 200px;" title="${row.latest_item_note} - ${row.latest_item_note_user} (${row.latest_item_note_date ? new Date(row.latest_item_note_date).toLocaleDateString('en-AU') : ''})">
+                    `<div style="word-wrap: break-word; white-space: normal;">
                         <small class="text-muted">${row.latest_item_note_user}:</small> ${row.latest_item_note}
                     </div>` : 
                     '<span class="text-muted">-</span>';
