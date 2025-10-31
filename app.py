@@ -87,6 +87,9 @@ class CachedPurchaseOrderSummary(db.Model):
     latest_po_note = db.Column(db.Text)
     latest_po_note_user = db.Column(db.String(100))
     latest_po_note_date = db.Column(db.DateTime)
+    # New fields for multiple orders
+    no_of_neto_orders = db.Column(db.Integer)
+    neto_order_ids = db.Column(db.Text)  # Comma-separated order IDs
     cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)  # Index for cache status checks
     
     def to_dict(self):
@@ -113,7 +116,10 @@ class CachedPurchaseOrderSummary(db.Model):
             # Notes fields
             'latest_po_note': self.latest_po_note,
             'latest_po_note_user': self.latest_po_note_user,
-            'latest_po_note_date': self.latest_po_note_date.isoformat() if self.latest_po_note_date else None
+            'latest_po_note_date': self.latest_po_note_date.isoformat() if self.latest_po_note_date else None,
+            # Multiple orders fields
+            'no_of_neto_orders': self.no_of_neto_orders,
+            'neto_order_ids': self.neto_order_ids
         }
 
 # Cached Purchase Order Items model
@@ -410,7 +416,10 @@ def cache_purchase_order_data():
                             # Notes fields
                             latest_po_note=row.get('latest_po_note'),
                             latest_po_note_user=row.get('latest_po_note_user'),
-                            latest_po_note_date=safe_parse_date(row.get('latest_po_note_date'))
+                            latest_po_note_date=safe_parse_date(row.get('latest_po_note_date')),
+                            # Multiple orders fields
+                            no_of_neto_orders=row.get('no_of_neto_orders'),
+                            neto_order_ids=row.get('neto_order_ids')
                         )
                         db.session.add(cached_row)
                         summary_cached += 1

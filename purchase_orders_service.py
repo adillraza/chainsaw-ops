@@ -78,7 +78,9 @@ class BigQueryService:
                     neto_order_status as order_status,
                     disparity,
                     po_item_count as item_count,
-                    po_item_qty as total_quantity_ordered
+                    po_item_qty as total_quantity_ordered,
+                    no_of_neto_orders,
+                    neto_order_ids
                 FROM `{self.project_id}.dataform.ops_po`
                 {where_clause}
             ),

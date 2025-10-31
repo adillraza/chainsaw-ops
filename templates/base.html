@@ -228,6 +228,7 @@
             
             .main-content {
                 margin-left: 0;
+                padding: 15px; /* Reduce padding on smaller screens */
             }
             
             .content-area {
@@ -236,6 +237,34 @@
             
             .right-panel {
                 display: none;
+            }
+            
+            /* Make dashboard content use more width on smaller screens */
+            .content-area .row {
+                margin-left: -10px;
+                margin-right: -10px;
+            }
+            
+            .content-area .row > [class*='col-'] {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+        }
+        
+        /* Extra small screens - even more compact */
+        @media (max-width: 576px) {
+            .main-content {
+                padding: 10px; /* Even less padding on very small screens */
+            }
+            
+            .content-area .row {
+                margin-left: -5px;
+                margin-right: -5px;
+            }
+            
+            .content-area .row > [class*='col-'] {
+                padding-left: 5px;
+                padding-right: 5px;
             }
         }
         
@@ -994,31 +1023,42 @@
                                             </ul>
                                         </div>
                                         
-                                        <!-- Change Type Cards -->
-                                        <div class="row g-4">
-                                            <!-- Quantity Changed -->
+                                        <!-- Custom CSS for lighter table borders -->
+                                        <style>
+                                            .changelog-table {
+                                                border-color: #dee2e6 !important;
+                                            }
+                                            .changelog-table th,
+                                            .changelog-table td {
+                                                border-color: #e9ecef !important;
+                                            }
+                                            .changelog-table thead {
+                                                border-bottom: 2px solid #e0e0e0 !important;
+                                            }
+                                            .changelog-table thead th {
+                                                border-bottom-color: #e0e0e0 !important;
+                                            }
+                                        </style>
+                                        
+                                        <!-- Two Column Layout -->
+                                        <div class="row">
+                                            <!-- Left Column: Before Receival -->
                                             <div class="col-md-6">
-                                                <div class="card h-100 border-info">
+                                                <h4 class="mb-3 text-primary"><i class="fas fa-shipping-fast"></i> After NETO dispatch but before REX receival</h4>
+                                                
+                                                <!-- Quantity Changed (Before Receival) -->
+                                                <div class="card mb-3 border-info">
                                                     <div class="card-header bg-info bg-opacity-10">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-info text-dark">Quantity Changed</span>
-                                                        </h5>
+                                                        <h5 class="mb-0"><span class="badge bg-info text-dark">Quantity Changed</span></h5>
                                                     </div>
                                                     <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
-                                                        <p><strong>Original REX Qty Ordered ≠ NETO Qty Invoiced</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>The quantity invoiced in NETO differs from the quantity ordered in REX.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Examples</h6>
-                                                        
-                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> Before Receival:</small></p>
-                                                        <table class="table table-sm table-bordered mb-3">
+                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered ≠ NETO qty invoiced</p>
+                                                        <p class="mb-2"><strong>Description:</strong> The warehouse has invoiced a different quantity than what was originally ordered. Add a note explaining this quantity change.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
                                                             <thead class="table-light">
                                                                 <tr>
                                                                     <th>Rex Qty Ordered</th>
-                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>NETO qty invoiced</th>
                                                                     <th>Rex Qty Received</th>
                                                                 </tr>
                                                             </thead>
@@ -1030,144 +1070,220 @@
                                                                 </tr>
                                                             </tbody>
                                                         </table>
-                                                        
-                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> After Receival:</small></p>
-                                                        <table class="table table-sm table-bordered mb-2">
+                                                        <div class="mt-2 p-2 bg-light border-start border-info border-3">
+                                                            <small><strong>Result:</strong> 5 items were ordered in REX but only 3 are invoiced in NETO. This could be due to shortage of stock, warehouse unable to fulfill the full quantity, or partial availability. The warehouse has reduced the order quantity.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- Item Removed -->
+                                                <div class="card mb-3 border-danger">
+                                                    <div class="card-header bg-danger bg-opacity-10">
+                                                        <h5 class="mb-0"><span class="badge bg-danger">Item Removed</span></h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-2"><strong>Condition:</strong> Item ordered in REX but not present on NETO invoice</p>
+                                                        <p class="mb-2"><strong>Description:</strong> This item was ordered but has been completely removed from the invoice (not backordered). Usually indicates the item was out of stock or unavailable. Add a note explaining the removal.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
                                                             <thead class="table-light">
                                                                 <tr>
                                                                     <th>Rex Qty Ordered</th>
-                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>NETO qty invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>4</td>
+                                                                    <td>-</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2 p-2 bg-light border-start border-danger border-3">
+                                                            <small><strong>Result:</strong> 4 items were ordered in REX but the item doesn't appear on the NETO invoice at all. The warehouse has completely removed this item from the order, likely due to stock unavailability or discontinuation.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- Back Ordered -->
+                                                <div class="card mb-3 border-dark">
+                                                    <div class="card-header bg-dark bg-opacity-10">
+                                                        <h5 class="mb-0"><span class="badge bg-dark">Back Ordered</span></h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-2"><strong>Condition:</strong> NETO qty invoiced = 0 AND item appears on NETO backorder</p>
+                                                        <p class="mb-2"><strong>Description:</strong> This item was ordered but is currently out of stock with the warehouse. It has been placed on backorder and will be shipped when stock becomes available. Add a note indicating the item is backordered.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO qty invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>0</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2 p-2 bg-light border-start border-dark border-3">
+                                                            <small><strong>Result:</strong> 5 items were ordered in REX but the invoice shows 0 quantity and the item appears on the NETO backorder list. The warehouse is temporarily out of stock but will fulfill this order once inventory is replenished.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- No Change (Before Receival) -->
+                                                <div class="card mb-3 border-secondary">
+                                                    <div class="card-header bg-light">
+                                                        <h5 class="mb-0"><span class="badge bg-light text-dark">No Change</span></h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered = NETO qty invoiced</p>
+                                                        <p class="mb-2"><strong>Description:</strong> Perfect! The ordered quantity matches the invoiced quantity. Everything is as expected and no action is required.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO qty invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>6</td>
+                                                                    <td>6</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2 p-2 bg-light border-start border-secondary border-3">
+                                                            <small><strong>Result:</strong> 6 items were ordered in REX and 6 items are invoiced in NETO. Perfect match! The order is proceeding exactly as planned with no discrepancies.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- New Item -->
+                                                <div class="card mb-3 border-success">
+                                                    <div class="card-header bg-success bg-opacity-10">
+                                                        <h5 class="mb-0"><span class="badge bg-success">New Item</span></h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered = 0 AND NETO qty invoiced > 0</p>
+                                                        <p class="mb-2"><strong>Description:</strong> A new item has been added to the invoice that wasn't part of the original order. The warehouse may have substituted or added this item. Review and add a note if needed.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO qty invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>0</td>
+                                                                    <td>2</td>
+                                                                    <td>-</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2 p-2 bg-light border-start border-success border-3">
+                                                            <small><strong>Result:</strong> 0 items were ordered in REX but 2 items appear on the NETO invoice. The warehouse has added this item to the order - Possible mismatched sku between NETO and REX. Report to management.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Right Column: After Receival -->
+                                            <div class="col-md-6">
+                                                <h4 class="mb-3 text-success"><i class="fas fa-box-open"></i> After invoice has been received into REX</h4>
+                                                
+                                                <!-- Receival Difference -->
+                                                <div class="card mb-3 border-primary">
+                                                    <div class="card-header bg-primary bg-opacity-10">
+                                                        <h5 class="mb-0"><span class="badge bg-primary">Receival Difference</span></h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-2"><strong>Condition:</strong> NETO qty invoiced ≠ Rex Qty Received</p>
+                                                        <p class="mb-2"><strong>Description:</strong> The quantity physically received differs from what was invoiced. This indicates a picking error, receiving mistake, or shipping discrepancy. Verify the physical count and add a note documenting the difference.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO qty invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>4</td>
+                                                                    <td>5</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>5</td>
+                                                                    <td>3</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>4</td>
+                                                                    <td>3</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2 p-2 bg-light border-start border-primary border-3">
+                                                            <small><strong>Examples:</strong> Row 1: 4 invoiced but 5 received (received more). Row 2: 5 invoiced but 3 received (received less). Row 3: 4 invoiced but 3 received (both differ). These scenarios indicate warehouse picking errors, shipping mistakes, or incorrect physical counts during receiving.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- Quantity Changed (After Receival) -->
+                                                <div class="card mb-3 border-info">
+                                                    <div class="card-header bg-info bg-opacity-10">
+                                                        <h5 class="mb-0"><span class="badge bg-info text-dark">Quantity Changed</span></h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered ≠ NETO qty invoiced ≠ Rex Qty Received</p>
+                                                        <p class="mb-2"><strong>Description:</strong> All three quantities differ - the ordered, invoiced, and received amounts are all different. This represents a complex discrepancy requiring careful reconciliation. Document all differences with detailed notes.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO qty invoiced</th>
                                                                     <th>Rex Qty Received</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                                 <tr>
                                                                     <td>10</td>
-                                                                    <td>6</td>
+                                                                    <td>8</td>
                                                                     <td>8</td>
                                                                 </tr>
                                                             </tbody>
                                                         </table>
-                                                        <p class="mb-0"><small><strong>Result:</strong> NETO invoiced a different quantity than originally ordered</small></p>
+                                                        <div class="mt-2 p-2 bg-light border-start border-info border-3">
+                                                            <small><strong>Result:</strong> 10 items ordered, 8 invoiced, and 8 received. The warehouse reduced the quantity on the invoice, and then the same quantity was physically received. Add a note why the quantity is changed.</small>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            
-                                            <!-- Item Removed -->
-                                            <div class="col-md-6">
-                                                <div class="card h-100 border-danger">
-                                                    <div class="card-header bg-danger bg-opacity-10">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-danger">Item Removed</span>
-                                                        </h5>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
-                                                        <p><strong>Item not present on NETO invoice after dispatch</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>The item is not present on the NETO invoice. This usually indicates the item was out of stock or intentionally excluded.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        
-                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> Before Receival:</small></p>
-                                                        <table class="table table-sm table-bordered mb-2">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th>Rex Qty Ordered</th>
-                                                                    <th>NETO Qty Invoiced</th>
-                                                                    <th>Rex Qty Received</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td>4</td>
-                                                                    <td>-</td>
-                                                                    <td>-</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                        <p class="mb-0"><small><strong>Result:</strong> Item was ordered in REX but not included on NETO invoice (out of stock or excluded)</small></p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Receival Difference -->
-                                            <div class="col-md-6">
-                                                <div class="card h-100 border-primary">
-                                                    <div class="card-header bg-primary bg-opacity-10">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-primary">Receival Difference</span>
-                                                        </h5>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition (After Receival)</h6>
-                                                        <p><strong>NETO Qty Invoiced ≠ REX Qty Received</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>The quantity received in REX differs from the quantity invoiced in NETO. This usually indicates an error in what the warehouse has sent or how NETO invoice was updated.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Examples</h6>
-                                                        
-                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> After Receival:</small></p>
-                                                        <table class="table table-sm table-bordered mb-2">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th>Rex Qty Ordered</th>
-                                                                    <th>NETO Qty Invoiced</th>
-                                                                    <th>Rex Qty Received</th>
-                                                                    <th>Scenario</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td>5</td>
-                                                                    <td>4</td>
-                                                                    <td>5</td>
-                                                                    <td><small>Received more than invoiced</small></td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td>5</td>
-                                                                    <td>5</td>
-                                                                    <td>3</td>
-                                                                    <td><small>Received less than invoiced</small></td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td>5</td>
-                                                                    <td>4</td>
-                                                                    <td>3</td>
-                                                                    <td><small>Received different from both</small></td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                        <p class="mb-0"><small><strong>Result:</strong> Physical receival doesn't match the invoice - warehouse error or picking mistake</small></p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Delivery Gap -->
-                                            <div class="col-md-6">
-                                                <div class="card h-100 border-warning">
+                                                
+                                                <!-- Delivery Gap -->
+                                                <div class="card mb-3 border-warning">
                                                     <div class="card-header bg-warning bg-opacity-10">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-warning text-dark">Delivery Gap</span>
-                                                        </h5>
+                                                        <h5 class="mb-0"><span class="badge bg-warning text-dark">Delivery Gap</span></h5>
                                                     </div>
                                                     <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition (After Receival)</h6>
-                                                        <p><strong>Original REX Qty Ordered = REX Qty Received, but ≠ NETO Qty Invoiced</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>The order quantity in REX matches the received amount but differs from the NETO invoiced amount. This usually indicates the receiver did not update the final received quantity after the warehouse has received the stock.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        
-                                                        <p class="mb-2"><small class="text-muted"><i class="fas fa-clock"></i> After Receival:</small></p>
-                                                        <table class="table table-sm table-bordered mb-2">
+                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered = Rex Qty Received BUT ≠ NETO qty invoiced</p>
+                                                        <p class="mb-2"><strong>Description:</strong> The received quantity matches the original order but differs from what was invoiced. This suggests the receiver did not update the final received quantity in REX to reflect what was actually received. The receiver needs to update REX to match the actual physical count.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
                                                             <thead class="table-light">
                                                                 <tr>
                                                                     <th>Rex Qty Ordered</th>
-                                                                    <th>NETO Qty Invoiced</th>
+                                                                    <th>NETO qty invoiced</th>
                                                                     <th>Rex Qty Received</th>
                                                                 </tr>
                                                             </thead>
@@ -1175,86 +1291,43 @@
                                                                 <tr>
                                                                     <td>12</td>
                                                                     <td>8</td>
-                                                                    <td>-</td>
+                                                                    <td>12</td>
                                                                 </tr>
                                                             </tbody>
                                                         </table>
-                                                        <p class="mb-0"><small><strong>Result:</strong> REX received matches ordered qty but differs from NETO invoice - receiver needs to update REX to match actual received quantity</small></p>
+                                                        <div class="mt-2 p-2 bg-light border-start border-warning border-3">
+                                                            <small><strong>Result:</strong> 12 items ordered, 8 invoiced, but 12 received. The received quantity matches the original order despite the invoice showing less. This indicates the receiver didn't update REX to reflect the actual received amount (should be 8, not 12). Receiver must correct the received quantity.</small>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            
-                                            <!-- New Item -->
-                                            <div class="col-md-6">
-                                                <div class="card h-100 border-success">
-                                                    <div class="card-header bg-success bg-opacity-10">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-success">New Item</span>
-                                                        </h5>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
-                                                        <p><strong>Item added to the order that wasn't originally requested</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>A new item has been added to the order that was not part of the original REX purchase order.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>Item was not in original REX PO</li>
-                                                            <li>Item appears on NETO invoice</li>
-                                                            <li><strong>Result:</strong> New item added to the order</li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Back-ordered -->
-                                            <div class="col-md-6">
-                                                <div class="card h-100 border-dark">
-                                                    <div class="card-header bg-dark bg-opacity-10">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-dark">Back-ordered</span>
-                                                        </h5>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
-                                                        <p><strong>Item is marked as back-ordered in the system</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>The item is currently on back-order and waiting for stock to become available.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>Item was ordered</li>
-                                                            <li>Supplier is out of stock</li>
-                                                            <li><strong>Result:</strong> Item is back-ordered until stock arrives</li>
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- No Change -->
-                                            <div class="col-md-6">
-                                                <div class="card h-100 border-secondary">
+                                                
+                                                <!-- No Change (After Receival) -->
+                                                <div class="card mb-3 border-secondary">
                                                     <div class="card-header bg-light">
-                                                        <h5 class="mb-0">
-                                                            <span class="badge bg-light text-dark">No Change</span>
-                                                        </h5>
+                                                        <h5 class="mb-0"><span class="badge bg-light text-dark">No Change</span></h5>
                                                     </div>
                                                     <div class="card-body">
-                                                        <h6 class="card-subtitle mb-2 text-muted">Condition</h6>
-                                                        <p><strong>No discrepancies detected</strong></p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Description</h6>
-                                                        <p>The order has been processed without any changes or discrepancies.</p>
-                                                        
-                                                        <h6 class="card-subtitle mb-2 text-muted mt-3">Example</h6>
-                                                        <ul class="mb-0">
-                                                            <li>Ordered quantity matches invoiced quantity</li>
-                                                            <li>All items processed as expected</li>
-                                                            <li><strong>Result:</strong> No action required</li>
-                                                        </ul>
+                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered = NETO qty invoiced = Rex Qty Received</p>
+                                                        <p class="mb-2"><strong>Description:</strong> Perfect match! All three quantities align correctly - ordered, invoiced, and received quantities are identical. No discrepancies detected and no action required.</p>
+                                                        <table class="table table-sm table-bordered changelog-table mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Rex Qty Ordered</th>
+                                                                    <th>NETO qty invoiced</th>
+                                                                    <th>Rex Qty Received</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td>6</td>
+                                                                    <td>6</td>
+                                                                    <td>6</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="mt-2 p-2 bg-light border-start border-secondary border-3">
+                                                            <small><strong>Result:</strong> 6 items ordered, 6 invoiced, and 6 received. Perfect match across the entire order lifecycle! The order was fulfilled exactly as planned with no discrepancies. No action required.</small>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2283,11 +2356,32 @@
                 const completionStatusRaw = (row.completion_status || '').replace(/'/g, "\\'");
                 const orderStatusRaw = (row.order_status || '').replace(/'/g, "\\'");
                 
-                tableHTML += `<tr onclick="showPODetails('${row.po_id}', '${row.OrderID}', '${requestedDateRaw}', '${enteredDateRaw}', '${receivedDateRaw}', '${createdByRaw}', '${completedDateRaw}', '${completionStatusRaw}', '${orderStatusRaw}', ${row.disparity || false})" style="cursor: pointer;">`;
+                // Add warning background if multiple NETO orders exist
+                const rowStyle = row.no_of_neto_orders > 1 ? 'cursor: pointer; background-color: #ffe6e6;' : 'cursor: pointer;';
+                
+                // Escape neto_order_ids for onclick handler
+                const netoOrderIdsRaw = (row.neto_order_ids || '').replace(/'/g, "\\'");
+                
+                tableHTML += `<tr onclick="showPODetails('${row.po_id}', '${row.OrderID}', '${requestedDateRaw}', '${enteredDateRaw}', '${receivedDateRaw}', '${createdByRaw}', '${completedDateRaw}', '${completionStatusRaw}', '${orderStatusRaw}', ${row.disparity || false}, '${netoOrderIdsRaw}')" style="${rowStyle}">`;
                 
                 // Format each field
                 const poId = row.po_id || '-';
-                const orderId = row.OrderID ? `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>` : '-';
+                
+                // Handle multiple order IDs if present
+                let orderId = '-';
+                if (row.neto_order_ids && row.neto_order_ids.trim()) {
+                    const orderIds = row.neto_order_ids.split(',').map(id => id.trim()).filter(id => id);
+                    if (orderIds.length > 0) {
+                        const orderLinks = orderIds.map(id => {
+                            const link = `https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${id}`;
+                            return `<a href="${link}" target="_blank" onclick="event.stopPropagation();">${id}</a>`;
+                        });
+                        orderId = orderLinks.join(', ');
+                    }
+                } else if (row.OrderID) {
+                    // Fallback to single order ID if neto_order_ids not available
+                    orderId = `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>`;
+                }
                 const itemCount = row.item_count || '0';
                 const netoCreatedBy = row.neto_order_created_by || '-';
                 const rexPOCreatedBy = row.rex_po_created_by || '-';
@@ -2336,10 +2430,10 @@
             
             // Initialize tooltips for the summary table (with safety check)
             if (typeof bootstrap !== 'undefined') {
-                var tooltipTriggerList = [].slice.call(document.querySelectorAll('#summaryContainer [data-bs-toggle="tooltip"]'));
-                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                    return new bootstrap.Tooltip(tooltipTriggerEl);
-                });
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#summaryContainer [data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
             }
         }
         
@@ -2532,26 +2626,53 @@
                 return;
             }
             
-            // Get PO ID and Order ID from first row for the info message
-            // Find the first record that has an OrderID (some records may not have it)
+            // Get PO ID from first row for the info message
             const poId = data[0]?.po_id || '-';
-            const recordWithOrderId = data.find(row => row.OrderID && row.OrderID !== null && row.OrderID !== '-');
-            const orderId = recordWithOrderId?.OrderID || '-';
             
-            // Generate order link dynamically from Order ID (no need to store in database)
-            const orderLink = orderId !== '-' ? `https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${orderId}` : null;
+            // Check if we have multiple NETO order IDs from currentPOData (from Summary table)
+            let orderIdDisplay = '<strong>-</strong>';
+            const netoOrderIds = currentPOData?.neto_order_ids || '';
             
-            // Create clickable Order ID link if available
-            const orderIdDisplay = (orderId !== '-' && orderLink) 
-                ? `<strong><a href="${orderLink}" target="_blank" style="color: #0056b3; text-decoration: underline;">${orderId}</a></strong>`
-                : `<strong>${orderId}</strong>`;
+            // Check if we have multiple order IDs from the Summary table
+            if (netoOrderIds && netoOrderIds.trim()) {
+                const orderIds = netoOrderIds.split(',').map(id => id.trim()).filter(id => id);
+                if (orderIds.length > 0) {
+                    const orderLinks = orderIds.map(id => {
+                        const link = `https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${id}`;
+                        return `<strong><a href="${link}" target="_blank" style="color: #0056b3; text-decoration: underline;">${id}</a></strong>`;
+                    });
+                    orderIdDisplay = orderLinks.join(', ');
+                }
+            } else {
+                // Fallback to single OrderID from comparison data if neto_order_ids not available
+                const recordWithOrderId = data.find(row => row.OrderID && row.OrderID !== null && row.OrderID !== '-');
+                const orderId = recordWithOrderId?.OrderID || currentPOData?.order_id || '-';
+                const orderLink = orderId !== '-' ? `https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${orderId}` : null;
+                orderIdDisplay = (orderId !== '-' && orderLink) 
+                    ? `<strong><a href="${orderLink}" target="_blank" style="color: #0056b3; text-decoration: underline;">${orderId}</a></strong>`
+                    : `<strong>${orderId}</strong>`;
+            }
             
             // Create info message showing which PO is being viewed
+            const isPlural = netoOrderIds && netoOrderIds.split(',').length > 1;
             let tableHTML = `
                 <div class="alert alert-info d-flex align-items-center mb-3" style="background-color: #d1ecf1; border-color: #bee5eb;">
                     <i class="fas fa-info-circle me-2"></i>
-                    <span>Showing ${totalCount} result${totalCount !== 1 ? 's' : ''} for PO ID: <strong>${poId}</strong> | Order ID: ${orderIdDisplay}</span>
+                    <span>Showing ${totalCount} result${totalCount !== 1 ? 's' : ''} for PO ID: <strong>${poId}</strong> | Order ID${isPlural ? 's' : ''}: ${orderIdDisplay}</span>
                 </div>
+            `;
+            
+            // Add warning banner if multiple NETO order IDs exist
+            if (isPlural) {
+                tableHTML += `
+                    <div class="alert alert-warning d-flex align-items-center mb-3" style="background-color: #fff3cd; border-color: #ffc107;">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span><strong>Warning:</strong> Possible duplication of data because this PO is linked to multiple NETO Orders</span>
+                    </div>
+                `;
+            }
+            
+            tableHTML += `
                 <div class="table-responsive-modern" style="height: 100%; overflow-y: auto;">
                     <table class="table table-modern table-striped table-hover">
                         <thead class="sticky-top">
@@ -2747,10 +2868,10 @@
             
             // Initialize tooltips (with safety check)
             if (typeof bootstrap !== 'undefined') {
-                var tooltipTriggerList = [].slice.call(document.querySelectorAll('#comparisonContainer [data-bs-toggle="tooltip"]'));
-                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                    return new bootstrap.Tooltip(tooltipTriggerEl);
-                });
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#comparisonContainer [data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
             }
             
             // Add sorting functionality
@@ -2839,10 +2960,10 @@
             
             // Initialize tooltips for the items table (with safety check)
             if (typeof bootstrap !== 'undefined') {
-                var tooltipTriggerList = [].slice.call(document.querySelectorAll('#itemsContainer [data-bs-toggle="tooltip"]'));
-                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                    return new bootstrap.Tooltip(tooltipTriggerEl);
-                });
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('#itemsContainer [data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
             }
             
             // Add sorting functionality to items table
@@ -3070,7 +3191,7 @@
         let currentItemData = null;
         let currentPOData = null;
         
-        function showPODetails(poId, orderId, requestedDate, enteredDate, receivedDate, createdBy, completedDate, completionStatus, orderStatus, disparity) {
+        function showPODetails(poId, orderId, requestedDate, enteredDate, receivedDate, createdBy, completedDate, completionStatus, orderStatus, disparity, netoOrderIds) {
             currentPOData = {
                 po_id: poId,
                 order_id: orderId,
@@ -3081,7 +3202,8 @@
                 completed_date: completedDate,
                 completion_status: completionStatus,
                 order_status: orderStatus,
-                disparity: disparity
+                disparity: disparity,
+                neto_order_ids: netoOrderIds || ''
             };
             
             // Store PO ID for Cost Price Check pre-filtering
