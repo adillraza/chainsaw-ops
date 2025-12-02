@@ -568,8 +568,8 @@ def get_cached_summary_data(search_term=None):
             )
         )
     
-    # Order by entered_date desc (most recent first)
-    query = query.order_by(CachedPurchaseOrderSummary.entered_date.desc())
+    # Order by PO ID descending to show newest purchase orders first
+    query = query.order_by(CachedPurchaseOrderSummary.po_id.desc())
     
     cached_records = query.limit(200).all()
     return [record.to_dict() for record in cached_records]

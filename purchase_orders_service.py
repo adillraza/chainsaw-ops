@@ -110,7 +110,7 @@ class BigQueryService:
                 lpn.latest_po_note_date
             FROM po_summary ps
             LEFT JOIN latest_po_notes lpn ON ps.po_id = lpn.po_id
-            ORDER BY ps.entered_date DESC
+            ORDER BY SAFE_CAST(ps.po_id AS INT64) DESC
             """
             
             # Add LIMIT only if specified
@@ -188,7 +188,7 @@ class BigQueryService:
                 lpn.latest_po_note_date
             FROM po_summary ps
             LEFT JOIN latest_po_notes lpn ON ps.po_id = lpn.po_id AND lpn.rn = 1
-            ORDER BY ps.entered_date DESC
+            ORDER BY SAFE_CAST(ps.po_id AS INT64) DESC
             """
             
             print(f"Executing SKU search query for: {sku_search_term}")
