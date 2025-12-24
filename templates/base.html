@@ -2692,38 +2692,40 @@
                         <tbody>
             `;
             
-            // Sort data to prioritize items with changes and notes
-            // Priority order:
-            // 1. Items with "Back-ordered" or any change other than "No Change"
-            // 2. Items with "No Change" but have notes
-            // 3. Items with "No Change" and no notes (to the bottom)
+            // Sort data so similar change logs stay grouped and lowest-priority
+            // states (No Change, Back-ordered, Pending Invoice, Item Removed)
+            // appear at the bottom in the specified order.
             data.sort((a, b) => {
-                const aChangeLog = a.change_log || 'No Change';
-                const bChangeLog = b.change_log || 'No Change';
-                const aHasNote = a.latest_item_note && a.latest_item_note.trim() !== '';
-                const bHasNote = b.latest_item_note && b.latest_item_note.trim() !== '';
+                const normalize = (value) => (value || 'No Change').trim();
+                const aChangeLog = normalize(a.change_log);
+                const bChangeLog = normalize(b.change_log);
                 
-                // Determine priority (lower number = higher priority)
-                const getPriority = (changeLog, hasNote) => {
-                    if (changeLog !== 'No Change') {
-                        return 1; // Items with changes (including Back-ordered)
-                    } else if (hasNote) {
-                        return 2; // Items with No Change but has notes
-                    } else {
-                        return 3; // Items with No Change and no notes
-                    }
+                // Lower number = higher priority (top of the table)
+                const changeLogPriority = {
+                    'Item Removed': 2,        // fourth last
+                    'Pending Invoice': 3,     // third last
+                    'Back-ordered': 4,        // second last
+                    'Back Order': 4,          // alias safeguard
+                    'No Change': 5            // very bottom
                 };
+                const getPriority = (changeLog) => changeLogPriority[changeLog] || 1;
                 
-                const aPriority = getPriority(aChangeLog, aHasNote);
-                const bPriority = getPriority(bChangeLog, bHasNote);
+                const aPriority = getPriority(aChangeLog);
+                const bPriority = getPriority(bChangeLog);
                 
-                // Sort by priority
                 if (aPriority !== bPriority) {
                     return aPriority - bPriority;
                 }
                 
-                // If same priority, maintain original order (or sort by SKU if desired)
-                return 0;
+                // Items with same priority are grouped by their change log label
+                if (aChangeLog !== bChangeLog) {
+                    return aChangeLog.localeCompare(bChangeLog);
+                }
+                
+                // Stable-ish fallback: sort by SKU to keep grouping predictable
+                const aSku = a.sku || '';
+                const bSku = b.sku || '';
+                return aSku.localeCompare(bSku);
             });
             
             data.forEach(row => {
