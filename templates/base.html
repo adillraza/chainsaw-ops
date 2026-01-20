@@ -7,77 +7,278 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        :root {
+            --nav-bg: #ffffff;
+            --nav-border: #e5e7eb;
+            --nav-pill: #eff6ff;
+            --nav-pill-active: #dbeafe;
+            --nav-pill-text: #1e3a8a;
+            --nav-text: #1f2937;
+            --nav-muted: #6b7280;
+            --brand-accent: linear-gradient(120deg, #2563eb, #0ea5e9);
+            --left-panel-width: 400px;
+            --right-panel-width: 400px;
+        }
         body {
             margin: 0;
             padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f7f9fc;
         }
         
         .top-bar {
-            height: 60px;
-            background-color: #2c3e50;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: fixed;
+            position: sticky;
             top: 0;
-            left: 0;
-            right: 0;
             z-index: 1000;
-        }
-        
-        .top-bar .brand {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: white;
-            text-decoration: none;
-            margin-right: 30px;
-        }
-        
-        .top-bar .nav-menu {
             display: flex;
             align-items: center;
-            gap: 5px;
+            padding: 0.65rem 1.75rem;
+            gap: 1.25rem;
+            background: var(--nav-bg);
+            border-bottom: 1px solid var(--nav-border);
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+        }
+        
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            text-decoration: none;
+            color: var(--nav-text);
+            min-width: 200px;
+        }
+        
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            background: var(--brand-accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            box-shadow: 0 6px 15px rgba(37, 99, 235, 0.35);
+        }
+        
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        
+        .brand-title {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        
+        .brand-tagline {
+            font-size: 0.75rem;
+            color: var(--nav-muted);
+        }
+        
+        .nav-menu {
+            display: flex;
+            gap: 0.35rem;
             flex: 1;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
         }
         
-        .top-bar .nav-menu .menu-item {
-            color: #ecf0f1;
+        .nav-menu .menu-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
             text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            transition: background-color 0.3s;
-            font-size: 0.95rem;
+            color: var(--nav-text);
+            font-weight: 500;
+            padding: 0.45rem 0.95rem;
+            border-radius: 999px;
+            background-color: transparent;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+            box-shadow: 0 0 0 transparent;
         }
         
-        .top-bar .nav-menu .menu-item:hover {
-            background-color: #34495e;
-            color: white;
+        .nav-menu .menu-item i {
+            font-size: 0.9rem;
         }
         
-        .top-bar .nav-menu .menu-item.active {
-            background-color: #3498db;
-            color: white;
+        .nav-menu .menu-item:hover {
+            background-color: var(--nav-pill);
+            color: var(--nav-pill-text);
         }
         
-        .top-bar .nav-menu .menu-item i {
-            margin-right: 6px;
+        .nav-menu .menu-item.active {
+            background-color: var(--nav-pill-active);
+            color: var(--nav-pill-text);
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18);
+            border-color: rgba(37, 99, 235, 0.25);
         }
         
-        .top-bar .user-info {
+        .header-actions {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 0.65rem;
+        }
+        
+        .quick-action-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid var(--nav-border);
+            background: #fff;
+            color: var(--nav-text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+        
+        .quick-action-btn:hover {
+            border-color: #2563eb;
+            color: #2563eb;
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.15);
+        }
+        
+        .user-dropdown {
+            position: relative;
+        }
+        
+        .user-trigger {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            border: 1px solid var(--nav-border);
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
+            background: #fff;
+            cursor: pointer;
+            min-width: 190px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .user-trigger:hover {
+            border-color: #2563eb;
+            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.15);
+        }
+        
+        .user-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--nav-pill);
+            color: var(--nav-pill-text);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+        }
+        
+        .user-meta {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .user-role {
+            font-size: 0.7rem;
+            color: var(--nav-muted);
+        }
+        
+        .user-trigger .fa-chevron-down {
+            font-size: 0.75rem;
+            color: var(--nav-muted);
+        }
+
+        @media (max-width: 1100px) {
+            .top-bar {
+                flex-wrap: wrap;
+                height: auto;
+                padding: 0.5rem 1rem;
+                gap: 0.75rem;
+            }
+            
+            .brand {
+                order: 1;
+                width: 100%;
+                justify-content: flex-start;
+            }
+            
+            .nav-menu {
+                order: 3;
+            }
+            
+            .header-actions {
+                order: 2;
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .user-dropdown {
+                flex: 1;
+                justify-content: flex-end;
+            }
+        }
+        
+        .user-dropdown-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 0.5rem);
+            background: #fff;
+            border: 1px solid var(--nav-border);
+            border-radius: 12px;
+            min-width: 210px;
+            box-shadow: 0 15px 35px rgba(15, 23, 42, 0.15);
+            padding: 0.5rem 0;
+            display: none;
+            z-index: 1200;
+        }
+        
+        .user-dropdown.open .user-dropdown-menu {
+            display: block;
+        }
+        
+        .user-dropdown-menu button,
+        .user-dropdown-menu a {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.55rem 1rem;
+            background: transparent;
+            border: none;
+            text-align: left;
+            font-size: 0.9rem;
+            color: var(--nav-text);
+            text-decoration: none;
+        }
+        
+        .user-dropdown-menu button:hover,
+        .user-dropdown-menu a:hover {
+            background-color: var(--nav-pill);
+            color: var(--nav-pill-text);
+        }
+        
+        .user-dropdown-menu .dropdown-divider {
+            height: 1px;
+            background: var(--nav-border);
+            margin: 0.35rem 0;
         }
         
         .left-panel {
             position: fixed;
             top: 60px;
             left: 0;
-            width: 400px;
+            width: var(--left-panel-width);
             min-width: 300px;
             max-width: 600px;
             height: calc(100vh - 60px);
@@ -112,7 +313,7 @@
         }
         
         .main-content {
-            margin-left: 400px;
+            margin-left: var(--left-panel-width);
             margin-top: 60px;
             padding: 20px;
             min-height: calc(100vh - 60px);
@@ -128,7 +329,7 @@
             position: fixed;
             top: 60px;
             right: 0;
-            width: 400px;
+            width: var(--right-panel-width);
             min-width: 300px;
             max-width: 600px;
             height: calc(100vh - 60px);
@@ -166,7 +367,7 @@
         }
         
         .content-area {
-            margin-right: 400px;
+            margin-right: var(--right-panel-width);
             box-sizing: border-box;
             overflow-x: auto; /* Add scrolling if content is too wide */
             transition: margin-right 0.3s ease;
@@ -214,6 +415,35 @@
         
         .badge {
             font-size: 0.75rem;
+        }
+        
+        @media (max-width: 1200px) {
+            .top-bar {
+                flex-wrap: wrap;
+                gap: 0.75rem;
+            }
+            .nav-menu {
+                justify-content: flex-start;
+                width: 100%;
+                overflow-x: auto;
+                padding-bottom: 0.3rem;
+            }
+            .header-actions {
+                margin-left: auto;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .brand {
+                min-width: unset;
+            }
+            .header-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+            .nav-menu {
+                order: 3;
+            }
         }
         
         @media (max-width: 768px) {
@@ -368,6 +598,7 @@
         .table-modern.table-striped > tbody > tr:nth-of-type(even) > * {
             background-color: #f8f9fa;
         }
+
         
         /* Column Alignment */
         .text-center {
@@ -529,10 +760,16 @@
     <!-- Top Bar -->
     <div class="top-bar">
         <a href="{{ url_for('dashboard') }}" class="brand">
-            <i class="fas fa-chainsaw"></i> Chainsawspares Operations
+            <div class="brand-icon">
+                <i class="fas fa-chainsaw"></i>
+            </div>
+            <div class="brand-text">
+                <span class="brand-title">Chainsawspares Ops</span>
+                <span class="brand-tagline">Operations Control</span>
+            </div>
         </a>
         {% if current_user.is_authenticated %}
-        <div class="nav-menu">
+        <nav class="nav-menu">
             <a href="{{ url_for('dashboard') }}" class="menu-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
                 <i class="fas fa-home"></i> Home
             </a>
@@ -548,25 +785,45 @@
             <a href="#" class="menu-item" onclick="loadContent('change-log-guide', event)">
                 <i class="fas fa-info-circle"></i> Change Log Guide
             </a>
-            <a href="#" class="menu-item" onclick="loadContent('ops-dashboard', event)">
-                <i class="fas fa-chart-line"></i> OPS Dashboard
-            </a>
             {% if current_user.is_admin %}
-            <a href="{{ url_for('admin') }}" class="menu-item {% if request.endpoint == 'admin' %}active{% endif %}">
-                <i class="fas fa-users-cog"></i> User Management
-            </a>
             {% endif %}
-        </div>
-        <div class="user-info">
-            <span>
-                Welcome, {{ current_user.username }}
-                {% if current_user.is_admin %}
-                    <span class="badge bg-warning text-dark">Admin</span>
-                {% endif %}
-            </span>
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </a>
+        </nav>
+        <div class="header-actions">
+            <button class="quick-action-btn" type="button" onclick="refreshData()" title="Refresh data">
+                <i class="fas fa-rotate"></i>
+            </button>
+            <button class="quick-action-btn" type="button" onclick="testConnection()" title="Test BigQuery connection">
+                <i class="fas fa-plug"></i>
+            </button>
+            <div class="user-dropdown" id="userDropdown">
+                <button class="user-trigger" type="button" onclick="toggleUserDropdown(event)">
+                    <span class="user-avatar">{{ (current_user.username[:1] if current_user.username else 'U')|upper }}</span>
+                    <span class="user-meta">
+                        <span class="user-name">{{ current_user.username }}</span>
+                        <span class="user-role">
+                            {% if current_user.is_admin %}Admin{% else %}User{% endif %}
+                        </span>
+                    </span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="user-dropdown-menu" id="userDropdownMenu">
+                    <button type="button" onclick="refreshData()">
+                        <i class="fas fa-sync-alt text-primary"></i> Refresh Data
+                    </button>
+                    <button type="button" onclick="testConnection()">
+                        <i class="fas fa-satellite-dish text-success"></i> Test Connection
+                    </button>
+                    {% if current_user.is_admin %}
+                    <a href="{{ url_for('admin') }}" class="{% if request.endpoint == 'admin' %}active{% endif %}">
+                        <i class="fas fa-users-cog text-info"></i> User Management
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    {% endif %}
+                    <a href="{{ url_for('logout') }}">
+                        <i class="fas fa-sign-out-alt text-danger"></i> Logout
+                    </a>
+                </div>
+            </div>
         </div>
         {% endif %}
     </div>
@@ -2341,6 +2598,7 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched in NETO" class="text-center">NETO Date Dispatched</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received in REX" class="text-center">REX Date Received</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates if there's a price difference between REX and NETO" class="text-center">Disparity?</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the purchase order" class="text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -2357,8 +2615,13 @@
                 const completionStatusRaw = (row.completion_status || '').replace(/'/g, "\\'");
                 const orderStatusRaw = (row.order_status || '').replace(/'/g, "\\'");
                 
-                // Add warning background if multiple NETO orders exist
-                const rowStyle = row.no_of_neto_orders > 1 ? 'cursor: pointer; background-color: #ffe6e6;' : 'cursor: pointer;';
+                // Determine row styling (Cancelled rows will be highlighted inline)
+                let rowStyle = 'cursor: pointer;';
+                const poStatusRaw = (row.po_status || '').trim();
+                const poStatusAttr = poStatusRaw.toLowerCase().replace(/\s+/g, '-');
+                if (poStatusAttr === 'cancelled') {
+                    rowStyle += ' background-color: #ffe0e0;';
+                }
                 
                 // Escape neto_order_ids for onclick handler
                 const netoOrderIdsRaw = (row.neto_order_ids || '').replace(/'/g, "\\'");
@@ -2406,6 +2669,20 @@
                 const disparity = row.disparity ? 
                     '<span class="badge bg-danger">true</span>' : 
                     '<span class="badge bg-success">false</span>';
+                const statusBadge = (() => {
+                    const normalizedStatus = (poStatusRaw || '-').toLowerCase();
+                    if (!poStatusRaw) return '<span class="badge bg-secondary">Unknown</span>';
+                    const badgeClass = normalizedStatus === 'cancelled'
+                        ? 'bg-danger'
+                        : normalizedStatus === 'available'
+                            ? 'bg-success'
+                            : normalizedStatus === 'back-order'
+                                ? 'bg-warning text-dark'
+                                : normalizedStatus === 'on-order'
+                                    ? 'bg-primary'
+                                    : 'bg-secondary';
+                    return `<span class="badge ${badgeClass}">${poStatusRaw}</span>`;
+                })();
                 
                 tableHTML += `
                     <td class="numeric-column">${poId}</td>
@@ -2419,6 +2696,7 @@
                     <td class="text-center">${completedDate}</td>
                     <td class="text-center">${receivedDate}</td>
                     <td class="text-center">${disparity}</td>
+                    <td class="text-center">${statusBadge}</td>
                 `;
                 tableHTML += '</tr>';
             });
@@ -4008,6 +4286,28 @@
             }
         });
         
+        function toggleUserDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('userDropdown');
+            if (dropdown) {
+                dropdown.classList.toggle('open');
+            }
+        }
+        
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('userDropdown');
+            if (dropdown && !dropdown.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const dropdown = document.getElementById('userDropdown');
+                if (dropdown) dropdown.classList.remove('open');
+            }
+        });
+        
         // Resizable Sidebars
         let isResizingRight = false;
         let isResizingLeft = false;
@@ -4018,6 +4318,7 @@
             const resizeHandle = document.getElementById('resize-handle');
             const rightPanel = document.getElementById('right-panel');
             const contentArea = document.querySelector('.content-area');
+            const root = document.documentElement;
             
             if (!resizeHandle || !rightPanel || !contentArea) return;
             
@@ -4040,8 +4341,7 @@
                 const maxWidth = 600;
                 
                 if (newWidth >= minWidth && newWidth <= maxWidth) {
-                    rightPanel.style.width = newWidth + 'px';
-                    contentArea.style.marginRight = newWidth + 'px';
+                    root.style.setProperty('--right-panel-width', newWidth + 'px');
                 }
             });
             
@@ -4062,8 +4362,7 @@
             if (savedWidth) {
                 const width = parseInt(savedWidth, 10);
                 if (width >= 300 && width <= 600) {
-                    rightPanel.style.width = width + 'px';
-                    contentArea.style.marginRight = width + 'px';
+                    root.style.setProperty('--right-panel-width', width + 'px');
                 }
             }
         }
@@ -4140,6 +4439,7 @@
             const leftResizeHandle = document.querySelector('.left-resize-handle');
             const leftPanel = document.querySelector('.left-panel');
             const mainContent = document.querySelector('.main-content');
+            const root = document.documentElement;
             
             if (!leftResizeHandle || !leftPanel || !mainContent) return;
             
@@ -4162,8 +4462,7 @@
                 const maxWidth = 600;
                 
                 if (newWidth >= minWidth && newWidth <= maxWidth) {
-                    leftPanel.style.width = newWidth + 'px';
-                    mainContent.style.marginLeft = newWidth + 'px';
+                    root.style.setProperty('--left-panel-width', newWidth + 'px');
                 }
             });
             
@@ -4184,8 +4483,7 @@
             if (savedWidth) {
                 const width = parseInt(savedWidth, 10);
                 if (width >= 300 && width <= 600) {
-                    leftPanel.style.width = width + 'px';
-                    mainContent.style.marginLeft = width + 'px';
+                    root.style.setProperty('--left-panel-width', width + 'px');
                 }
             }
         }
