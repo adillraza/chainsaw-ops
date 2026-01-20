@@ -67,6 +67,7 @@ class BigQueryService:
                     CAST(po_id AS STRING) as po_id,
                     po_status,
                     rex_po_created_by,
+                    supplier,
                     requested_date,
                     order_id as OrderID,
                     CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', order_id) as order_link,
@@ -150,26 +151,29 @@ class BigQueryService:
             query = f"""
             WITH po_summary AS (
                 SELECT 
-                    COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) as po_id,
-                    requested_date,
-                    OrderID,
-                    CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', OrderID) as order_link,
-                    entered_in_neto as entered_date,
-                    received_date,
-                    neto_entered_by as neto_order_created_by,
-                    completed_date,
-                    neto_complete_status as completion_status,
-                    neto_order_status as order_status,
-                    ROUND(SUM(rex_supplier_buy_ex), 2) - ROUND(SUM(neto_cost_price), 2) as difference,
+                    COALESCE(CAST(r.po_id AS STRING), r.PurchaseOrderNumber) as po_id,
+                    ops.supplier,
+                    r.requested_date,
+                    r.OrderID,
+                    CONCAT('https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=', r.OrderID) as order_link,
+                    r.entered_in_neto as entered_date,
+                    r.received_date,
+                    r.neto_entered_by as neto_order_created_by,
+                    r.completed_date,
+                    r.neto_complete_status as completion_status,
+                    r.neto_order_status as order_status,
+                    ROUND(SUM(r.rex_supplier_buy_ex), 2) - ROUND(SUM(r.neto_cost_price), 2) as difference,
                     CASE 
-                        WHEN ABS(ROUND(SUM(rex_supplier_buy_ex), 2) - ROUND(SUM(neto_cost_price), 2)) > 0.01 THEN true 
+                        WHEN ABS(ROUND(SUM(r.rex_supplier_buy_ex), 2) - ROUND(SUM(r.neto_cost_price), 2)) > 0.01 THEN true 
                         ELSE false 
                     END as has_disparity,
-                    MAX(modified_on) as modified_on
-                FROM `{self.project_id}.dataform.neto_rex_purchase_order_report`
-                WHERE manufacturer_sku LIKE '%{sku_search_term}%'
-                GROUP BY po_id, PurchaseOrderNumber, requested_date, OrderID, entered_in_neto, 
-                         received_date, neto_entered_by, completed_date, neto_complete_status, neto_order_status
+                    MAX(r.modified_on) as modified_on
+                FROM `{self.project_id}.dataform.neto_rex_purchase_order_report` r
+                LEFT JOIN `{self.project_id}.dataform.ops_po` ops
+                    ON COALESCE(CAST(r.po_id AS STRING), r.PurchaseOrderNumber) = CAST(ops.po_id AS STRING)
+                WHERE r.manufacturer_sku LIKE '%{sku_search_term}%'
+                GROUP BY COALESCE(CAST(r.po_id AS STRING), r.PurchaseOrderNumber), r.PurchaseOrderNumber, r.requested_date, r.OrderID, r.entered_in_neto, 
+                         r.received_date, r.neto_entered_by, r.completed_date, r.neto_complete_status, r.neto_order_status, ops.supplier
             ),
             latest_po_notes AS (
                 SELECT 
@@ -210,6 +214,7 @@ class BigQueryService:
                     'requested_date': safe_isoformat(row.requested_date),
                     'order_id': row.OrderID,
                     'order_link': row.order_link,
+                    'supplier': row.supplier,
                     'entered_date': safe_isoformat(row.entered_date),
                     'received_date': safe_isoformat(row.received_date),
                     'neto_order_created_by': row.neto_order_created_by,

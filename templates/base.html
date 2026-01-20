@@ -2320,7 +2320,7 @@
 
             // Define the columns we want to show in the summary table
             const summaryColumns = [
-                'po_id', 'po_status', 'requested_date', 'OrderID', 'item_count', 'order_link', 'entered_date', 'received_date',
+                'po_id', 'po_status', 'requested_date', 'OrderID', 'supplier', 'item_count', 'order_link', 'entered_date', 'received_date',
                 'neto_order_created_by', 'completed_date', 'order_status', 'disparity'
             ];
             
@@ -2332,6 +2332,7 @@
                             <tr>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from the system" class="text-center">OrderID</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Supplier assigned to this purchase order" class="text-center">Supplier</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (order lines) in this purchase order from REX" class="text-center">REX Order Lines</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the purchase order in REX">REX PO Created By</th>
@@ -2382,6 +2383,7 @@
                     // Fallback to single order ID if neto_order_ids not available
                     orderId = `<a href="${row.order_link}" target="_blank" onclick="event.stopPropagation();">${row.OrderID}</a>`;
                 }
+                const supplierName = row.supplier || '-';
                 const itemCount = row.item_count || '0';
                 const netoCreatedBy = row.neto_order_created_by || '-';
                 const rexPOCreatedBy = row.rex_po_created_by || '-';
@@ -2408,6 +2410,7 @@
                 tableHTML += `
                     <td class="numeric-column">${poId}</td>
                     <td class="text-center">${orderId}</td>
+                    <td class="text-center">${supplierName}</td>
                     <td class="text-center">${itemCount}</td>
                     <td>${netoCreatedBy}</td>
                     <td>${rexPOCreatedBy}</td>

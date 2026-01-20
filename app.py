@@ -5,6 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 # Load environment variables FIRST before importing services that need them
 load_dotenv()
@@ -67,6 +68,7 @@ class CachedPurchaseOrderSummary(db.Model):
     po_id = db.Column(db.String(50), nullable=False, index=True)  # Index for fast lookups
     po_status = db.Column(db.String(50))
     rex_po_created_by = db.Column(db.String(100))
+    supplier = db.Column(db.String(150))
     requested_date = db.Column(db.DateTime)
     order_id = db.Column(db.String(50), index=True)  # Index for fast lookups
     order_link = db.Column(db.String(200))
@@ -97,6 +99,7 @@ class CachedPurchaseOrderSummary(db.Model):
             'po_id': self.po_id,
             'po_status': self.po_status,
             'rex_po_created_by': self.rex_po_created_by,
+            'supplier': self.supplier,
             'requested_date': self.requested_date.isoformat() if self.requested_date else None,
             'OrderID': self.order_id,
             'order_link': self.order_link,
@@ -397,6 +400,7 @@ def cache_purchase_order_data():
                             po_id=row.get('po_id'),
                             po_status=row.get('po_status'),
                             rex_po_created_by=row.get('rex_po_created_by'),
+                            supplier=row.get('supplier'),
                             requested_date=safe_parse_date(row.get('requested_date')),
                             order_id=row.get('OrderID'),
                             order_link=row.get('order_link'),
@@ -1373,9 +1377,24 @@ def create_admin_user():
         db.session.commit()
         print("Admin user created: username='admin', password='1234'")
 
+def ensure_supplier_column():
+    """Ensure supplier column exists on CachedPurchaseOrderSummary"""
+    with app.app_context():
+        try:
+            db.session.execute(text("ALTER TABLE cached_purchase_order_summary ADD COLUMN supplier VARCHAR(150)"))
+            db.session.commit()
+            print("Added supplier column to cached_purchase_order_summary table")
+        except Exception as e:
+            db.session.rollback()
+            if "duplicate column name" in str(e).lower():
+                pass
+            else:
+                print(f"Warning: could not ensure supplier column: {str(e)}")
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        ensure_supplier_column()
         create_admin_user()
     
     app.run(debug=True, host='0.0.0.0', port=5001)
