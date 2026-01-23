@@ -1119,6 +1119,60 @@ class BigQueryService:
             return True, None
         except Exception as e:
             return False, str(e)
+
+    def get_all_item_reviews(self):
+        """Fetch all item review records from BigQuery"""
+        if not self.client:
+            return [], "BigQuery client not initialized"
+        try:
+            query = f"""
+            SELECT 
+                review_id,
+                po_id,
+                order_id,
+                po_item_id,
+                sku,
+                flagged_by,
+                flagged_at,
+                flag_comment,
+                status,
+                warehouse_assigned_to,
+                warehouse_started_at,
+                warehouse_comment,
+                warehouse_closed_at,
+                retail_closed_by,
+                retail_closed_at,
+                retail_comment,
+                comparison_snapshot,
+                updated_at
+            FROM `{self.project_id}.operations.item_reviews`
+            """
+            results = list(self.client.query(query).result())
+            reviews = []
+            for row in results:
+                reviews.append({
+                    'review_id': row.review_id,
+                    'po_id': row.po_id,
+                    'order_id': row.order_id,
+                    'po_item_id': row.po_item_id,
+                    'sku': row.sku,
+                    'flagged_by': row.flagged_by,
+                    'flagged_at': row.flagged_at.isoformat() if row.flagged_at else None,
+                    'flag_comment': row.flag_comment,
+                    'status': row.status,
+                    'warehouse_assigned_to': row.warehouse_assigned_to,
+                    'warehouse_started_at': row.warehouse_started_at.isoformat() if row.warehouse_started_at else None,
+                    'warehouse_comment': row.warehouse_comment,
+                    'warehouse_closed_at': row.warehouse_closed_at.isoformat() if row.warehouse_closed_at else None,
+                    'retail_closed_by': row.retail_closed_by,
+                    'retail_closed_at': row.retail_closed_at.isoformat() if row.retail_closed_at else None,
+                    'retail_comment': row.retail_comment,
+                    'comparison_snapshot': row.comparison_snapshot,
+                    'updated_at': row.updated_at.isoformat() if row.updated_at else None
+                })
+            return reviews, None
+        except Exception as e:
+            return [], str(e)
     
     def delete_item_note(self, note_id, username):
         """Soft delete a note"""

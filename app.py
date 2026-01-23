@@ -311,6 +311,19 @@ def safe_parse_date(date_str):
         # Silently return None for invalid dates - no need to log every null date
         return None
 
+def parse_iso_datetime(value):
+    """Parse ISO strings to datetime, returning None on failure"""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        if isinstance(value, str):
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return None
+    except (ValueError, TypeError):
+        return None
+
 def update_cache_with_latest_note(po_item_id, po_id):
     """Update the cache with the latest note for a specific item"""
     try:
@@ -1252,7 +1265,13 @@ def refresh_bigquery_data():
     try:
         success, message = cache_purchase_order_data()
         if success:
-            return jsonify({'success': True, 'message': message})
+            review_success, review_msg = sync_reviews_from_bigquery()
+            combined_msg = message
+            if review_success:
+                combined_msg += f" {review_msg}"
+            else:
+                combined_msg += f" (Review sync warning: {review_msg})"
+            return jsonify({'success': True, 'message': combined_msg})
         else:
             return jsonify({'success': False, 'error': message})
     except Exception as e:
@@ -1624,11 +1643,58 @@ def sync_review_to_bigquery(review):
     except Exception as e:
         print(f"Warning: could not sync review to BigQuery: {str(e)}")
 
+def sync_reviews_from_bigquery():
+    """Fetch reviews from BigQuery and sync to local database"""
+    if not purchase_orders_service.client:
+        print("BigQuery client not initialized; skipping review sync.")
+        return False, "BigQuery client not initialized"
+    try:
+        reviews, error = purchase_orders_service.get_all_item_reviews()
+        if error:
+            print(f"Error fetching reviews from BigQuery: {error}")
+            return False, error
+        # Clear existing reviews
+        ItemReview.query.delete()
+        db.session.commit()
+        for record in reviews:
+            review = ItemReview(
+                review_id=record.get('review_id'),
+                po_id=record.get('po_id'),
+                order_id=record.get('order_id'),
+                po_item_id=record.get('po_item_id'),
+                sku=record.get('sku'),
+                flagged_by=record.get('flagged_by'),
+                flagged_at=parse_iso_datetime(record.get('flagged_at')),
+                flag_comment=record.get('flag_comment'),
+                status=record.get('status'),
+                warehouse_assigned_to=record.get('warehouse_assigned_to'),
+                warehouse_started_at=parse_iso_datetime(record.get('warehouse_started_at')),
+                warehouse_comment=record.get('warehouse_comment'),
+                warehouse_closed_at=parse_iso_datetime(record.get('warehouse_closed_at')),
+                retail_closed_by=record.get('retail_closed_by'),
+                retail_closed_at=parse_iso_datetime(record.get('retail_closed_at')),
+                retail_comment=record.get('retail_comment'),
+                comparison_snapshot=json.dumps(record.get('comparison_snapshot')) if record.get('comparison_snapshot') else None,
+                updated_at=parse_iso_datetime(record.get('updated_at'))
+            )
+            db.session.add(review)
+        db.session.commit()
+        print(f"Synced {len(reviews)} reviews from BigQuery")
+        return True, f"Synced {len(reviews)} reviews."
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error syncing reviews: {str(e)}")
+        return False, str(e)
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         ensure_supplier_column()
         ensure_user_role_column()
         create_admin_user()
+        try:
+            sync_reviews_from_bigquery()
+        except Exception as e:
+            print(f"Warning: Could not sync reviews on startup: {str(e)}")
     
     app.run(debug=True, host='0.0.0.0', port=5001)
