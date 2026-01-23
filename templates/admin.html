@@ -26,6 +26,15 @@
                         <label for="password" class="form-label">Password</label>
                         <input type="password" class="form-control" id="password" name="password" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role</label>
+                        <select class="form-select" id="role" name="role">
+                            <option value="retail" selected>Retail</option>
+                            <option value="warehouse">Warehouse</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <small class="text-muted">Admins have access to all features. Retail and warehouse roles see their respective review tabs.</small>
+                    </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-success">
                             <i class="fas fa-user-plus"></i> Create User
@@ -44,7 +53,7 @@
             <div class="card-body">
                 <p><strong>Current Admin:</strong> {{ current_user.username }}</p>
                 <p><strong>Total Users:</strong> {{ users|length }}</p>
-                <p><strong>Admin Users:</strong> {{ users|selectattr('is_admin')|list|length }}</p>
+                <p><strong>Admin Users:</strong> {{ users|selectattr('role', 'equalto', 'admin')|list|length }}</p>
                 <hr>
                 <small class="text-muted">
                     <i class="fas fa-exclamation-triangle"></i>
@@ -84,11 +93,16 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if user.is_admin %}
-                                            <span class="badge bg-warning text-dark">Admin</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">User</span>
-                                        {% endif %}
+                                        <form method="POST" action="{{ url_for('update_user_role', user_id=user.id) }}" class="d-flex align-items-center gap-2">
+                                            <select class="form-select form-select-sm" name="role" onchange="this.form.submit()" {% if user.id == current_user.id %}disabled{% endif %}>
+                                                <option value="retail" {% if user.role == 'retail' %}selected{% endif %}>Retail</option>
+                                                <option value="warehouse" {% if user.role == 'warehouse' %}selected{% endif %}>Warehouse</option>
+                                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                            </select>
+                                            {% if user.id == current_user.id %}
+                                                <span class="badge bg-info text-dark">Your role</span>
+                                            {% endif %}
+                                        </form>
                                     </td>
                                     <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
                                     <td>

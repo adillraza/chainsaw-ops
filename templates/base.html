@@ -853,6 +853,84 @@
         .clickable-row:hover {
             background-color: #f8f9fa !important;
         }
+
+        .alert-compact {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            border-left: 4px solid #ff9800;
+            background-color: #fff7e6;
+            color: #7a4f00;
+        }
+
+        .flag-review-modal .item-meta-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.92rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .flag-review-modal .item-meta-row span:first-child {
+            color: #6b7280;
+            font-weight: 600;
+            margin-right: 1rem;
+            min-width: 130px;
+        }
+
+        .flag-review-modal .badge-change-log {
+            font-size: 0.82rem;
+            padding: 0.25rem 0.65rem;
+        }
+
+        .flag-review-modal .review-comment {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .flag-review-modal .modal-body {
+            background: #f9fafb;
+        }
+
+        .warehouse-table thead th {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #4b5563;
+            background: #f8fafc;
+        }
+
+        .warehouse-table tbody td {
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: #1f2937;
+        }
+
+        .warehouse-table tbody tr {
+            vertical-align: middle;
+            cursor: pointer;
+        }
+
+        .warehouse-table tbody tr:hover {
+            background-color: #f3f4f6;
+        }
+
+        .warehouse-detail-meta span {
+            display: inline-block;
+            min-width: 140px;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .warehouse-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .warehouse-detail-grid .stat-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 12px;
+            background: #f9fafb;
+        }
     </style>
 </head>
 <body>
@@ -878,6 +956,11 @@
             <a href="#" class="menu-item" onclick="loadContent('comparison', event)">
                 <i class="fas fa-balance-scale"></i> Comparison
             </a>
+            {% if current_user.is_authenticated and (current_user.role == 'warehouse' or current_user.role == 'admin') %}
+            <a href="#" class="menu-item" onclick="loadContent('warehouse', event)">
+                <i class="fas fa-warehouse"></i> Warehouse
+            </a>
+            {% endif %}
             <a href="#" class="menu-item" onclick="loadContent('cost-price-check', event)">
                 <i class="fas fa-dollar-sign"></i> Cost Price Check
             </a>
@@ -925,6 +1008,99 @@
             </div>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Flag Review Modal -->
+    <div class="modal fade flag-review-modal" id="flagReviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-flag me-2 text-danger"></i>Flag Item for Warehouse Review</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="item-meta-row"><span>PO ID</span><strong id="flagReviewPoId">-</strong></div>
+                        <div class="item-meta-row"><span>SKU</span><strong id="flagReviewSku">-</strong></div>
+                        <div class="item-meta-row"><span>Product</span><span id="flagReviewName">-</span></div>
+                        <div class="item-meta-row">
+                            <span>Change Log</span>
+                            <span id="flagReviewChangeLog"></span>
+                        </div>
+                        <div class="item-meta-row"><span>Latest Note</span><span id="flagReviewLatestNote">-</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="flagReviewComment" class="form-label">Optional comment</label>
+                        <textarea id="flagReviewComment" class="form-control review-comment" maxlength="500" placeholder="Provide context for the Warehouse team (optional)..."></textarea>
+                        <div class="d-flex justify-content-between mt-1">
+                            <small class="text-muted">Comments help warehouse understand the issue faster.</small>
+                            <small class="text-muted"><span id="flagReviewCharCount">0</span>/500</small>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning d-none" id="flagReviewWarning">
+                        <i class="fas fa-info-circle me-1"></i><span class="message">This item is already flagged for review.</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmFlagReviewBtn">
+                        <span class="default-label"><i class="fas fa-flag me-1"></i>Flag Item</span>
+                        <span class="loading-label d-none"><i class="fas fa-spinner fa-spin me-1"></i>Flagging...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warehouse Review Modal -->
+    <div class="modal fade" id="warehouseReviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-warehouse me-2"></i>Warehouse Review Detail</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="warehouse-detail-meta mb-3">
+                                <div><span>PO ID:</span> <strong id="warehouseDetailPoId">-</strong></div>
+                                <div><span>Order ID:</span> <strong id="warehouseDetailOrderId">-</strong></div>
+                                <div><span>Item ID:</span> <strong id="warehouseDetailItemId">-</strong></div>
+                                <div><span>SKU:</span> <strong id="warehouseDetailSku">-</strong></div>
+                                <div><span>Product:</span> <span id="warehouseDetailProduct">-</span></div>
+                                <div><span>Change Log:</span> <span id="warehouseDetailChange"></span></div>
+                                <div><span>Flagged By:</span> <span id="warehouseDetailFlaggedBy">-</span></div>
+                                <div><span>Flagged At:</span> <span id="warehouseDetailFlaggedAt">-</span></div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Retail Comment</label>
+                                <div class="border rounded p-2 bg-light" id="warehouseDetailRetailComment">-</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Latest Note</label>
+                                <div class="border rounded p-2 bg-light" id="warehouseDetailLatestNote">-</div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="warehouse-detail-grid mb-3" id="warehouseDetailStats"></div>
+                            <div class="mb-3">
+                                <label for="warehouseCommentInput" class="form-label">Warehouse Comment</label>
+                                <textarea id="warehouseCommentInput" class="form-control" rows="3" placeholder="Describe the fix or action taken..."></textarea>
+                            </div>
+                            <div class="alert alert-warning d-none" id="warehouseDetailWarning"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="warehouseCloseBtn">
+                        <span class="default-label"><i class="fas fa-check me-1"></i>Mark as Completed</span>
+                        <span class="loading-label d-none"><i class="fas fa-spinner fa-spin me-1"></i>Updating...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Left Panel (All Item Notes) -->
@@ -1071,18 +1247,10 @@
                 // Load BigQuery data content
                 contentArea.innerHTML = `
                     <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h2><i class="fas fa-shopping-cart"></i> Purchase Orders</h2>
-                            <div class="d-flex align-items-center">
-                                <div class="alert alert-warning mb-0 me-3 py-2 px-3" style="border-left: 4px solid #ff9800; background-color: #fff3cd; font-weight: 600;">
-                                    <i class="fas fa-exclamation-triangle"></i> Click "Refresh Data" every time you access this page to load the latest data.
-                                </div>
-                                <button id="refreshDataBtn" class="btn btn-primary btn-sm me-2">
-                                    <i class="fas fa-sync-alt"></i> Refresh Data
-                                </button>
-                                <button id="testConnectionBtn" class="btn btn-outline-info btn-sm">
-                                    <i class="fas fa-plug"></i> Test Connection
-                                </button>
+                            <div class="alert alert-warning alert-compact mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Use the header refresh/test buttons whenever you open this page to pull the latest data.
                             </div>
                         </div>
                         <div class="d-flex justify-content-end mt-2">
@@ -1198,18 +1366,10 @@
                 // Load Cost Price Check content
                 contentArea.innerHTML = `
                     <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h2><i class="fas fa-dollar-sign"></i> Cost Price Check</h2>
-                            <div class="d-flex align-items-center">
-                                <div class="alert alert-warning mb-0 me-3 py-2 px-3" style="border-left: 4px solid #ff9800; background-color: #fff3cd; font-weight: 600;">
-                                    <i class="fas fa-exclamation-triangle"></i> Click "Refresh Data" every time you access this page to load the latest data.
-                                </div>
-                                <button id="refreshDataBtn" class="btn btn-primary btn-sm me-2">
-                                    <i class="fas fa-sync-alt"></i> Refresh Data
-                                </button>
-                                <button id="testConnectionBtn" class="btn btn-outline-info btn-sm">
-                                    <i class="fas fa-plug"></i> Test Connection
-                                </button>
+                            <div class="alert alert-warning alert-compact mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Need fresh numbers? Use the header buttons to refresh data or test the connection.
                             </div>
                         </div>
                         <div class="d-flex justify-content-end mt-2">
@@ -1297,18 +1457,10 @@
                 // Load Comparison content
                 contentArea.innerHTML = `
                     <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h2><i class="fas fa-balance-scale"></i> Comparison</h2>
-                            <div class="d-flex align-items-center">
-                                <div class="alert alert-warning mb-0 me-3 py-2 px-3" style="border-left: 4px solid #ff9800; background-color: #fff3cd; font-weight: 600;">
-                                    <i class="fas fa-exclamation-triangle"></i> Click "Refresh Data" every time you access this page to load the latest data.
-                                </div>
-                                <button id="refreshDataBtn" class="btn btn-primary btn-sm me-2">
-                                    <i class="fas fa-sync-alt"></i> Refresh Data
-                                </button>
-                                <button id="testConnectionBtn" class="btn btn-outline-info btn-sm">
-                                    <i class="fas fa-plug"></i> Test Connection
-                                </button>
+                            <div class="alert alert-warning alert-compact mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Need fresh comparison data? Use the header controls to refresh or test BigQuery.
                             </div>
                         </div>
                         <div class="d-flex justify-content-end mt-2">
@@ -1338,6 +1490,35 @@
                 
                 // Initialize the Comparison page functionality
                 initializeComparisonPage();
+            } else if (contentType === 'warehouse') {
+                showLeftPanel();
+                hideRightPanel();
+                
+                document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+                if (event && event.target) {
+                    event.target.closest('.menu-item').classList.add('active');
+                }
+                
+                contentArea.innerHTML = `
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h2><i class="fas fa-warehouse"></i> Warehouse Reviews</h2>
+                            <div class="alert alert-warning alert-compact mb-0">
+                                <i class="fas fa-info-circle me-2"></i>Newly flagged items appear first. Closed reviews are shown for quick reference.
+                            </div>
+                        </div>
+                    </div>
+                    <div id="warehouseReviewsContainer">
+                        <div class="text-center text-muted py-5" id="warehouseReviewsLoading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 mb-0">Loading warehouse reviews...</p>
+                        </div>
+                    </div>
+                `;
+                
+                initializeWarehousePage();
             } else if (contentType === 'change-log-guide') {
                 // Hide both panels for full-width guide
                 hideLeftPanel();
@@ -1744,10 +1925,14 @@
             // pageSizeSelect removed - no longer using page size dropdown
             
             // Test connection
-            testConnectionBtn.addEventListener('click', testConnection);
+            if (testConnectionBtn) {
+                testConnectionBtn.addEventListener('click', testConnection);
+            }
             
             // Refresh data
-            refreshDataBtn.addEventListener('click', refreshData);
+            if (refreshDataBtn) {
+                refreshDataBtn.addEventListener('click', refreshData);
+            }
             
             // Search functionality
             searchBtn.addEventListener('click', performSearch);
@@ -1845,8 +2030,10 @@
             const status = document.getElementById('connectionStatus');
             const message = document.getElementById('connectionMessage');
             
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            }
             
             fetch('/api/bigquery/test')
                 .then(response => response.json())
@@ -1866,8 +2053,10 @@
                     message.innerHTML = '<i class="fas fa-exclamation-circle"></i> Connection test failed: ' + error.message;
                 })
                 .finally(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-plug"></i> Test Connection';
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-plug"></i> Test Connection';
+                    }
                 });
         }
         
@@ -2198,8 +2387,10 @@
             const dataInfo = document.getElementById('dataInfo');
             const paginationNav = document.getElementById('paginationNav');
             
-            refreshBtn.disabled = true;
-            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            if (refreshBtn) {
+                refreshBtn.disabled = true;
+                refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            }
             loadingSpinner.style.display = 'block';
             summaryContainer.innerHTML = '';
             dataInfo.style.display = 'none';
@@ -2236,8 +2427,10 @@
                     `;
                 })
                 .finally(() => {
-                    refreshBtn.disabled = false;
-                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
+                    if (refreshBtn) {
+                        refreshBtn.disabled = false;
+                        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
+                    }
                 });
         }
         
@@ -2348,7 +2541,10 @@
                 .then(data => {
                     console.log('Comparison search result:', data);
                     if (data.success && data.data) {
-                        displayComparisonData(data.data, data.data.length);
+                        const reviewMap = buildReviewStatusMap(data.reviews || []);
+                        window.currentComparisonReviews = reviewMap;
+                        displayComparisonData(data.data, data.data.length, reviewMap);
+                        window.currentComparisonData = data.data;
                     } else {
                         console.error('Error searching comparison data:', data.message);
                     }
@@ -2405,7 +2601,7 @@
                     (item.sku && item.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
                     (item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase()))
                 );
-                displayComparisonData(filteredComparisonData, filteredComparisonData.length);
+                displayComparisonData(filteredComparisonData, filteredComparisonData.length, window.currentComparisonReviews);
             }
             
             // Filter items table if it has data
@@ -2436,7 +2632,7 @@
                 displaySummaryData(window.currentSummaryData);
             }
             if (window.currentComparisonData) {
-                displayComparisonData(window.currentComparisonData, window.currentComparisonData.length);
+                displayComparisonData(window.currentComparisonData, window.currentComparisonData.length, window.currentComparisonReviews);
             }
             if (currentItemsData && currentItemsData.length > 0) {
                 displayItemsData(currentItemsData, currentItemsData.length, currentItemsPoId, currentItemsOrderId);
@@ -2460,7 +2656,7 @@
                 displaySummaryData(window.currentSummaryData);
             }
             if (window.currentComparisonData) {
-                displayComparisonData(window.currentComparisonData, window.currentComparisonData.length);
+                displayComparisonData(window.currentComparisonData, window.currentComparisonData.length, window.currentComparisonReviews);
             }
             if (currentItemsData && currentItemsData.length > 0) {
                 displayItemsData(currentItemsData, currentItemsData.length, currentItemsPoId, currentItemsOrderId);
@@ -2486,6 +2682,10 @@
         let currentItemsData = [];
         let currentItemsPoId = null;
         let currentItemsOrderId = null;
+        window.currentComparisonReviews = window.currentComparisonReviews || {};
+        let flagReviewModalInstance = null;
+        let pendingReviewRowData = null;
+        let pendingReviewButtonEl = null;
         
         // Individual comparison search functions removed - now using global search
         
@@ -2785,6 +2985,9 @@
                     return `<span class="badge ${badgeClass}">${poStatusRaw}</span>`;
                 })();
                 
+                const reviewInfo = window.currentComparisonReviews[row.po_item_id];
+                const reviewCell = renderReviewActionCell(reviewInfo, index);
+                
                 tableHTML += `
                     <td class="numeric-column">${poId}</td>
                     <td class="text-center">${orderId}</td>
@@ -2817,6 +3020,256 @@
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
             }
+        }
+        
+        function buildReviewStatusMap(reviews) {
+            const map = {};
+            (reviews || []).forEach(review => {
+                if (!review || !review.po_item_id) return;
+                map[review.po_item_id] = review;
+            });
+            return map;
+        }
+        
+        function formatReviewBadge(status) {
+            const normalized = (status || 'pending').toLowerCase();
+            const label = normalized.replace(/_/g, ' ') || 'flagged';
+            let badgeClass = 'bg-danger';
+            if (normalized === 'warehouse_in_progress') {
+                badgeClass = 'bg-warning text-dark';
+            } else if (normalized === 'warehouse_closed' || normalized === 'retail_closed') {
+                badgeClass = 'bg-success';
+            } else if (normalized === 'cancelled') {
+                badgeClass = 'bg-secondary';
+            }
+            return `<span class="badge ${badgeClass} text-uppercase">${label}</span>`;
+        }
+
+        function getChangeLogDisplay(changeLogRaw) {
+            const label = (changeLogRaw || 'Unknown').trim() || 'Unknown';
+            let badgeClass = 'bg-secondary';
+            let tooltipText = '';
+            switch (label) {
+                case 'Back-ordered':
+                    badgeClass = 'bg-dark';
+                    tooltipText = 'Item is on back-order, waiting for stock availability';
+                    break;
+                case 'Quantity Changed':
+                    badgeClass = 'bg-info text-dark';
+                    tooltipText = 'NETO invoiced quantity differs from REX ordered quantity';
+                    break;
+                case 'Item Removed':
+                    badgeClass = 'bg-danger';
+                    tooltipText = 'Item not present on NETO invoice (out of stock or excluded)';
+                    break;
+                case 'No Change':
+                    badgeClass = 'bg-light text-dark';
+                    break;
+                case 'Delivery Gap':
+                    badgeClass = 'bg-warning text-dark';
+                    tooltipText = 'REX received matches ordered but differs from NETO invoiced';
+                    break;
+                case 'New Item':
+                    badgeClass = 'bg-success';
+                    tooltipText = 'New item added that wasn\'t in original REX PO';
+                    break;
+                case 'Receival Difference':
+                    badgeClass = 'bg-primary';
+                    tooltipText = 'REX received quantity differs from NETO invoiced quantity';
+                    break;
+                case 'Pending Invoice':
+                    badgeClass = 'bg-secondary';
+                    tooltipText = 'Awaiting invoice completion';
+                    break;
+            }
+            return { label, badgeClass, tooltipText };
+        }
+        
+        function renderReviewActionCell(reviewInfo, rowIndex, poItemId) {
+            if (reviewInfo && reviewInfo.status) {
+                const badge = formatReviewBadge(reviewInfo.status);
+                const meta = reviewInfo.flagged_by 
+                    ? `<div class="text-muted" style="font-size: 0.7rem;">${reviewInfo.flagged_by}</div>`
+                    : '';
+                return `<div class="d-flex flex-column align-items-center gap-1">${badge}${meta}</div>`;
+            }
+            if (!poItemId) {
+                return `<span class="text-muted small">Not available</span>`;
+            }
+            const itemAttr = `data-po-item-id="${poItemId}"`;
+            return `
+                <button class="btn btn-sm btn-outline-danger flag-review-btn" data-row-index="${rowIndex}" ${itemAttr}>
+                    <i class="fas fa-flag"></i> Flag
+                </button>
+            `;
+        }
+        
+        function attachFlagButtonHandlers() {
+            document.querySelectorAll('.flag-review-btn').forEach(button => {
+                button.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                    const rowIndex = parseInt(this.dataset.rowIndex, 10);
+                    const poItemId = this.dataset.poItemId;
+                    let rowData = null;
+                    if (!isNaN(rowIndex) && window.currentComparisonData) {
+                        rowData = window.currentComparisonData[rowIndex];
+                    }
+                    if (!rowData && poItemId && window.currentComparisonData) {
+                        rowData = window.currentComparisonData.find(item => String(item.po_item_id) === String(poItemId));
+                    }
+                    if (!rowData) {
+                        alert('Unable to flag this item. Please refresh and try again.');
+                        return;
+                    }
+                    openFlagReviewModal(rowData, this);
+                });
+            });
+        }
+        
+        function openFlagReviewModal(rowData, triggerButton) {
+            if (!flagReviewModalInstance || !rowData) return;
+            
+            pendingReviewRowData = rowData;
+            pendingReviewButtonEl = triggerButton || null;
+            
+            document.getElementById('flagReviewPoId').textContent = rowData.po_id || '-';
+            document.getElementById('flagReviewSku').textContent = rowData.sku || '-';
+            document.getElementById('flagReviewName').textContent = rowData.name || rowData.product_name || '-';
+            
+            const changeLogInfo = getChangeLogDisplay(rowData.change_log);
+            document.getElementById('flagReviewChangeLog').innerHTML = `<span class="badge ${changeLogInfo.badgeClass} badge-change-log">${changeLogInfo.label}</span>`;
+            
+            const latestNoteEl = document.getElementById('flagReviewLatestNote');
+            if (rowData.latest_item_note) {
+                const author = rowData.latest_item_note_user ? `<strong>${rowData.latest_item_note_user}</strong>` : '';
+                latestNoteEl.innerHTML = `${author ? author + ': ' : ''}${rowData.latest_item_note}`;
+            } else {
+                latestNoteEl.innerHTML = '<span class="text-muted">No notes yet</span>';
+            }
+            
+            const commentInput = document.getElementById('flagReviewComment');
+            if (commentInput) {
+                commentInput.value = '';
+                commentInput.focus();
+            }
+            updateFlagReviewCharCount();
+            showFlagReviewWarning(null);
+            setFlagReviewModalLoading(false);
+            flagReviewModalInstance.show();
+        }
+        
+        function updateFlagReviewCharCount() {
+            const commentInput = document.getElementById('flagReviewComment');
+            const countEl = document.getElementById('flagReviewCharCount');
+            if (!commentInput || !countEl) return;
+            countEl.textContent = commentInput.value.length;
+        }
+        
+        function setFlagReviewModalLoading(isLoading) {
+            const confirmBtn = document.getElementById('confirmFlagReviewBtn');
+            if (!confirmBtn) return;
+            const defaultLabel = confirmBtn.querySelector('.default-label');
+            const loadingLabel = confirmBtn.querySelector('.loading-label');
+            confirmBtn.disabled = isLoading;
+            if (defaultLabel && loadingLabel) {
+                if (isLoading) {
+                    defaultLabel.classList.add('d-none');
+                    loadingLabel.classList.remove('d-none');
+                } else {
+                    defaultLabel.classList.remove('d-none');
+                    loadingLabel.classList.add('d-none');
+                }
+            }
+        }
+        
+        function showFlagReviewWarning(message) {
+            const warningEl = document.getElementById('flagReviewWarning');
+            if (!warningEl) return;
+            if (message) {
+                warningEl.classList.remove('d-none');
+                const messageSpan = warningEl.querySelector('.message');
+                if (messageSpan) {
+                    messageSpan.textContent = message;
+                }
+            } else {
+                warningEl.classList.add('d-none');
+            }
+        }
+        
+        function resetFlagReviewModalState() {
+            pendingReviewRowData = null;
+            pendingReviewButtonEl = null;
+            showFlagReviewWarning(null);
+            const commentInput = document.getElementById('flagReviewComment');
+            if (commentInput) {
+                commentInput.value = '';
+            }
+            updateFlagReviewCharCount();
+            setFlagReviewModalLoading(false);
+        }
+        
+        function handleFlagReviewSubmit() {
+            if (!pendingReviewRowData || !pendingReviewRowData.po_item_id) {
+                alert('Missing item information.');
+                return;
+            }
+            const commentInput = document.getElementById('flagReviewComment');
+            const comment = commentInput ? commentInput.value.trim() : '';
+            setFlagReviewModalLoading(true);
+            showFlagReviewWarning(null);
+            
+            sendFlagReviewRequest(pendingReviewRowData, comment)
+                .then(result => {
+                    if (result.success) {
+                        window.currentComparisonReviews[pendingReviewRowData.po_item_id] = result.review;
+                        if (pendingReviewButtonEl) {
+                            pendingReviewButtonEl.outerHTML = renderReviewActionCell(result.review, 0, pendingReviewRowData.po_item_id);
+                        }
+                        flagReviewModalInstance.hide();
+                    } else {
+                        showFlagReviewWarning(result.error || 'Failed to flag item for review');
+                    }
+                })
+                .catch(error => {
+                    showFlagReviewWarning(error.message || 'Error flagging item. Please try again.');
+                })
+                .finally(() => {
+                    setFlagReviewModalLoading(false);
+                });
+        }
+        
+        function sendFlagReviewRequest(rowData, comment) {
+            return fetch('/api/reviews/flag', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    po_id: rowData.po_id,
+                    order_id: rowData.OrderID || rowData.order_id || null,
+                    po_item_id: rowData.po_item_id,
+                    sku: rowData.sku,
+                    comment: comment,
+                    comparison_snapshot: rowData
+                })
+            }).then(response => response.json());
+        }
+
+        function initFlagReviewModal() {
+            const modalElement = document.getElementById('flagReviewModal');
+            if (!modalElement || typeof bootstrap === 'undefined') {
+                return;
+            }
+            flagReviewModalInstance = new bootstrap.Modal(modalElement);
+            const commentInput = document.getElementById('flagReviewComment');
+            if (commentInput) {
+                commentInput.addEventListener('input', updateFlagReviewCharCount);
+            }
+            const confirmBtn = document.getElementById('confirmFlagReviewBtn');
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', handleFlagReviewSubmit);
+            }
+            modalElement.addEventListener('hidden.bs.modal', resetFlagReviewModalState);
         }
         
         function loadComparison(poId, orderId) {
@@ -2878,12 +3331,11 @@
                             </div>
                         `;
                         
-                        // Small delay to show the success message
-                        setTimeout(() => {
-                            displayComparisonData(data.data, data.total_count);
-                            // Store comparison data globally for search
-                            window.currentComparisonData = data.data;
-                        }, 500);
+                        const reviewMap = buildReviewStatusMap(data.reviews || []);
+                        window.currentComparisonReviews = reviewMap;
+                        displayComparisonData(data.data, data.total_count, reviewMap);
+                        // Store comparison data globally for search
+                        window.currentComparisonData = data.data;
                     } else {
                         comparisonContainer.innerHTML = `
                             <div class="alert alert-danger">
@@ -2994,8 +3446,9 @@
                 });
         }
         
-        function displayComparisonData(data, totalCount) {
+        function displayComparisonData(data, totalCount, reviewStatuses = {}) {
             const comparisonContainer = document.getElementById('comparisonContainer');
+            window.currentComparisonReviews = reviewStatuses || {};
             
             console.log('displayComparisonData received data:', data);
             
@@ -3079,6 +3532,7 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity invoiced from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Invoiced <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity received in REX" class="sortable text-center" data-sort="rex_qty_received" style="width: 80px;">REX Qty Received <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note or comment" class="text-start" style="min-width: 250px;">Latest Note</th>
+                                <th class="text-center" style="width: 140px;">Review</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3120,42 +3574,10 @@
                 return aSku.localeCompare(bSku);
             });
             
-            data.forEach(row => {
-                // Create colored tag for change log with specific colors for each type
-                const changeLog = row.change_log || '-';
-                let changeLogTag = changeLog;
-                if (changeLog !== '-') {
-                    let badgeClass = 'bg-secondary'; // default
-                    let tooltipText = '';
-                    
-                    // Exact matches for each change type with tooltip descriptions
-                    if (changeLog === 'Back-ordered') {
-                        badgeClass = 'bg-dark'; // Blackish/Dark Gray
-                        tooltipText = 'Item is on back-order, waiting for stock availability';
-                    } else if (changeLog === 'Quantity Changed') {
-                        badgeClass = 'bg-info text-dark'; // Light Blue
-                        tooltipText = 'NETO invoiced quantity differs from REX ordered quantity';
-                    } else if (changeLog === 'Item Removed') {
-                        badgeClass = 'bg-danger'; // Red
-                        tooltipText = 'Item not present on NETO invoice (out of stock or excluded)';
-                    } else if (changeLog === 'No Change') {
-                        badgeClass = 'bg-light text-dark'; // Light Gray
-                        tooltipText = ''; // No tooltip for "No Change"
-                    } else if (changeLog === 'Delivery Gap') {
-                        badgeClass = 'bg-warning text-dark'; // Orange
-                        tooltipText = 'REX received matches ordered but differs from NETO invoiced';
-                    } else if (changeLog === 'New Item') {
-                        badgeClass = 'bg-success'; // Green
-                        tooltipText = 'New item added that wasn\'t in original REX PO';
-                    } else if (changeLog === 'Receival Difference') {
-                        badgeClass = 'bg-primary'; // Blue/Purple
-                        tooltipText = 'REX received quantity differs from NETO invoiced quantity';
-                    }
-                    
-                    // Add tooltip only if there's tooltip text
-                    const tooltipAttr = tooltipText ? `data-bs-toggle="tooltip" data-bs-placement="top" title="${tooltipText}"` : '';
-                    changeLogTag = `<span class="badge ${badgeClass}" ${tooltipAttr}>${changeLog}</span>`;
-                }
+            data.forEach((row, index) => {
+                const changeLogInfo = getChangeLogDisplay(row.change_log);
+                const changeLogTooltipAttr = changeLogInfo.tooltipText ? `data-bs-toggle="tooltip" data-bs-placement="top" title="${changeLogInfo.tooltipText}"` : '';
+                const changeLogTag = `<span class="badge ${changeLogInfo.badgeClass}" ${changeLogTooltipAttr}>${changeLogInfo.label}</span>`;
                 
                 // No row background colors - badges provide sufficient visual distinction
                 let rowBgClass = '';
@@ -3206,6 +3628,9 @@
             // Add tooltip for non-clickable rows
             const tooltipAttr = hasValidPoItemId ? '' : 'data-bs-toggle="tooltip" data-bs-placement="top" title="This item cannot be clicked because it has no item ID. It may be a comparison-only item that doesn\'t exist in the main items table."';
             
+            const reviewInfo = window.currentComparisonReviews[row.po_item_id];
+            const reviewCell = renderReviewActionCell(reviewInfo, index, row.po_item_id);
+            
             // Display "NOT FOUND" in red if SKU is missing
             const skuDisplay = row.sku ? row.sku : '<span style="color: red; font-weight: bold;">NOT FOUND</span>';
             
@@ -3221,6 +3646,7 @@
                     <td class="numeric-column">${row.neto_qty_shipped || '-'}</td>
                     <td class="numeric-column">${row.rex_qty_received || '-'}</td>
                     <td class="text-start">${latestItemNote}</td>
+                    <td class="text-center">${reviewCell}</td>
                 </tr>
             `;
             });
@@ -3232,6 +3658,7 @@
             `;
             
             comparisonContainer.innerHTML = tableHTML;
+            attachFlagButtonHandlers();
             
             // Add event listeners for clickable rows
             const clickableRows = comparisonContainer.querySelectorAll('.clickable-row');
@@ -3981,9 +4408,11 @@
         
         function closeItemDetails() {
             // Hide item details panel - keep Quick Info hidden in REX PO Orders view
-            document.getElementById('item-details-panel').style.display = 'none';
-            // Don't show Quick Info panel - keep it hidden in REX PO Orders view
-            // document.getElementById('quick-info-panel').style.display = 'block';
+            const detailsPanel = document.getElementById('item-details-panel');
+            if (detailsPanel) {
+                detailsPanel.style.display = 'none';
+            }
+            hideRightPanel();
             
             // Clear current item data
             currentItemData = null;
@@ -4647,7 +5076,302 @@
         document.addEventListener('DOMContentLoaded', function() {
             initResizableSidebar();
             initResizableLeftPanel();
+            initFlagReviewModal();
         });
+
+        function initializeWarehousePage() {
+            updateSidebarCacheStatus();
+            fetchWarehouseReviews();
+        }
+
+        function fetchWarehouseReviews() {
+            fetch('/api/reviews')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        renderWarehouseReviews(data.open_reviews || [], data.closed_reviews || []);
+                    } else {
+                        showWarehouseError(data.error || 'Unable to load reviews.');
+                    }
+                })
+                .catch(error => {
+                    showWarehouseError(error.message || 'Unable to load reviews.');
+                });
+        }
+
+        function showWarehouseError(message) {
+            const container = document.getElementById('warehouseReviewsContainer');
+            if (!container) return;
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i> ${message}
+                </div>
+            `;
+        }
+
+        function renderWarehouseReviews(openReviews, closedReviews) {
+            const container = document.getElementById('warehouseReviewsContainer');
+            if (!container) return;
+            
+            const openSection = `
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-inbox me-2"></i>Open Reviews</h5>
+                        <span class="badge bg-primary">${openReviews.length}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        ${openReviews.length ? buildWarehouseTable(openReviews, true) : '<div class="p-4 text-center text-muted">No open reviews 🎉</div>'}
+                    </div>
+                </div>
+            `;
+            
+            const closedSection = `
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-archive me-2"></i>Recently Closed</h5>
+                        <span class="badge bg-secondary">${closedReviews.length}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        ${closedReviews.length ? buildWarehouseTable(closedReviews, false) : '<div class="p-4 text-center text-muted">No closed reviews yet.</div>'}
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = `
+                ${openSection}
+                ${closedSection}
+            `;
+            attachWarehouseRowHandlers();
+        }
+
+        function getReviewProductName(review) {
+            if (review.product_name) return review.product_name;
+            const snapshot = getReviewSnapshot(review);
+            if (snapshot && snapshot.name) {
+                return snapshot.name;
+            }
+            return '-';
+        }
+
+        function getReviewChangeLog(review) {
+            if (review.change_log) return review.change_log;
+            const snapshot = getReviewSnapshot(review);
+            if (snapshot && snapshot.change_log) {
+                return snapshot.change_log;
+            }
+            return 'Unknown';
+        }
+
+        function getReviewSnapshot(review) {
+            if (!review || !review.comparison_snapshot) return null;
+            if (review._parsedSnapshot) return review._parsedSnapshot;
+            try {
+                const snapshot = typeof review.comparison_snapshot === 'string'
+                    ? JSON.parse(review.comparison_snapshot)
+                    : review.comparison_snapshot;
+                review._parsedSnapshot = snapshot;
+                return snapshot;
+            } catch (error) {
+                console.warn('Unable to parse comparison snapshot for review', review.review_id);
+                return null;
+            }
+        }
+
+        function buildWarehouseTable(reviews, isOpen) {
+            const rows = reviews.map(review => {
+                const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
+                const flaggedAt = review.flagged_at ? new Date(review.flagged_at).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) : '-';
+                const comment = review.flag_comment ? `<div>${review.flag_comment}</div>` : '<span class="text-muted">-</span>';
+                const statusBadge = formatReviewBadge(review.status);
+                const productName = getReviewProductName(review);
+                const orderLink = review.order_id ? `<a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${review.order_id}" target="_blank" onclick="event.stopPropagation();">${review.order_id}</a>` : '-';
+                const reviewDataAttr = encodeURIComponent(JSON.stringify(review));
+                return `
+                    <tr class="warehouse-review-row" data-review="${reviewDataAttr}">
+                        <td class="text-center">${review.po_id || '-'}</td>
+                        <td class="text-center">${orderLink}</td>
+                        <td class="text-center">${review.sku || '-'}</td>
+                        <td>${productName}</td>
+                        <td><span class="badge ${changeInfo.badgeClass}">${changeInfo.label}</span></td>
+                        <td>${review.flagged_by || '-'}</td>
+                        <td>${comment}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            return `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-striped table-hover mb-0 warehouse-table">
+                        <thead class="table-light position-sticky top-0">
+                            <tr>
+                                <th class="text-center">PO ID</th>
+                                <th class="text-center">Order ID</th>
+                                <th class="text-center">SKU</th>
+                                <th>Item</th>
+                                <th>Change Log</th>
+                                <th>Flagged By</th>
+                                <th>Comment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function attachWarehouseRowHandlers() {
+            document.querySelectorAll('.warehouse-review-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const reviewData = row.getAttribute('data-review');
+                    if (!reviewData) return;
+                    try {
+                        const review = JSON.parse(decodeURIComponent(reviewData));
+                        openWarehouseReviewModal(review);
+                    } catch (error) {
+                        console.error('Failed to parse review data for modal', error);
+                    }
+                });
+            });
+        }
+
+        let warehouseModalInstance = null;
+        let currentWarehouseReview = null;
+
+        function ensureWarehouseModal() {
+            if (warehouseModalInstance || typeof bootstrap === 'undefined') return;
+            const modalEl = document.getElementById('warehouseReviewModal');
+            if (modalEl) {
+                warehouseModalInstance = new bootstrap.Modal(modalEl);
+                const closeBtn = document.getElementById('warehouseCloseBtn');
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', submitWarehouseClose);
+                }
+                modalEl.addEventListener('hidden.bs.modal', () => {
+                    currentWarehouseReview = null;
+                    document.getElementById('warehouseCommentInput').value = '';
+                    toggleWarehouseModalLoading(false);
+                    showWarehouseModalWarning(null);
+                });
+            }
+        }
+
+        function openWarehouseReviewModal(review) {
+            ensureWarehouseModal();
+            if (!warehouseModalInstance) return;
+            currentWarehouseReview = review;
+            populateWarehouseModal(review);
+            warehouseModalInstance.show();
+        }
+
+        function populateWarehouseModal(review) {
+            document.getElementById('warehouseDetailPoId').textContent = review.po_id || '-';
+            if (review.order_id) {
+                document.getElementById('warehouseDetailOrderId').innerHTML = `<a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${review.order_id}" target="_blank">${review.order_id}</a>`;
+            } else {
+                document.getElementById('warehouseDetailOrderId').textContent = '-';
+            }
+            document.getElementById('warehouseDetailItemId').textContent = review.po_item_id || '-';
+            document.getElementById('warehouseDetailSku').textContent = review.sku || '-';
+            document.getElementById('warehouseDetailProduct').textContent = getReviewProductName(review);
+            const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
+            document.getElementById('warehouseDetailChange').innerHTML = `<span class="badge ${changeInfo.badgeClass}">${changeInfo.label}</span>`;
+            document.getElementById('warehouseDetailFlaggedBy').textContent = review.flagged_by || '-';
+            document.getElementById('warehouseDetailFlaggedAt').textContent = review.flagged_at ? new Date(review.flagged_at).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) : '-';
+            document.getElementById('warehouseDetailRetailComment').textContent = review.flag_comment || '—';
+            const snapshot = getReviewSnapshot(review);
+            document.getElementById('warehouseDetailLatestNote').textContent = snapshot && snapshot.latest_item_note ? `${snapshot.latest_item_note_user || 'User'}: ${snapshot.latest_item_note}` : '—';
+            renderWarehouseStatGrid(snapshot);
+            document.getElementById('warehouseCommentInput').value = review.warehouse_comment || '';
+            showWarehouseModalWarning(null);
+        }
+
+        function renderWarehouseStatGrid(snapshot) {
+            const grid = document.getElementById('warehouseDetailStats');
+            if (!grid) return;
+            if (!snapshot) {
+                grid.innerHTML = '<div class="text-muted">No snapshot data available.</div>';
+                return;
+            }
+            const stats = [
+                { label: 'REX Qty Available', value: snapshot.rex_available_qty },
+                { label: 'NETO Qty Available', value: snapshot.neto_qty_available },
+                { label: 'Original REX Qty Ordered', value: snapshot.original_rex_qty_ordered },
+                { label: 'NETO Qty Invoiced', value: snapshot.neto_qty_shipped },
+                { label: 'REX Qty Received', value: snapshot.rex_qty_received },
+                { label: 'Disparity', value: snapshot.disparity ? 'Yes' : 'No' }
+            ];
+            grid.innerHTML = stats.map(stat => `
+                <div class="stat-card">
+                    <div class="text-muted" style="font-size:0.8rem;">${stat.label}</div>
+                    <div class="fw-bold" style="font-size:1.1rem;">${stat.value ?? '-'}</div>
+                </div>
+            `).join('');
+        }
+
+        function toggleWarehouseModalLoading(isLoading) {
+            const btn = document.getElementById('warehouseCloseBtn');
+            if (!btn) return;
+            const defaultLabel = btn.querySelector('.default-label');
+            const loadingLabel = btn.querySelector('.loading-label');
+            btn.disabled = isLoading;
+            if (defaultLabel && loadingLabel) {
+                if (isLoading) {
+                    defaultLabel.classList.add('d-none');
+                    loadingLabel.classList.remove('d-none');
+                } else {
+                    defaultLabel.classList.remove('d-none');
+                    loadingLabel.classList.add('d-none');
+                }
+            }
+        }
+
+        function showWarehouseModalWarning(message) {
+            const warning = document.getElementById('warehouseDetailWarning');
+            if (!warning) return;
+            if (message) {
+                warning.classList.remove('d-none');
+                warning.textContent = message;
+            } else {
+                warning.classList.add('d-none');
+                warning.textContent = '';
+            }
+        }
+
+        function submitWarehouseClose() {
+            if (!currentWarehouseReview) return;
+            const commentInput = document.getElementById('warehouseCommentInput');
+            const comment = commentInput ? commentInput.value.trim() : '';
+            if (!comment) {
+                showWarehouseModalWarning('Please enter a comment before closing the review.');
+                return;
+            }
+            toggleWarehouseModalLoading(true);
+            showWarehouseModalWarning(null);
+            fetch(`/api/reviews/${currentWarehouseReview.review_id}/close`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ comment })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    warehouseModalInstance.hide();
+                    fetchWarehouseReviews();
+                } else {
+                    showWarehouseModalWarning(data.error || 'Failed to update review.');
+                }
+            })
+            .catch(error => {
+                showWarehouseModalWarning(error.message || 'Failed to update review.');
+            })
+            .finally(() => {
+                toggleWarehouseModalLoading(false);
+            });
+        }
     </script>
     {% block scripts %}{% endblock %}
     

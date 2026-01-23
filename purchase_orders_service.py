@@ -137,7 +137,7 @@ class BigQueryService:
                 print(f"DEBUG: po_status value: {data[0].get('po_status', 'KEY NOT FOUND')}")
             
             return data, None
-                
+        
         except Exception as e:
             return None, f"Error fetching summary data: {str(e)}"
     
@@ -1106,6 +1106,19 @@ class BigQueryService:
             
         except Exception as e:
             return [], f"Error fetching PO notes: {str(e)}"
+
+    def insert_item_review(self, review_data):
+        """Insert a review row into BigQuery"""
+        if not self.client:
+            return False, "BigQuery client not initialized"
+        try:
+            table_id = f"{self.project_id}.operations.item_reviews"
+            errors = self.client.insert_rows_json(table_id, [review_data])
+            if errors:
+                return False, errors
+            return True, None
+        except Exception as e:
+            return False, str(e)
     
     def delete_item_note(self, note_id, username):
         """Soft delete a note"""

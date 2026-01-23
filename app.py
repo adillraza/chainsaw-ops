@@ -4,6 +4,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
+import uuid
+import json
 from dotenv import load_dotenv
 from sqlalchemy import text
 
@@ -38,12 +40,17 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
 
+def has_admin_access(user):
+    role = (user.role or '').lower()
+    return role == 'admin' or user.is_admin
+
 # User model
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(120), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
+    role = db.Column(db.String(20), nullable=False, default='retail')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def set_password(self, password):
@@ -215,6 +222,52 @@ class CachedPurchaseOrderComparison(db.Model):
             'latest_item_note_user': self.latest_item_note_user,
             'latest_item_note_date': self.latest_item_note_date.isoformat() if self.latest_item_note_date else None
         }
+
+class ItemReview(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    review_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    po_id = db.Column(db.String(50), nullable=False, index=True)
+    order_id = db.Column(db.String(50))
+    po_item_id = db.Column(db.String(50), index=True)
+    sku = db.Column(db.String(100))
+    flagged_by = db.Column(db.String(100), nullable=False)
+    flagged_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    flag_comment = db.Column(db.Text)
+    status = db.Column(db.String(50), default='pending', index=True)
+    warehouse_assigned_to = db.Column(db.String(100))
+    warehouse_started_at = db.Column(db.DateTime)
+    warehouse_comment = db.Column(db.Text)
+    warehouse_closed_at = db.Column(db.DateTime)
+    retail_closed_by = db.Column(db.String(100))
+    retail_closed_at = db.Column(db.DateTime)
+    retail_comment = db.Column(db.Text)
+    comparison_snapshot = db.Column(db.Text)  # store JSON string
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'review_id': self.review_id,
+            'po_id': self.po_id,
+            'order_id': self.order_id,
+            'po_item_id': self.po_item_id,
+            'sku': self.sku,
+            'flagged_by': self.flagged_by,
+            'flagged_at': self.flagged_at.isoformat() if self.flagged_at else None,
+            'flag_comment': self.flag_comment,
+            'status': self.status,
+            'warehouse_assigned_to': self.warehouse_assigned_to,
+            'warehouse_started_at': self.warehouse_started_at.isoformat() if self.warehouse_started_at else None,
+            'warehouse_comment': self.warehouse_comment,
+            'warehouse_closed_at': self.warehouse_closed_at.isoformat() if self.warehouse_closed_at else None,
+            'retail_closed_by': self.retail_closed_by,
+            'retail_closed_at': self.retail_closed_at.isoformat() if self.retail_closed_at else None,
+            'retail_comment': self.retail_comment,
+            'comparison_snapshot': self.comparison_snapshot,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+OPEN_REVIEW_STATUSES = ['pending', 'warehouse_in_progress']
+CLOSED_REVIEW_STATUSES = ['warehouse_closed', 'retail_closed', 'cancelled']
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -764,7 +817,7 @@ def dashboard_progress():
 @app.route('/admin')
 @login_required
 def admin():
-    if not current_user.is_admin:
+    if not has_admin_access(current_user):
         flash('Access denied. Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
@@ -774,18 +827,21 @@ def admin():
 @app.route('/admin/create_user', methods=['POST'])
 @login_required
 def create_user():
-    if not current_user.is_admin:
+    if not has_admin_access(current_user):
         flash('Access denied. Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
     username = request.form['username']
     password = request.form['password']
+    role = request.form.get('role', 'retail')
+    if role not in ['admin', 'retail', 'warehouse']:
+        role = 'retail'
     
     if User.query.filter_by(username=username).first():
         flash('Username already exists', 'error')
         return redirect(url_for('admin'))
     
-    user = User(username=username, is_admin=False)
+    user = User(username=username, role=role, is_admin=(role == 'admin'))
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
@@ -796,7 +852,7 @@ def create_user():
 @app.route('/admin/reset_password/<int:user_id>', methods=['POST'])
 @login_required
 def reset_password(user_id):
-    if not current_user.is_admin:
+    if not has_admin_access(current_user):
         flash('Access denied. Admin privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
@@ -807,6 +863,30 @@ def reset_password(user_id):
     db.session.commit()
     
     flash(f'Password reset for {user.username}', 'success')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/update_role/<int:user_id>', methods=['POST'])
+@login_required
+def update_user_role(user_id):
+    if not has_admin_access(current_user):
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    user = User.query.get_or_404(user_id)
+    new_role = request.form.get('role', 'retail')
+    if new_role not in ['admin', 'retail', 'warehouse']:
+        flash('Invalid role selected', 'error')
+        return redirect(url_for('admin'))
+    
+    if user.id == current_user.id and new_role != 'admin':
+        flash('You cannot change your own role from admin', 'error')
+        return redirect(url_for('admin'))
+    
+    user.role = new_role
+    user.is_admin = (new_role == 'admin')
+    db.session.commit()
+    
+    flash(f'Role updated for {user.username}', 'success')
     return redirect(url_for('admin'))
 
 # BigQuery Routes (now handled by sidebar navigation)
@@ -1019,7 +1099,8 @@ def get_bigquery_comparison():
                     'sku_search': sku_search,
                     'from_cache': False,  # SKU search always goes to BigQuery
                     'load_time': load_time,
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'reviews': []
                 })
             else:
                 print(f"SKU search for comparison failed: {error}")
@@ -1067,6 +1148,17 @@ def get_bigquery_comparison():
     # Calculate load time
     load_time = int((time.time() - start_time) * 1000)  # Convert to milliseconds
     
+    review_records = ItemReview.query.filter(ItemReview.po_id == po_id).all() if po_id else []
+    review_statuses = []
+    for review in review_records:
+        review_statuses.append({
+            'review_id': review.review_id,
+            'po_item_id': review.po_item_id,
+            'status': review.status,
+            'flagged_by': review.flagged_by,
+            'flagged_at': review.flagged_at.isoformat() if review.flagged_at else None
+        })
+    
     return jsonify({
         'success': True, 
         'data': data, 
@@ -1076,8 +1168,82 @@ def get_bigquery_comparison():
         'order_id': order_id,
         'from_cache': from_cache,
         'load_time': load_time,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.utcnow().isoformat(),
+        'reviews': review_statuses
     })
+
+@app.route('/api/reviews/flag', methods=['POST'])
+@login_required
+def flag_item_for_review():
+    if current_user.role not in ['admin', 'retail']:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    try:
+        data = request.get_json() or {}
+        po_id = data.get('po_id')
+        po_item_id = data.get('po_item_id')
+        if not po_id or not po_item_id:
+            return jsonify({'success': False, 'error': 'Missing po_id or po_item_id'}), 400
+        
+        existing = ItemReview.query.filter(
+            ItemReview.po_id == po_id,
+            ItemReview.po_item_id == po_item_id,
+            ItemReview.status.in_(OPEN_REVIEW_STATUSES)
+        ).first()
+        if existing:
+            return jsonify({'success': False, 'error': 'Item already flagged for review', 'review': existing.to_dict()}), 400
+        
+        review = ItemReview(
+            review_id=uuid.uuid4().hex,
+            po_id=po_id,
+            order_id=data.get('order_id'),
+            po_item_id=po_item_id,
+            sku=data.get('sku'),
+            flagged_by=current_user.username,
+            flag_comment=data.get('comment'),
+            comparison_snapshot=json.dumps(data.get('comparison_snapshot') or {})
+        )
+        db.session.add(review)
+        db.session.commit()
+        
+        sync_review_to_bigquery(review)
+        
+        return jsonify({'success': True, 'message': 'Item flagged for warehouse review', 'review': review.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error flagging item for review: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/reviews', methods=['GET'])
+@login_required
+def list_reviews():
+    if current_user.role not in ['admin', 'warehouse']:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    open_reviews = ItemReview.query.filter(ItemReview.status.in_(OPEN_REVIEW_STATUSES)).order_by(ItemReview.flagged_at.desc().nullslast()).all()
+    closed_reviews = ItemReview.query.filter(ItemReview.status.in_(CLOSED_REVIEW_STATUSES)).order_by(ItemReview.flagged_at.desc().nullslast()).limit(100).all()
+    return jsonify({
+        'success': True,
+        'open_reviews': [review.to_dict() for review in open_reviews],
+        'closed_reviews': [review.to_dict() for review in closed_reviews]
+    })
+
+@app.route('/api/reviews/<review_id>/close', methods=['POST'])
+@login_required
+def close_review(review_id):
+    if current_user.role not in ['admin', 'warehouse']:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    review = ItemReview.query.filter_by(review_id=review_id).first_or_404()
+    data = request.get_json() or {}
+    comment = (data.get('comment') or '').strip()
+    if not comment:
+        return jsonify({'success': False, 'error': 'Comment is required to close a review.'}), 400
+    review.status = 'warehouse_closed'
+    review.warehouse_comment = comment
+    review.warehouse_assigned_to = current_user.username
+    review.warehouse_closed_at = datetime.utcnow()
+    review.updated_at = datetime.utcnow()
+    db.session.commit()
+    sync_review_to_bigquery(review)
+    return jsonify({'success': True, 'review': review.to_dict()})
 
 @app.route('/api/bigquery/refresh', methods=['POST'])
 @login_required
@@ -1371,7 +1537,7 @@ def create_admin_user():
     """Create the default admin user if it doesn't exist"""
     admin_user = User.query.filter_by(username='admin').first()
     if not admin_user:
-        admin_user = User(username='admin', is_admin=True)
+        admin_user = User(username='admin', is_admin=True, role='admin')
         admin_user.set_password('1234')
         db.session.add(admin_user)
         db.session.commit()
@@ -1391,10 +1557,78 @@ def ensure_supplier_column():
             else:
                 print(f"Warning: could not ensure supplier column: {str(e)}")
 
+def ensure_user_role_column():
+    """Ensure role column exists on user table and backfill existing users"""
+    with app.app_context():
+        columns = db.session.execute(text("PRAGMA table_info(user)")).fetchall()
+        column_names = [col[1] for col in columns]
+        try:
+            if 'role' not in column_names:
+                db.session.execute(text("ALTER TABLE user ADD COLUMN role VARCHAR(20) DEFAULT 'retail'"))
+                db.session.commit()
+                print("Added role column to user table")
+        except Exception as e:
+            db.session.rollback()
+            if "duplicate column name" not in str(e).lower():
+                print(f"Warning: could not ensure role column: {str(e)}")
+        # Backfill roles based on is_admin
+        try:
+            db.session.execute(text("""
+                UPDATE user
+                SET role = 'admin'
+                WHERE is_admin = 1 AND (role IS NULL OR role = '')
+            """))
+            db.session.execute(text("""
+                UPDATE user
+                SET role = 'retail'
+                WHERE (role IS NULL OR role = '')
+            """))
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Warning: could not backfill user roles: {str(e)}")
+
+def sync_review_to_bigquery(review):
+    try:
+        snapshot = None
+        if review.comparison_snapshot:
+            try:
+                # Validate stored JSON before forwarding to BigQuery.
+                json.loads(review.comparison_snapshot)
+                snapshot = review.comparison_snapshot
+            except json.JSONDecodeError:
+                snapshot = None
+        payload = {
+            'review_id': review.review_id,
+            'po_id': review.po_id,
+            'order_id': review.order_id,
+            'po_item_id': review.po_item_id,
+            'sku': review.sku,
+            'flagged_by': review.flagged_by,
+            'flagged_at': review.flagged_at.isoformat() if review.flagged_at else None,
+            'flag_comment': review.flag_comment,
+            'status': review.status,
+            'warehouse_assigned_to': review.warehouse_assigned_to,
+            'warehouse_started_at': review.warehouse_started_at.isoformat() if review.warehouse_started_at else None,
+            'warehouse_comment': review.warehouse_comment,
+            'warehouse_closed_at': review.warehouse_closed_at.isoformat() if review.warehouse_closed_at else None,
+            'retail_closed_by': review.retail_closed_by,
+            'retail_closed_at': review.retail_closed_at.isoformat() if review.retail_closed_at else None,
+            'retail_comment': review.retail_comment,
+            'comparison_snapshot': snapshot,
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        success, error = purchase_orders_service.insert_item_review(payload)
+        if not success and error:
+            print(f"Warning: failed to insert review into BigQuery: {error}")
+    except Exception as e:
+        print(f"Warning: could not sync review to BigQuery: {str(e)}")
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         ensure_supplier_column()
+        ensure_user_role_column()
         create_admin_user()
     
     app.run(debug=True, host='0.0.0.0', port=5001)
