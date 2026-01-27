@@ -1239,6 +1239,28 @@ def list_reviews():
         'closed_reviews': [review.to_dict() for review in closed_reviews]
     })
 
+@app.route('/api/reviews/retail', methods=['GET'])
+@login_required
+def list_retail_reviews():
+    if current_user.role not in ['admin', 'retail']:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    awaiting_retail = ItemReview.query.filter(ItemReview.status == 'warehouse_closed') \
+        .order_by(ItemReview.warehouse_closed_at.desc().nullslast(), ItemReview.flagged_at.desc().nullslast()) \
+        .all()
+    pending_warehouse = ItemReview.query.filter(ItemReview.status.in_(OPEN_REVIEW_STATUSES)) \
+        .order_by(ItemReview.flagged_at.desc().nullslast()) \
+        .all()
+    completed_reviews = ItemReview.query.filter(ItemReview.status == 'retail_closed') \
+        .order_by(ItemReview.retail_closed_at.desc().nullslast(), ItemReview.flagged_at.desc().nullslast()) \
+        .limit(150) \
+        .all()
+    return jsonify({
+        'success': True,
+        'awaiting_retail': [review.to_dict() for review in awaiting_retail],
+        'pending_warehouse': [review.to_dict() for review in pending_warehouse],
+        'completed_reviews': [review.to_dict() for review in completed_reviews]
+    })
+
 @app.route('/api/reviews/<review_id>/close', methods=['POST'])
 @login_required
 def close_review(review_id):
@@ -1253,6 +1275,28 @@ def close_review(review_id):
     review.warehouse_comment = comment
     review.warehouse_assigned_to = current_user.username
     review.warehouse_closed_at = datetime.utcnow()
+    review.updated_at = datetime.utcnow()
+    db.session.commit()
+    sync_review_to_bigquery(review)
+    return jsonify({'success': True, 'review': review.to_dict()})
+
+@app.route('/api/reviews/<review_id>/retail-close', methods=['POST'])
+@login_required
+def retail_close_review(review_id):
+    if current_user.role not in ['admin', 'retail']:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    review = ItemReview.query.filter_by(review_id=review_id).first_or_404()
+    if review.status == 'retail_closed':
+        return jsonify({'success': False, 'error': 'Review already completed by retail.'}), 400
+    if review.status != 'warehouse_closed':
+        return jsonify({'success': False, 'error': 'Only warehouse-completed reviews can be resolved by retail.'}), 400
+    data = request.get_json() or {}
+    comment = (data.get('comment') or '').strip()
+    review.status = 'retail_closed'
+    if comment:
+        review.retail_comment = comment
+    review.retail_closed_by = current_user.username
+    review.retail_closed_at = datetime.utcnow()
     review.updated_at = datetime.utcnow()
     db.session.commit()
     sync_review_to_bigquery(review)
@@ -1656,9 +1700,18 @@ def sync_reviews_from_bigquery():
         # Clear existing reviews
         ItemReview.query.delete()
         db.session.commit()
+        seen_review_ids = set()
+        skipped_duplicates = 0
         for record in reviews:
+            review_uuid = record.get('review_id')
+            if not review_uuid:
+                continue
+            if review_uuid in seen_review_ids:
+                skipped_duplicates += 1
+                continue
+            seen_review_ids.add(review_uuid)
             review = ItemReview(
-                review_id=record.get('review_id'),
+                review_id=review_uuid,
                 po_id=record.get('po_id'),
                 order_id=record.get('order_id'),
                 po_item_id=record.get('po_item_id'),
@@ -1674,13 +1727,17 @@ def sync_reviews_from_bigquery():
                 retail_closed_by=record.get('retail_closed_by'),
                 retail_closed_at=parse_iso_datetime(record.get('retail_closed_at')),
                 retail_comment=record.get('retail_comment'),
-                comparison_snapshot=json.dumps(record.get('comparison_snapshot')) if record.get('comparison_snapshot') else None,
+                comparison_snapshot=record.get('comparison_snapshot') if isinstance(record.get('comparison_snapshot'), str)
+                else json.dumps(record.get('comparison_snapshot')) if record.get('comparison_snapshot') else None,
                 updated_at=parse_iso_datetime(record.get('updated_at'))
             )
             db.session.add(review)
         db.session.commit()
-        print(f"Synced {len(reviews)} reviews from BigQuery")
-        return True, f"Synced {len(reviews)} reviews."
+        synced_count = len(seen_review_ids)
+        if skipped_duplicates:
+            print(f"Skipped {skipped_duplicates} duplicate review rows from BigQuery.")
+        print(f"Synced {synced_count} reviews from BigQuery")
+        return True, f"Synced {synced_count} reviews."
     except Exception as e:
         db.session.rollback()
         print(f"Error syncing reviews: {str(e)}")

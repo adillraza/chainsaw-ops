@@ -956,6 +956,11 @@
             <a href="#" class="menu-item" onclick="loadContent('comparison', event)">
                 <i class="fas fa-balance-scale"></i> Comparison
             </a>
+            {% if current_user.is_authenticated and (current_user.role == 'retail' or current_user.role == 'admin') %}
+            <a href="#" class="menu-item" onclick="loadContent('retail', event)">
+                <i class="fas fa-user-check"></i> Retail
+            </a>
+            {% endif %}
             {% if current_user.is_authenticated and (current_user.role == 'warehouse' or current_user.role == 'admin') %}
             <a href="#" class="menu-item" onclick="loadContent('warehouse', event)">
                 <i class="fas fa-warehouse"></i> Warehouse
@@ -1097,6 +1102,71 @@
                     <button type="button" class="btn btn-success" id="warehouseCloseBtn">
                         <span class="default-label"><i class="fas fa-check me-1"></i>Mark as Completed</span>
                         <span class="loading-label d-none"><i class="fas fa-spinner fa-spin me-1"></i>Updating...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade retail-review-modal" id="retailReviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-user-check me-2 text-primary"></i>Retail Review Detail</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning d-none mb-3" id="retailModalInfo"></div>
+                    <div class="row g-4">
+                        <div class="col-lg-5">
+                            <div class="warehouse-detail-meta mb-3">
+                                <div><span>Review ID:</span> <strong id="retailDetailReviewId">-</strong></div>
+                                <div><span>PO ID:</span> <strong id="retailDetailPoId">-</strong></div>
+                                <div><span>Order ID:</span> <strong id="retailDetailOrderId">-</strong></div>
+                                <div><span>Item ID:</span> <strong id="retailDetailItemId">-</strong></div>
+                                <div><span>SKU:</span> <strong id="retailDetailSku">-</strong></div>
+                                <div><span>Item:</span> <span id="retailDetailProduct">-</span></div>
+                                <div><span>Change Log:</span> <span id="retailDetailChange"></span></div>
+                                <div><span>Status:</span> <span id="retailDetailStatus"></span></div>
+                                <div><span>Flagged By:</span> <span id="retailDetailFlaggedBy">-</span></div>
+                                <div><span>Flagged At:</span> <span id="retailDetailFlaggedAt">-</span></div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Retail Flag Comment</label>
+                                <div class="border rounded p-2 bg-light" id="retailDetailFlagComment">-</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Latest Item Note</label>
+                                <div class="border rounded p-2 bg-light" id="retailDetailLatestNote">-</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Warehouse Response</label>
+                                <div class="border rounded p-3 bg-white shadow-sm">
+                                    <div id="retailWarehouseComment" class="text-dark mb-2">Warehouse has not provided feedback yet.</div>
+                                    <div class="small text-muted" id="retailWarehouseMeta"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-7">
+                            <div class="warehouse-detail-grid mb-3" id="retailDetailStats"></div>
+                            <div class="mb-3">
+                                <label class="form-label">Retail Resolution</label>
+                                <textarea id="retailResolutionComment" class="form-control review-comment" rows="4" maxlength="500" placeholder="Add optional notes before marking this review as resolved..."></textarea>
+                                <div class="d-flex justify-content-between mt-1">
+                                    <small class="text-muted">Optional note saved with your resolution.</small>
+                                    <small class="text-muted"><span id="retailCommentCharCount">0</span>/500</small>
+                                </div>
+                            </div>
+                            <div class="alert alert-success d-none" id="retailResolvedMeta"></div>
+                            <div class="alert alert-danger d-none" id="retailDetailWarning"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary d-none" id="retailResolveBtn">
+                        <span class="default-label"><i class="fas fa-check-double me-1"></i>Mark as Resolved</span>
+                        <span class="loading-label d-none"><i class="fas fa-spinner fa-spin me-1"></i>Saving...</span>
                     </button>
                 </div>
             </div>
@@ -1490,6 +1560,35 @@
                 
                 // Initialize the Comparison page functionality
                 initializeComparisonPage();
+            } else if (contentType === 'retail') {
+                showLeftPanel();
+                hideRightPanel();
+                
+                document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+                if (event && event.target) {
+                    event.target.closest('.menu-item').classList.add('active');
+                }
+                
+                contentArea.innerHTML = `
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h2><i class="fas fa-user-check"></i> Retail Reviews</h2>
+                            <div class="alert alert-info alert-compact mb-0">
+                                <i class="fas fa-info-circle me-2"></i>Warehouse-completed items appear first. Pending warehouse items remain in the queue below.
+                            </div>
+                        </div>
+                    </div>
+                    <div id="retailReviewsContainer">
+                        <div class="text-center text-muted py-5" id="retailReviewsLoading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 mb-0">Loading retail review queue...</p>
+                        </div>
+                    </div>
+                `;
+                
+                initializeRetailPage();
             } else if (contentType === 'warehouse') {
                 showLeftPanel();
                 hideRightPanel();
@@ -3043,6 +3142,29 @@
                 badgeClass = 'bg-secondary';
             }
             return `<span class="badge ${badgeClass} text-uppercase">${label}</span>`;
+        }
+
+        function escapeHtml(value) {
+            if (value === null || value === undefined) {
+                return '';
+            }
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatLocalDateTime(value) {
+            if (!value) {
+                return '-';
+            }
+            try {
+                return new Date(value).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+            } catch (error) {
+                return '-';
+            }
         }
 
         function getChangeLogDisplay(changeLogRaw) {
@@ -5079,6 +5201,381 @@
             initFlagReviewModal();
         });
 
+        function initializeRetailPage() {
+            updateSidebarCacheStatus();
+            fetchRetailReviews();
+        }
+
+        function fetchRetailReviews() {
+            fetch('/api/reviews/retail')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        renderRetailReviews(
+                            data.awaiting_retail || [],
+                            data.pending_warehouse || [],
+                            data.completed_reviews || []
+                        );
+                    } else {
+                        showRetailError(data.error || 'Unable to load retail reviews.');
+                    }
+                })
+                .catch(error => {
+                    showRetailError(error.message || 'Unable to load retail reviews.');
+                });
+        }
+
+        function showRetailError(message) {
+            const container = document.getElementById('retailReviewsContainer');
+            if (!container) return;
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-1"></i>${message}
+                </div>
+            `;
+        }
+
+        function renderRetailReviews(awaitingRetail, pendingWarehouse, completedReviews) {
+            const container = document.getElementById('retailReviewsContainer');
+            if (!container) return;
+
+            const awaitingSection = `
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <h5 class="mb-0"><i class="fas fa-clipboard-check me-2 text-success"></i>Warehouse Completed</h5>
+                            <small class="text-muted">Review warehouse comments and mark as resolved.</small>
+                        </div>
+                        <span class="badge bg-primary">${awaitingRetail.length}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        ${awaitingRetail.length ? buildRetailTable(awaitingRetail, { section: 'awaiting' }) : '<div class="p-4 text-center text-muted">No warehouse-completed reviews waiting on retail.</div>'}
+                    </div>
+                </div>
+            `;
+
+            const pendingSection = `
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <h5 class="mb-0"><i class="fas fa-hourglass-half me-2 text-warning"></i>Pending Warehouse</h5>
+                            <small class="text-muted">Warehouse has not responded yet.</small>
+                        </div>
+                        <span class="badge bg-warning text-dark">${pendingWarehouse.length}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        ${pendingWarehouse.length ? buildRetailTable(pendingWarehouse, { section: 'pending' }) : '<div class="p-4 text-center text-muted">No pending warehouse reviews.</div>'}
+                    </div>
+                </div>
+            `;
+
+            const completedSection = `
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <h5 class="mb-0"><i class="fas fa-check-double me-2 text-success"></i>Completed Reviews</h5>
+                            <small class="text-muted">Recently resolved by retail.</small>
+                        </div>
+                        <span class="badge bg-success">${completedReviews.length}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        ${completedReviews.length ? buildRetailTable(completedReviews, { section: 'completed' }) : '<div class="p-4 text-center text-muted">No completed reviews yet.</div>'}
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = `
+                ${awaitingSection}
+                ${pendingSection}
+                ${completedSection}
+            `;
+            attachRetailRowHandlers();
+        }
+
+        function buildRetailTable(reviews, options = {}) {
+            const sectionAttr = options.section ? ` data-section="${options.section}"` : '';
+            const rows = reviews.map(review => {
+                const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
+                const comment = review.flag_comment ? `<div class="text-wrap">${escapeHtml(review.flag_comment)}</div>` : '<span class="text-muted">-</span>';
+                const productName = escapeHtml(getReviewProductName(review) || '-');
+                const orderIdLabel = review.order_id ? escapeHtml(review.order_id) : null;
+                const orderUrlId = review.order_id ? encodeURIComponent(review.order_id) : null;
+                const orderLink = orderIdLabel ? `<a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${orderUrlId}" target="_blank" onclick="event.stopPropagation();">${orderIdLabel}</a>` : '-';
+                const poIdDisplay = escapeHtml(review.po_id || '-');
+                const skuDisplay = escapeHtml(review.sku || '-');
+                const flaggedBy = escapeHtml(review.flagged_by || '-');
+                const statusBadge = formatReviewBadge(review.status);
+                const warehouseIndicator = review.warehouse_comment ? '<i class="fas fa-clipboard-check text-success ms-1" title="Warehouse has responded."></i>' : '';
+                const reviewDataAttr = encodeURIComponent(JSON.stringify(review));
+                return `
+                    <tr class="retail-review-row" data-review="${reviewDataAttr}"${sectionAttr}>
+                        <td class="text-center">${poIdDisplay}</td>
+                        <td class="text-center">${orderLink}</td>
+                        <td class="text-center">${skuDisplay}</td>
+                        <td>${productName}</td>
+                        <td><span class="badge ${changeInfo.badgeClass}">${changeInfo.label}</span></td>
+                        <td>${flaggedBy}</td>
+                        <td>${comment}</td>
+                        <td class="text-center">${statusBadge} ${warehouseIndicator}</td>
+                    </tr>
+                `;
+            }).join('');
+            return `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-striped table-hover mb-0 warehouse-table">
+                        <thead class="table-light position-sticky top-0">
+                            <tr>
+                                <th class="text-center">PO ID</th>
+                                <th class="text-center">Order ID</th>
+                                <th class="text-center">SKU</th>
+                                <th>Item</th>
+                                <th>Change Log</th>
+                                <th>Flagged By</th>
+                                <th>Comment</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function attachRetailRowHandlers() {
+            document.querySelectorAll('.retail-review-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const reviewData = row.getAttribute('data-review');
+                    if (!reviewData) return;
+                    try {
+                        const review = JSON.parse(decodeURIComponent(reviewData));
+                        openRetailReviewModal(review);
+                    } catch (error) {
+                        console.error('Failed to parse review data for retail modal', error);
+                    }
+                });
+            });
+        }
+
+        let retailModalInstance = null;
+        let currentRetailReview = null;
+
+        function ensureRetailModal() {
+            if (retailModalInstance || typeof bootstrap === 'undefined') return;
+            const modalEl = document.getElementById('retailReviewModal');
+            if (modalEl) {
+                retailModalInstance = new bootstrap.Modal(modalEl);
+                const resolveBtn = document.getElementById('retailResolveBtn');
+                if (resolveBtn) {
+                    resolveBtn.addEventListener('click', submitRetailResolve);
+                }
+                const commentInput = document.getElementById('retailResolutionComment');
+                if (commentInput) {
+                    commentInput.addEventListener('input', updateRetailCommentCounter);
+                }
+                modalEl.addEventListener('hidden.bs.modal', () => {
+                    currentRetailReview = null;
+                    const textarea = document.getElementById('retailResolutionComment');
+                    if (textarea) {
+                        textarea.value = '';
+                        textarea.disabled = false;
+                    }
+                    updateRetailCommentCounter();
+                    toggleRetailModalLoading(false);
+                    showRetailModalWarning(null);
+                });
+            }
+        }
+
+        function openRetailReviewModal(review) {
+            ensureRetailModal();
+            if (!retailModalInstance) return;
+            currentRetailReview = review;
+            populateRetailModal(review);
+            retailModalInstance.show();
+        }
+
+        function populateRetailModal(review) {
+            const reviewIdEl = document.getElementById('retailDetailReviewId');
+            if (reviewIdEl) reviewIdEl.textContent = review.review_id || '-';
+            const poEl = document.getElementById('retailDetailPoId');
+            if (poEl) poEl.textContent = review.po_id || '-';
+            const orderEl = document.getElementById('retailDetailOrderId');
+            if (orderEl) {
+                if (review.order_id) {
+                    const safeOrderId = escapeHtml(review.order_id);
+                    const orderUrlId = encodeURIComponent(review.order_id);
+                    orderEl.innerHTML = `<a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${orderUrlId}" target="_blank">${safeOrderId}</a>`;
+                } else {
+                    orderEl.textContent = '-';
+                }
+            }
+            const itemIdEl = document.getElementById('retailDetailItemId');
+            if (itemIdEl) itemIdEl.textContent = review.po_item_id || '-';
+            const skuEl = document.getElementById('retailDetailSku');
+            if (skuEl) skuEl.textContent = review.sku || '-';
+            const productEl = document.getElementById('retailDetailProduct');
+            if (productEl) productEl.textContent = getReviewProductName(review);
+            const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
+            const changeEl = document.getElementById('retailDetailChange');
+            if (changeEl) changeEl.innerHTML = `<span class="badge ${changeInfo.badgeClass}">${changeInfo.label}</span>`;
+            const statusEl = document.getElementById('retailDetailStatus');
+            if (statusEl) statusEl.innerHTML = formatReviewBadge(review.status);
+            const flaggedByEl = document.getElementById('retailDetailFlaggedBy');
+            if (flaggedByEl) flaggedByEl.textContent = review.flagged_by || '-';
+            const flaggedAtEl = document.getElementById('retailDetailFlaggedAt');
+            if (flaggedAtEl) flaggedAtEl.textContent = formatLocalDateTime(review.flagged_at);
+            const flagCommentEl = document.getElementById('retailDetailFlagComment');
+            if (flagCommentEl) flagCommentEl.textContent = review.flag_comment || '—';
+
+            const snapshot = getReviewSnapshot(review);
+            const latestNoteEl = document.getElementById('retailDetailLatestNote');
+            if (latestNoteEl) {
+                latestNoteEl.textContent = snapshot && snapshot.latest_item_note
+                    ? `${snapshot.latest_item_note_user || 'User'}: ${snapshot.latest_item_note}`
+                    : '—';
+            }
+            renderReviewStatGrid(snapshot, 'retailDetailStats');
+
+            const warehouseCommentEl = document.getElementById('retailWarehouseComment');
+            if (warehouseCommentEl) {
+                warehouseCommentEl.textContent = review.warehouse_comment || 'Warehouse has not provided feedback yet.';
+            }
+            const warehouseMetaEl = document.getElementById('retailWarehouseMeta');
+            if (warehouseMetaEl) {
+                if (review.warehouse_comment) {
+                    const parts = [];
+                    if (review.warehouse_assigned_to) {
+                        parts.push(`By ${review.warehouse_assigned_to}`);
+                    }
+                    if (review.warehouse_closed_at) {
+                        parts.push(`on ${formatLocalDateTime(review.warehouse_closed_at)}`);
+                    }
+                    warehouseMetaEl.textContent = parts.length ? parts.join(' • ') : 'Warehouse response recorded.';
+                } else {
+                    warehouseMetaEl.textContent = 'Waiting on warehouse response.';
+                }
+            }
+
+            const commentInput = document.getElementById('retailResolutionComment');
+            if (commentInput) {
+                commentInput.value = review.retail_comment || '';
+                commentInput.disabled = review.status !== 'warehouse_closed';
+            }
+            updateRetailCommentCounter();
+
+            const resolveBtn = document.getElementById('retailResolveBtn');
+            if (resolveBtn) {
+                if (review.status === 'warehouse_closed') {
+                    resolveBtn.classList.remove('d-none');
+                    resolveBtn.disabled = false;
+                } else {
+                    resolveBtn.classList.add('d-none');
+                }
+            }
+
+            const modalInfo = document.getElementById('retailModalInfo');
+            if (modalInfo) {
+                modalInfo.classList.add('d-none');
+                modalInfo.textContent = '';
+                modalInfo.classList.remove('alert-info', 'alert-warning', 'alert-success');
+                if (review.status === 'warehouse_closed') {
+                    modalInfo.classList.remove('d-none');
+                    modalInfo.classList.add('alert-info');
+                    modalInfo.innerHTML = '<i class="fas fa-info-circle me-1"></i>Warehouse has responded. Add optional notes and mark as resolved.';
+                } else if (review.status === 'pending' || review.status === 'warehouse_in_progress') {
+                    modalInfo.classList.remove('d-none');
+                    modalInfo.classList.add('alert-warning');
+                    modalInfo.innerHTML = '<i class="fas fa-hourglass-half me-1"></i>Waiting on warehouse to complete this review.';
+                }
+            }
+
+            const resolvedMeta = document.getElementById('retailResolvedMeta');
+            if (resolvedMeta) {
+                if (review.status === 'retail_closed') {
+                    resolvedMeta.classList.remove('d-none');
+                    resolvedMeta.innerHTML = `<i class="fas fa-check-circle me-1"></i>Resolved by ${escapeHtml(review.retail_closed_by || 'Retail')} on ${formatLocalDateTime(review.retail_closed_at)}.`;
+                } else {
+                    resolvedMeta.classList.add('d-none');
+                    resolvedMeta.textContent = '';
+                }
+            }
+
+            showRetailModalWarning(null);
+            toggleRetailModalLoading(false);
+        }
+
+        function updateRetailCommentCounter() {
+            const textarea = document.getElementById('retailResolutionComment');
+            const counter = document.getElementById('retailCommentCharCount');
+            if (!textarea || !counter) return;
+            counter.textContent = textarea.value.length;
+        }
+
+        function toggleRetailModalLoading(isLoading) {
+            const btn = document.getElementById('retailResolveBtn');
+            if (!btn) return;
+            const defaultLabel = btn.querySelector('.default-label');
+            const loadingLabel = btn.querySelector('.loading-label');
+            btn.disabled = isLoading;
+            if (defaultLabel && loadingLabel) {
+                if (isLoading) {
+                    defaultLabel.classList.add('d-none');
+                    loadingLabel.classList.remove('d-none');
+                } else {
+                    defaultLabel.classList.remove('d-none');
+                    loadingLabel.classList.add('d-none');
+                }
+            }
+        }
+
+        function showRetailModalWarning(message) {
+            const warning = document.getElementById('retailDetailWarning');
+            if (!warning) return;
+            if (message) {
+                warning.classList.remove('d-none');
+                warning.textContent = message;
+            } else {
+                warning.classList.add('d-none');
+                warning.textContent = '';
+            }
+        }
+
+        function submitRetailResolve() {
+            if (!currentRetailReview) return;
+            if (currentRetailReview.status !== 'warehouse_closed') {
+                showRetailModalWarning('Only warehouse-completed reviews can be resolved.');
+                return;
+            }
+            const commentInput = document.getElementById('retailResolutionComment');
+            const comment = commentInput ? commentInput.value.trim() : '';
+            toggleRetailModalLoading(true);
+            showRetailModalWarning(null);
+            fetch(`/api/reviews/${currentRetailReview.review_id}/retail-close`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ comment })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    retailModalInstance.hide();
+                    fetchRetailReviews();
+                } else {
+                    showRetailModalWarning(data.error || 'Failed to update review.');
+                }
+            })
+            .catch(error => {
+                showRetailModalWarning(error.message || 'Failed to update review.');
+            })
+            .finally(() => {
+                toggleRetailModalLoading(false);
+            });
+        }
+
         function initializeWarehousePage() {
             updateSidebarCacheStatus();
             fetchWarehouseReviews();
@@ -5180,20 +5677,23 @@
         function buildWarehouseTable(reviews, isOpen) {
             const rows = reviews.map(review => {
                 const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
-                const flaggedAt = review.flagged_at ? new Date(review.flagged_at).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) : '-';
-                const comment = review.flag_comment ? `<div>${review.flag_comment}</div>` : '<span class="text-muted">-</span>';
-                const statusBadge = formatReviewBadge(review.status);
-                const productName = getReviewProductName(review);
-                const orderLink = review.order_id ? `<a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${review.order_id}" target="_blank" onclick="event.stopPropagation();">${review.order_id}</a>` : '-';
+                const comment = review.flag_comment ? `<div class="text-wrap">${escapeHtml(review.flag_comment)}</div>` : '<span class="text-muted">-</span>';
+                const productName = escapeHtml(getReviewProductName(review) || '-');
+                const orderIdLabel = review.order_id ? escapeHtml(review.order_id) : null;
+                const orderUrlId = review.order_id ? encodeURIComponent(review.order_id) : null;
+                const orderLink = orderIdLabel ? `<a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=${orderUrlId}" target="_blank" onclick="event.stopPropagation();">${orderIdLabel}</a>` : '-';
+                const poIdDisplay = escapeHtml(review.po_id || '-');
+                const skuDisplay = escapeHtml(review.sku || '-');
+                const flaggedBy = escapeHtml(review.flagged_by || '-');
                 const reviewDataAttr = encodeURIComponent(JSON.stringify(review));
                 return `
                     <tr class="warehouse-review-row" data-review="${reviewDataAttr}">
-                        <td class="text-center">${review.po_id || '-'}</td>
+                        <td class="text-center">${poIdDisplay}</td>
                         <td class="text-center">${orderLink}</td>
-                        <td class="text-center">${review.sku || '-'}</td>
+                        <td class="text-center">${skuDisplay}</td>
                         <td>${productName}</td>
                         <td><span class="badge ${changeInfo.badgeClass}">${changeInfo.label}</span></td>
-                        <td>${review.flagged_by || '-'}</td>
+                        <td>${flaggedBy}</td>
                         <td>${comment}</td>
                     </tr>
                 `;
@@ -5278,17 +5778,17 @@
             const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
             document.getElementById('warehouseDetailChange').innerHTML = `<span class="badge ${changeInfo.badgeClass}">${changeInfo.label}</span>`;
             document.getElementById('warehouseDetailFlaggedBy').textContent = review.flagged_by || '-';
-            document.getElementById('warehouseDetailFlaggedAt').textContent = review.flagged_at ? new Date(review.flagged_at).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) : '-';
+            document.getElementById('warehouseDetailFlaggedAt').textContent = formatLocalDateTime(review.flagged_at);
             document.getElementById('warehouseDetailRetailComment').textContent = review.flag_comment || '—';
             const snapshot = getReviewSnapshot(review);
             document.getElementById('warehouseDetailLatestNote').textContent = snapshot && snapshot.latest_item_note ? `${snapshot.latest_item_note_user || 'User'}: ${snapshot.latest_item_note}` : '—';
-            renderWarehouseStatGrid(snapshot);
+            renderReviewStatGrid(snapshot, 'warehouseDetailStats');
             document.getElementById('warehouseCommentInput').value = review.warehouse_comment || '';
             showWarehouseModalWarning(null);
         }
 
-        function renderWarehouseStatGrid(snapshot) {
-            const grid = document.getElementById('warehouseDetailStats');
+        function renderReviewStatGrid(snapshot, targetElementId) {
+            const grid = document.getElementById(targetElementId);
             if (!grid) return;
             if (!snapshot) {
                 grid.innerHTML = '<div class="text-muted">No snapshot data available.</div>';
