@@ -601,6 +601,42 @@
             background-color: #f8f9fa;
         }
 
+        .status-summary-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 12px;
+            padding: 0.6rem 0.9rem;
+            color: #1f2937;
+            font-size: 0.85rem;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .status-summary-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-weight: 600;
+        }
+
+        .status-summary-item .badge {
+            font-size: 0.75rem;
+            padding: 0.3rem 0.5rem;
+        }
+
+        .status-summary-count {
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .status-summary-divider {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
         
         /* Column Alignment */
         .text-center {
@@ -3156,6 +3192,19 @@
                 .replace(/'/g, '&#39;');
         }
 
+        const CHANGE_LOG_PRIORITY_MAP = {
+            'Item Removed': 2,
+            'Pending Invoice': 3,
+            'Back-ordered': 4,
+            'Back Order': 4,
+            'No Change': 5
+        };
+
+        function getChangeLogPriority(changeLogRaw) {
+            const normalized = (changeLogRaw || '').toString().trim() || 'No Change';
+            return CHANGE_LOG_PRIORITY_MAP[normalized] || 1;
+        }
+
         function formatLocalDateTime(value) {
             if (!value) {
                 return '-';
@@ -3205,6 +3254,48 @@
                     break;
             }
             return { label, badgeClass, tooltipText };
+        }
+
+        function buildChangeLogSummary(rows) {
+            if (!rows || !rows.length) {
+                return '';
+            }
+            const summaryMap = {};
+            rows.forEach(row => {
+                const display = getChangeLogDisplay(row.change_log);
+                if (!summaryMap[display.label]) {
+                    summaryMap[display.label] = {
+                        count: 0,
+                        badgeClass: display.badgeClass,
+                        priority: getChangeLogPriority(display.label)
+                    };
+                }
+                summaryMap[display.label].count += 1;
+            });
+
+            const summaryItems = Object.entries(summaryMap)
+                .sort((a, b) => {
+                    if (a[1].priority !== b[1].priority) {
+                        return a[1].priority - b[1].priority;
+                    }
+                    return a[0].localeCompare(b[0]);
+                })
+                .map(([label, meta]) => `
+                    <div class="status-summary-item">
+                        <span class="badge ${meta.badgeClass}">${label}</span>
+                        <span class="status-summary-count">(${meta.count})</span>
+                    </div>
+                `);
+
+            if (!summaryItems.length) {
+                return '';
+            }
+
+            return `
+                <div class="status-summary-bar mb-3">
+                    ${summaryItems.join('<span class="status-summary-divider">|</span>')}
+                </div>
+            `;
         }
         
         function renderReviewActionCell(reviewInfo, rowIndex, poItemId) {
@@ -3628,6 +3719,11 @@
                     <span>Showing ${totalCount} result${totalCount !== 1 ? 's' : ''} for PO ID: <strong>${poId}</strong> | Order ID${isPlural ? 's' : ''}: ${orderIdDisplay} | Status: ${statusBadge}</span>
                 </div>
             `;
+
+            const changeLogSummaryHtml = buildChangeLogSummary(data);
+            if (changeLogSummaryHtml) {
+                tableHTML += changeLogSummaryHtml;
+            }
             
             // Add warning banner if multiple NETO order IDs exist
             if (isPlural) {
@@ -3668,18 +3764,8 @@
                 const aChangeLog = normalize(a.change_log);
                 const bChangeLog = normalize(b.change_log);
                 
-                // Lower number = higher priority (top of the table)
-                const changeLogPriority = {
-                    'Item Removed': 2,        // fourth last
-                    'Pending Invoice': 3,     // third last
-                    'Back-ordered': 4,        // second last
-                    'Back Order': 4,          // alias safeguard
-                    'No Change': 5            // very bottom
-                };
-                const getPriority = (changeLog) => changeLogPriority[changeLog] || 1;
-                
-                const aPriority = getPriority(aChangeLog);
-                const bPriority = getPriority(bChangeLog);
+                const aPriority = getChangeLogPriority(aChangeLog);
+                const bPriority = getChangeLogPriority(bChangeLog);
                 
                 if (aPriority !== bPriority) {
                     return aPriority - bPriority;
