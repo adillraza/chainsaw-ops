@@ -1937,8 +1937,8 @@
                                                         <h5 class="mb-0"><span class="badge bg-primary">Receival Difference</span></h5>
                                                     </div>
                                                     <div class="card-body">
-                                                        <p class="mb-2"><strong>Condition:</strong> NETO qty invoiced ≠ Rex Qty Received</p>
-                                                        <p class="mb-2"><strong>Description:</strong> The quantity physically received differs from what was invoiced. This indicates a picking error, receiving mistake, or shipping discrepancy. Verify the physical count and add a note documenting the difference.</p>
+                                                        <p class="mb-2"><strong>Condition:</strong> NETO qty invoiced ≠ Rex Qty Received (including cases where NETO shows 0 but some quantity was still received)</p>
+                                                        <p class="mb-2"><strong>Description:</strong> The quantity physically received differs from what was invoiced. This covers typical pick/ship mistakes as well as rare scenarios where an item is removed from the NETO invoice (0 invoiced) yet stock still turns up in receiving. Verify the physical count and record the discrepancy.</p>
                                                         <table class="table table-sm table-bordered changelog-table mb-0">
                                                             <thead class="table-light">
                                                                 <tr>
@@ -1963,10 +1963,15 @@
                                                                     <td>4</td>
                                                                     <td>3</td>
                                                                 </tr>
+                                                                <tr>
+                                                                    <td>5</td>
+                                                                    <td>0</td>
+                                                                    <td>4</td>
+                                                                </tr>
                                                             </tbody>
                                                         </table>
                                                         <div class="mt-2 p-2 bg-light border-start border-primary border-3">
-                                                            <small><strong>Examples:</strong> Row 1: 4 invoiced but 5 received (received more). Row 2: 5 invoiced but 3 received (received less). Row 3: 4 invoiced but 3 received (both differ). These scenarios indicate warehouse picking errors, shipping mistakes, or incorrect physical counts during receiving.</small>
+                                                            <small><strong>Examples:</strong> Row 1: 4 invoiced but 5 received (received more). Row 2: 5 invoiced but 3 received (received less). Row 3: 4 invoiced but 3 received (both differ). Row 4: item removed from NETO (0 invoiced) but 4 still received. These scenarios indicate warehouse picking errors, shipping mistakes, stock removed from the invoice but arriving anyway, or incorrect physical counts during receiving.</small>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1997,36 +2002,6 @@
                                                         </table>
                                                         <div class="mt-2 p-2 bg-light border-start border-info border-3">
                                                             <small><strong>Result:</strong> 10 items ordered, 8 invoiced, and 8 received. The warehouse reduced the quantity on the invoice, and then the same quantity was physically received. Add a note why the quantity is changed.</small>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                <!-- Delivery Gap -->
-                                                <div class="card mb-3 border-warning">
-                                                    <div class="card-header bg-warning bg-opacity-10">
-                                                        <h5 class="mb-0"><span class="badge bg-warning text-dark">Delivery Gap</span></h5>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <p class="mb-2"><strong>Condition:</strong> Rex Qty Ordered = Rex Qty Received BUT ≠ NETO qty invoiced</p>
-                                                        <p class="mb-2"><strong>Description:</strong> The received quantity matches the original order but differs from what was invoiced. This suggests the receiver did not update the final received quantity in REX to reflect what was actually received. The receiver needs to update REX to match the actual physical count.</p>
-                                                        <table class="table table-sm table-bordered changelog-table mb-0">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th>Rex Qty Ordered</th>
-                                                                    <th>NETO qty invoiced</th>
-                                                                    <th>Rex Qty Received</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td>12</td>
-                                                                    <td>8</td>
-                                                                    <td>12</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                        <div class="mt-2 p-2 bg-light border-start border-warning border-3">
-                                                            <small><strong>Result:</strong> 12 items ordered, 8 invoiced, but 12 received. The received quantity matches the original order despite the invoice showing less. This indicates the receiver didn't update REX to reflect the actual received amount (should be 8, not 12). Receiver must correct the received quantity.</small>
                                                         </div>
                                                     </div>
                                                 </div>
