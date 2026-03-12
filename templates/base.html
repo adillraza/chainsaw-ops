@@ -322,7 +322,7 @@
         .main-content {
             margin-left: var(--left-panel-width);
             margin-top: 0;
-            padding: 32px 28px 28px;
+            padding: 14px 20px 12px;
             min-height: calc(100vh - var(--top-bar-height));
             height: calc(100vh - var(--top-bar-height));
             overflow-y: auto;
@@ -389,7 +389,7 @@
             display: flex;
             flex-direction: column;
             height: 100%;
-            gap: 1.5rem;
+            gap: 0.5rem;
         }
         
         .content-fill-card {
@@ -582,26 +582,46 @@
         }
         
         .table-modern th {
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             font-weight: 600;
-            padding: 0.5rem 0.4rem;
-            border-bottom: 2px solid #dee2e6;
-            background-color: #f8f9fa;
-            color: #495057;
+            padding: 0.45rem 0.4rem;
+            border-bottom: 2px solid #3a4a5c;
+            background-color: #3d4f63;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+        
+        .table-modern th .fas.fa-sort,
+        .table-modern th .fas.fa-sort-up,
+        .table-modern th .fas.fa-sort-down {
+            color: rgba(255,255,255,0.5);
         }
         
         .table-modern thead.sticky-top th {
             position: sticky;
             top: 0;
             z-index: 10;
-            background-color: #f8f9fa;
-            border-bottom: 2px solid #dee2e6;
+            background-color: #3d4f63;
+            border-bottom: 2px solid #3a4a5c;
+        }
+        
+        /* Comparison: sticky column headers inside the JS-sized scroll container */
+        #comparisonContainer table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #3d4f63;
+            border-bottom: 2px solid #3a4a5c;
         }
         
         .table-modern td {
             padding: 0.4rem 0.4rem;
             vertical-align: middle;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 2px solid #d1d7e2;
+            color: #212529;
+            font-size: 0.85rem;
         }
         
         .table-modern.table-striped tbody tr:hover {
@@ -634,14 +654,15 @@
         .status-summary-bar {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.75rem;
+            gap: 0.5rem;
             align-items: center;
             background: #eef2ff;
             border: 1px solid #c7d2fe;
-            border-radius: 12px;
-            padding: 0.6rem 0.9rem;
+            border-radius: 8px;
+            padding: 0.35rem 0.75rem;
+            margin-bottom: 0.25rem;
             color: #1f2937;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
         }
 
@@ -680,14 +701,12 @@
         /* Numeric columns - center aligned */
         .numeric-column {
             text-align: center;
-            font-family: 'Courier New', monospace;
             font-weight: 500;
         }
         
         /* Price/Cost columns - right aligned */
         .price-column {
             text-align: right;
-            font-family: 'Courier New', monospace;
             font-weight: 500;
         }
         
@@ -1145,7 +1164,7 @@
                                 <div><span>Flagged At:</span> <span id="warehouseDetailFlaggedAt">-</span></div>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Retail Comment</label>
+                                <label class="form-label">Retail Comment <small class="text-muted" id="warehouseDetailRetailCommentBy"></small></label>
                                 <div class="border rounded p-2 bg-light" id="warehouseDetailRetailComment">-</div>
                             </div>
                             <div class="mb-3">
@@ -1156,7 +1175,7 @@
                         <div class="col-lg-6">
                             <div class="warehouse-detail-grid mb-3" id="warehouseDetailStats"></div>
                             <div class="mb-3">
-                                <label for="warehouseCommentInput" class="form-label">Warehouse Comment</label>
+                                <label for="warehouseCommentInput" class="form-label">Warehouse Comment <small class="text-muted" id="warehouseDetailCommentBy"></small></label>
                                 <textarea id="warehouseCommentInput" class="form-control" rows="3" placeholder="Describe the fix or action taken..."></textarea>
                             </div>
                             <div class="alert alert-warning d-none" id="warehouseDetailWarning"></div>
@@ -1198,7 +1217,7 @@
                                 <div><span>Flagged At:</span> <span id="retailDetailFlaggedAt">-</span></div>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Retail Flag Comment</label>
+                                <label class="form-label">Retail Flag Comment <small class="text-muted" id="retailDetailFlagCommentBy"></small></label>
                                 <div class="border rounded p-2 bg-light" id="retailDetailFlagComment">-</div>
                             </div>
                             <div class="mb-3">
@@ -1406,24 +1425,23 @@
                 // Load BigQuery data content
                 contentArea.innerHTML = `
                     <div class="page-flex">
-                    <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <h2><i class="fas fa-shopping-cart"></i> Purchase Orders</h2>
-                            <div class="alert alert-warning alert-compact mb-0">
-                                <i class="fas fa-exclamation-triangle me-2"></i>Use the header refresh/test buttons whenever you open this page to pull the latest data.
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-end mt-2">
-                            <div id="lastRefreshTimestamp" class="text-muted" style="font-size: 0.875rem;">
-                                <i class="fas fa-clock me-1"></i>
-                                <span id="timestampText">Loading...</span>
+                    <div class="mb-1">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                            <h5 class="mb-0"><i class="fas fa-shopping-cart"></i> Purchase Orders</h5>
+                            <div class="d-flex align-items-center gap-3">
+                                <div id="lastRefreshTimestamp" class="text-muted" style="font-size: 0.8rem;">
+                                    <i class="fas fa-clock me-1"></i><span id="timestampText">Loading...</span>
+                                </div>
+                                <div class="alert alert-warning alert-compact mb-0" style="font-size:0.78rem; padding:4px 10px;">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Use header buttons to refresh data.
+                                </div>
                             </div>
                         </div>
                     </div>
                     
                     <!-- Search and Filter -->
-                    <div class="card mb-4">
-                        <div class="card-body">
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
                             <div class="row">
                                 <div class="col-md-4">
                                     <div class="input-group">
@@ -1470,9 +1488,8 @@
                     </div>
                     
                     <!-- Summary Table -->
-                    <div class="card mb-4 content-fill-card" style="background-color: #ffffff;">
-                        <div class="card-header" style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                            <h5><i class="fas fa-list-alt"></i> Purchase Orders</h5>
+                    <div class="card content-fill-card" style="background-color: #ffffff;">
+                        <div class="card-header py-1" style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6; display: none;">
                         </div>
                         <div class="card-body" style="background-color: #ffffff; padding: 0;">
                             <div id="summaryContainer" style="height: 100%;">
@@ -1618,28 +1635,30 @@
                 // Load Comparison content
                 contentArea.innerHTML = `
                     <div class="page-flex">
-                    <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <h2><i class="fas fa-balance-scale"></i> Comparison</h2>
-                            <div class="alert alert-warning alert-compact mb-0">
-                                <i class="fas fa-exclamation-triangle me-2"></i>Need fresh comparison data? Use the header controls to refresh or test BigQuery.
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-end mt-2">
-                            <div id="lastRefreshTimestamp" class="text-muted" style="font-size: 0.875rem;">
-                                <i class="fas fa-clock me-1"></i>
-                                <span id="timestampText">Loading...</span>
+                    <div class="mb-1">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                            <h5 class="mb-0"><i class="fas fa-balance-scale"></i> Comparison</h5>
+                            <div class="d-flex align-items-center gap-3">
+                                <div id="lastRefreshTimestamp" class="text-muted" style="font-size: 0.8rem;">
+                                    <i class="fas fa-clock me-1"></i><span id="timestampText">Loading...</span>
+                                </div>
+                                <div class="alert alert-warning alert-compact mb-0" style="font-size:0.78rem; padding:4px 10px;">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Use header buttons to refresh data.
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <!-- Comparison Table -->
+                    <!-- Comparison info banners (rendered by JS, lives outside the card like Orders search bar) -->
+                    <div id="comparisonTopInfo"></div>
+                    
+                    <!-- Comparison Table (mirrors Orders card exactly) -->
                     <div class="card content-fill-card" id="comparisonCard" style="background-color: #ffffff;">
                         <div class="card-header" style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6; display: none;">
                             <span id="comparisonCount" class="badge bg-secondary">0</span>
                         </div>
                         <div class="card-body" style="background-color: #ffffff; padding: 0;">
-                            <div id="comparisonContainer" style="height: 100%;">
+                            <div id="comparisonContainer">
                                 <div class="text-center text-muted" style="padding-top: 100px;">
                                     <i class="fas fa-balance-scale fa-3x mb-3"></i>
                                     <p>Select a purchase order from the REX PO Orders Summary table to view comparison data</p>
@@ -3054,18 +3073,18 @@
                     <table class="table table-modern table-striped table-hover">
                         <thead class="sticky-top">
                             <tr>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID - Unique identifier for the purchase order" class="text-center">PO ID</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from the system" class="text-center">OrderID</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Supplier assigned to this purchase order" class="text-center">Supplier</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (order lines) in this purchase order from REX" class="text-center">REX Order Lines</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Order Created By</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the purchase order in REX">REX PO Created By</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the purchase order was requested in REX" class="text-center">REX Date Requested</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was entered into NETO" class="text-center">NETO Date Entered</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was dispatched in NETO" class="text-center">NETO Date Dispatched</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date when the order was received in REX" class="text-center">REX Date Received</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates if there's a price difference between REX and NETO" class="text-center">Disparity?</th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current status of the purchase order" class="text-center">Status</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID" class="text-center">PO ID</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Order ID from NETO" class="text-center">Order ID</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Supplier name" class="text-center">Supplier</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (REX order lines)" class="text-center">Lines</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Created By</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the PO in REX">REX Created By</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date requested in REX" class="text-center">Requested</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date entered in NETO" class="text-center">Entered</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date dispatched in NETO" class="text-center">Dispatched</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date received in REX" class="text-center">Received</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Price disparity between REX and NETO" class="text-center">Disparity</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Current PO status" class="text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3693,11 +3712,15 @@
         
         function displayComparisonData(data, totalCount, reviewStatuses = {}) {
             const comparisonContainer = document.getElementById('comparisonContainer');
+            const comparisonTopInfo = document.getElementById('comparisonTopInfo');
             window.currentComparisonReviews = reviewStatuses || {};
             
             console.log('displayComparisonData received data:', data);
             
             if (!data || data.length === 0) {
+                if (comparisonTopInfo) {
+                    comparisonTopInfo.innerHTML = '';
+                }
                 comparisonContainer.innerHTML = `
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i> No comparison data found for this purchase order.
@@ -3745,8 +3768,8 @@
             
             // Create info message showing which PO is being viewed
             const isPlural = netoOrderIds && netoOrderIds.split(',').length > 1;
-            let tableHTML = `
-                <div class="alert alert-info d-flex align-items-center mb-3" style="background-color: #d1ecf1; border-color: #bee5eb;">
+            let topPanelHtml = `
+                <div class="alert alert-info d-flex align-items-center mb-1 py-1 px-2" style="background-color: #d1ecf1; border-color: #bee5eb; font-size: 0.85rem;">
                     <i class="fas fa-info-circle me-2"></i>
                     <span>Showing ${totalCount} result${totalCount !== 1 ? 's' : ''} for PO ID: <strong>${poId}</strong> | Order ID${isPlural ? 's' : ''}: ${orderIdDisplay} | Status: ${statusBadge}</span>
                 </div>
@@ -3754,35 +3777,38 @@
 
             const changeLogSummaryHtml = buildChangeLogSummary(data);
             if (changeLogSummaryHtml) {
-                tableHTML += changeLogSummaryHtml;
+                topPanelHtml += changeLogSummaryHtml;
             }
             
             // Add warning banner if multiple NETO order IDs exist
             if (isPlural) {
-                tableHTML += `
-                    <div class="alert alert-warning d-flex align-items-center mb-3" style="background-color: #fff3cd; border-color: #ffc107;">
+                topPanelHtml += `
+                    <div class="alert alert-warning d-flex align-items-center mb-1 py-1 px-2" style="background-color: #fff3cd; border-color: #ffc107; font-size: 0.85rem;">
                         <i class="fas fa-exclamation-triangle me-2"></i>
                         <span><strong>Warning:</strong> Possible duplication of data because this PO is linked to multiple NETO Orders</span>
                     </div>
                 `;
             }
+
+            if (comparisonTopInfo) {
+                comparisonTopInfo.innerHTML = topPanelHtml;
+            }
             
-            tableHTML += `
-                <div class="table-responsive-modern" style="height: 100%; overflow-y: auto;">
-                    <table class="table table-modern table-striped table-hover">
-                        <thead class="sticky-top">
+            let tableHTML = `
+                    <table class="table table-modern table-striped table-hover" style="margin-bottom: 0;">
+                        <thead>
                             <tr>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID" class="sortable text-center" data-sort="po_id" style="width: 60px;">POID <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Stock Keeping Unit identifier" class="sortable" data-sort="sku" style="width: 100px;">SKU <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Purchase Order ID" class="sortable text-center" data-sort="po_id" style="width: 55px;">POID <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Stock Keeping Unit identifier" class="sortable" data-sort="sku" style="width: 90px;">SKU <i class="fas fa-sort"></i></th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Product name and description" class="sortable" data-sort="name" style="width: 200px;">Name <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Type of change or difference" class="sortable text-center" data-sort="change_log" style="width: 120px;">Change Log <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in REX system" class="sortable text-center" data-sort="rex_available_qty" style="width: 80px;">REX Qty Available <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in NETO system" class="sortable text-center" data-sort="neto_qty_available" style="width: 80px;">NETO Qty Available <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Original quantity ordered in REX system" class="sortable text-center" data-sort="original_rex_qty_ordered" style="width: 80px;">Original REX Qty Ordered <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity invoiced from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 80px;">NETO Qty Invoiced <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity received in REX" class="sortable text-center" data-sort="rex_qty_received" style="width: 80px;">REX Qty Received <i class="fas fa-sort"></i></th>
-                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note or comment" class="text-start" style="min-width: 250px;">Latest Note</th>
-                                <th class="text-center" style="width: 140px;">Review</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Type of change or difference" class="sortable text-center" data-sort="change_log" style="width: 110px;">Change Log <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in REX" class="sortable text-center" data-sort="rex_available_qty" style="width: 70px;">REX Avail <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity available in NETO" class="sortable text-center" data-sort="neto_qty_available" style="width: 70px;">NETO Avail <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Original quantity ordered in REX" class="sortable text-center" data-sort="original_rex_qty_ordered" style="width: 70px;">REX Ordered <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity invoiced from NETO" class="sortable text-center" data-sort="neto_qty_shipped" style="width: 70px;">NETO Inv <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Quantity received in REX" class="sortable text-center" data-sort="rex_qty_received" style="width: 70px;">REX Recv <i class="fas fa-sort"></i></th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="Most recent item-level note" class="text-start" style="min-width: 200px;">Latest Note</th>
+                                <th class="text-center" style="width: 100px;">Review</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3894,7 +3920,6 @@
             tableHTML += `
                         </tbody>
                     </table>
-                </div>
             `;
             
             comparisonContainer.innerHTML = tableHTML;
@@ -3937,7 +3962,32 @@
             
             // Add sorting functionality
             addComparisonTableSorting();
+            
+            // Set explicit pixel height on comparisonContainer so it becomes
+            // a real scroll container and position:sticky on <th> works.
+            requestAnimationFrame(() => {
+                sizeComparisonScroll();
+            });
         }
+        
+        function sizeComparisonScroll() {
+            const el = document.getElementById('comparisonContainer');
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const available = window.innerHeight - rect.top - 16;   // 16px bottom padding
+            if (available > 100) {
+                el.style.height = available + 'px';
+                el.style.overflowY = 'auto';
+            }
+        }
+        
+        // Re-size when window resizes
+        window.addEventListener('resize', function() {
+            const el = document.getElementById('comparisonContainer');
+            if (el && el.style.overflowY === 'auto') {
+                sizeComparisonScroll();
+            }
+        });
 
         function displayItemsData(data, totalCount, poId, orderId) {
             const itemsContainer = document.getElementById('itemsContainer');
@@ -5414,7 +5464,8 @@
             const sectionAttr = options.section ? ` data-section="${options.section}"` : '';
             const rows = reviews.map(review => {
                 const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
-                const comment = review.flag_comment ? `<div class="text-wrap">${escapeHtml(review.flag_comment)}</div>` : '<span class="text-muted">-</span>';
+                const commentUser = review.flagged_by ? `<strong>${escapeHtml(review.flagged_by)}:</strong> ` : '';
+                const comment = review.flag_comment ? `<div class="text-wrap">${commentUser}${escapeHtml(review.flag_comment)}</div>` : '<span class="text-muted">-</span>';
                 const productName = escapeHtml(getReviewProductName(review) || '-');
                 const orderIdLabel = review.order_id ? escapeHtml(review.order_id) : null;
                 const orderUrlId = review.order_id ? encodeURIComponent(review.order_id) : null;
@@ -5546,6 +5597,8 @@
             if (flaggedAtEl) flaggedAtEl.textContent = formatLocalDateTime(review.flagged_at);
             const flagCommentEl = document.getElementById('retailDetailFlagComment');
             if (flagCommentEl) flagCommentEl.textContent = review.flag_comment || '—';
+            const flagCommentByEl = document.getElementById('retailDetailFlagCommentBy');
+            if (flagCommentByEl) flagCommentByEl.textContent = review.flagged_by ? `— by ${review.flagged_by}` : '';
 
             const snapshot = getReviewSnapshot(review);
             const latestNoteEl = document.getElementById('retailDetailLatestNote');
@@ -5795,7 +5848,8 @@
         function buildWarehouseTable(reviews, isOpen) {
             const rows = reviews.map(review => {
                 const changeInfo = getChangeLogDisplay(getReviewChangeLog(review));
-                const comment = review.flag_comment ? `<div class="text-wrap">${escapeHtml(review.flag_comment)}</div>` : '<span class="text-muted">-</span>';
+                const commentUser = review.flagged_by ? `<strong>${escapeHtml(review.flagged_by)}:</strong> ` : '';
+                const comment = review.flag_comment ? `<div class="text-wrap">${commentUser}${escapeHtml(review.flag_comment)}</div>` : '<span class="text-muted">-</span>';
                 const productName = escapeHtml(getReviewProductName(review) || '-');
                 const orderIdLabel = review.order_id ? escapeHtml(review.order_id) : null;
                 const orderUrlId = review.order_id ? encodeURIComponent(review.order_id) : null;
@@ -5898,10 +5952,14 @@
             document.getElementById('warehouseDetailFlaggedBy').textContent = review.flagged_by || '-';
             document.getElementById('warehouseDetailFlaggedAt').textContent = formatLocalDateTime(review.flagged_at);
             document.getElementById('warehouseDetailRetailComment').textContent = review.flag_comment || '—';
+            const retailCommentByEl = document.getElementById('warehouseDetailRetailCommentBy');
+            if (retailCommentByEl) retailCommentByEl.textContent = review.flagged_by ? `— by ${review.flagged_by}` : '';
             const snapshot = getReviewSnapshot(review);
             document.getElementById('warehouseDetailLatestNote').textContent = snapshot && snapshot.latest_item_note ? `${snapshot.latest_item_note_user || 'User'}: ${snapshot.latest_item_note}` : '—';
             renderReviewStatGrid(snapshot, 'warehouseDetailStats');
             document.getElementById('warehouseCommentInput').value = review.warehouse_comment || '';
+            const whCommentByEl = document.getElementById('warehouseDetailCommentBy');
+            if (whCommentByEl) whCommentByEl.textContent = review.warehouse_assigned_to ? `— by ${review.warehouse_assigned_to}` : '';
             showWarehouseModalWarning(null);
         }
 
