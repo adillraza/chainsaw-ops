@@ -67,6 +67,7 @@ class BigQueryService:
                     CAST(po_id AS STRING) as po_id,
                     po_status,
                     rex_po_created_by,
+                    received_by,
                     supplier,
                     requested_date,
                     order_id as OrderID,

@@ -1085,15 +1085,15 @@
                     <button type="button" onclick="testConnection()">
                         <i class="fas fa-satellite-dish text-success"></i> Test Connection
                     </button>
-                    {% if current_user.is_admin %}
+                {% if current_user.is_admin %}
                     <a href="{{ url_for('admin') }}" class="{% if request.endpoint == 'admin' %}active{% endif %}">
                         <i class="fas fa-users-cog text-info"></i> User Management
                     </a>
                     <div class="dropdown-divider"></div>
-                    {% endif %}
+                {% endif %}
                     <a href="{{ url_for('logout') }}">
                         <i class="fas fa-sign-out-alt text-danger"></i> Logout
-                    </a>
+            </a>
                 </div>
             </div>
         </div>
@@ -1434,7 +1434,7 @@
                                 </div>
                                 <div class="alert alert-warning alert-compact mb-0" style="font-size:0.78rem; padding:4px 10px;">
                                     <i class="fas fa-exclamation-triangle me-1"></i>Use header buttons to refresh data.
-                                </div>
+                            </div>
                             </div>
                         </div>
                     </div>
@@ -1644,7 +1644,7 @@
                                 </div>
                                 <div class="alert alert-warning alert-compact mb-0" style="font-size:0.78rem; padding:4px 10px;">
                                     <i class="fas fa-exclamation-triangle me-1"></i>Use header buttons to refresh data.
-                                </div>
+                            </div>
                             </div>
                         </div>
                     </div>
@@ -1664,9 +1664,9 @@
                                     <p>Select a purchase order from the REX PO Orders Summary table to view comparison data</p>
                                     <p class="text-secondary"><small>Or the comparison data will appear here when you search by SKU</small></p>
                                 </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
                     </div>
                 `;
                 
@@ -2112,12 +2112,12 @@
             
             // Test connection
             if (testConnectionBtn) {
-                testConnectionBtn.addEventListener('click', testConnection);
+            testConnectionBtn.addEventListener('click', testConnection);
             }
             
             // Refresh data
             if (refreshDataBtn) {
-                refreshDataBtn.addEventListener('click', refreshData);
+            refreshDataBtn.addEventListener('click', refreshData);
             }
             
             // Search functionality
@@ -2217,8 +2217,8 @@
             const message = document.getElementById('connectionMessage');
             
             if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
             }
             
             fetch('/api/bigquery/test')
@@ -2240,8 +2240,8 @@
                 })
                 .finally(() => {
                     if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-plug"></i> Test Connection';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-plug"></i> Test Connection';
                     }
                 });
         }
@@ -2574,8 +2574,8 @@
             const paginationNav = document.getElementById('paginationNav');
             
             if (refreshBtn) {
-                refreshBtn.disabled = true;
-                refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
             }
             loadingSpinner.style.display = 'block';
             summaryContainer.innerHTML = '';
@@ -2614,8 +2614,8 @@
                 })
                 .finally(() => {
                     if (refreshBtn) {
-                        refreshBtn.disabled = false;
-                        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
                     }
                 });
         }
@@ -3079,6 +3079,7 @@
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Number of unique items (REX order lines)" class="text-center">Lines</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the order in NETO">NETO Created By</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who created the PO in REX">REX Created By</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="User who received the PO in REX">REX Received By</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date requested in REX" class="text-center">Requested</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date entered in NETO" class="text-center">Entered</th>
                                 <th data-bs-toggle="tooltip" data-bs-placement="top" title="Date dispatched in NETO" class="text-center">Dispatched</th>
@@ -3137,6 +3138,7 @@
                 const itemCount = row.item_count || '0';
                 const netoCreatedBy = row.neto_order_created_by || '-';
                 const rexPOCreatedBy = row.rex_po_created_by || '-';
+                const rexReceivedBy = row.received_by || '-';
                 const requestedDate = row.requested_date ? new Date(row.requested_date).toLocaleDateString('en-GB', {
                     day: '2-digit', month: 'short', year: 'numeric'
                 }) + ', ' + new Date(row.requested_date).toLocaleTimeString('en-GB', {
@@ -3181,6 +3183,7 @@
                     <td class="text-center">${itemCount}</td>
                     <td>${netoCreatedBy}</td>
                     <td>${rexPOCreatedBy}</td>
+                    <td>${rexReceivedBy}</td>
                     <td class="text-center">${requestedDate}</td>
                     <td class="text-center">${enteredDate}</td>
                     <td class="text-center">${completedDate}</td>
@@ -3598,8 +3601,8 @@
                         const reviewMap = buildReviewStatusMap(data.reviews || []);
                         window.currentComparisonReviews = reviewMap;
                         displayComparisonData(data.data, data.total_count, reviewMap);
-                        // Store comparison data globally for search
-                        window.currentComparisonData = data.data;
+                            // Store comparison data globally for search
+                            window.currentComparisonData = data.data;
                     } else {
                         comparisonContainer.innerHTML = `
                             <div class="alert alert-danger">
@@ -3789,7 +3792,7 @@
                     </div>
                 `;
             }
-
+            
             if (comparisonTopInfo) {
                 comparisonTopInfo.innerHTML = topPanelHtml;
             }

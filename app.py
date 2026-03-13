@@ -75,6 +75,7 @@ class CachedPurchaseOrderSummary(db.Model):
     po_id = db.Column(db.String(50), nullable=False, index=True)  # Index for fast lookups
     po_status = db.Column(db.String(50))
     rex_po_created_by = db.Column(db.String(100))
+    received_by = db.Column(db.String(100))
     supplier = db.Column(db.String(150))
     requested_date = db.Column(db.DateTime)
     order_id = db.Column(db.String(50), index=True)  # Index for fast lookups
@@ -106,6 +107,7 @@ class CachedPurchaseOrderSummary(db.Model):
             'po_id': self.po_id,
             'po_status': self.po_status,
             'rex_po_created_by': self.rex_po_created_by,
+            'received_by': self.received_by,
             'supplier': self.supplier,
             'requested_date': self.requested_date.isoformat() if self.requested_date else None,
             'OrderID': self.order_id,
@@ -466,6 +468,7 @@ def cache_purchase_order_data():
                             po_id=row.get('po_id'),
                             po_status=row.get('po_status'),
                             rex_po_created_by=row.get('rex_po_created_by'),
+                            received_by=row.get('received_by'),
                             supplier=row.get('supplier'),
                             requested_date=safe_parse_date(row.get('requested_date')),
                             order_id=row.get('OrderID'),
@@ -1620,6 +1623,20 @@ def ensure_supplier_column():
             else:
                 print(f"Warning: could not ensure supplier column: {str(e)}")
 
+def ensure_received_by_column():
+    """Ensure received_by column exists on CachedPurchaseOrderSummary"""
+    with app.app_context():
+        try:
+            db.session.execute(text("ALTER TABLE cached_purchase_order_summary ADD COLUMN received_by VARCHAR(100)"))
+            db.session.commit()
+            print("Added received_by column to cached_purchase_order_summary table")
+        except Exception as e:
+            db.session.rollback()
+            if "duplicate column name" in str(e).lower():
+                pass
+            else:
+                print(f"Warning: could not ensure received_by column: {str(e)}")
+
 def ensure_user_role_column():
     """Ensure role column exists on user table and backfill existing users"""
     with app.app_context():
@@ -1747,6 +1764,7 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         ensure_supplier_column()
+        ensure_received_by_column()
         ensure_user_role_column()
         create_admin_user()
         try:
