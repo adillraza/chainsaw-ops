@@ -1714,19 +1714,30 @@ def sync_reviews_from_bigquery():
         if error:
             print(f"Error fetching reviews from BigQuery: {error}")
             return False, error
-        # Clear existing reviews
-        ItemReview.query.delete()
-        db.session.commit()
-        seen_review_ids = set()
-        skipped_duplicates = 0
+        # Deduplicate: keep the most recently updated row per review_id
+        STATUS_PRIORITY = {s: i for i, s in enumerate(
+            ['pending', 'warehouse_in_progress', 'warehouse_closed', 'retail_closed', 'cancelled']
+        )}
+        best_by_id = {}
         for record in reviews:
             review_uuid = record.get('review_id')
             if not review_uuid:
                 continue
-            if review_uuid in seen_review_ids:
-                skipped_duplicates += 1
-                continue
-            seen_review_ids.add(review_uuid)
+            prev = best_by_id.get(review_uuid)
+            if prev is None:
+                best_by_id[review_uuid] = record
+            else:
+                prev_ts = prev.get('updated_at') or ''
+                curr_ts = record.get('updated_at') or ''
+                prev_pri = STATUS_PRIORITY.get(prev.get('status'), -1)
+                curr_pri = STATUS_PRIORITY.get(record.get('status'), -1)
+                if curr_ts > prev_ts or (curr_ts == prev_ts and curr_pri > prev_pri):
+                    best_by_id[review_uuid] = record
+        skipped_duplicates = len(reviews) - len(best_by_id)
+
+        ItemReview.query.delete()
+        db.session.commit()
+        for review_uuid, record in best_by_id.items():
             review = ItemReview(
                 review_id=review_uuid,
                 po_id=record.get('po_id'),
@@ -1750,7 +1761,7 @@ def sync_reviews_from_bigquery():
             )
             db.session.add(review)
         db.session.commit()
-        synced_count = len(seen_review_ids)
+        synced_count = len(best_by_id)
         if skipped_duplicates:
             print(f"Skipped {skipped_duplicates} duplicate review rows from BigQuery.")
         print(f"Synced {synced_count} reviews from BigQuery")

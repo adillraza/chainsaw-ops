@@ -1127,7 +1127,7 @@ class BigQueryService:
             return [], "BigQuery client not initialized"
         try:
             query = f"""
-            SELECT 
+            SELECT
                 review_id,
                 po_id,
                 order_id,
@@ -1146,7 +1146,12 @@ class BigQueryService:
                 retail_comment,
                 comparison_snapshot,
                 updated_at
-            FROM `{self.project_id}.operations.item_reviews`
+            FROM (
+                SELECT *,
+                    ROW_NUMBER() OVER (PARTITION BY review_id ORDER BY updated_at DESC) AS _rn
+                FROM `{self.project_id}.operations.item_reviews`
+            )
+            WHERE _rn = 1
             """
             results = list(self.client.query(query).result())
             reviews = []
