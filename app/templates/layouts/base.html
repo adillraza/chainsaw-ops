@@ -40,6 +40,19 @@
     /* Make HTMX swaps a tiny bit nicer */
     .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
     .htmx-request .htmx-indicator { opacity: 1; }
+
+    /* Zebra striping — skip rows that already carry an explicit bg-* class
+       (disparity red, kitted amber, detail drawer, etc.) so semantic
+       highlights win. */
+    tbody tr:nth-child(even):not([class*="bg-"]) {
+      background-color: rgb(248 250 252); /* slate-50 */
+    }
+    /* More prominent hover than Tailwind's default hover:bg-slate-50.
+       !important because Tailwind's .hover\:bg-*:hover has higher specificity
+       than a plain element selector. */
+    tbody tr:hover {
+      background-color: rgb(239 246 255) !important; /* brand-50 */
+    }
   </style>
 
   {% block head_extra %}{% endblock %}
