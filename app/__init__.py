@@ -39,6 +39,9 @@ def create_app(config_object: str | None = None) -> Flask:
     from app import template_filters
     template_filters.register(app)
 
+    from app import cli
+    cli.register(app)
+
     # Expose ``can(cap)`` to every template so gating looks like
     #   {% if can('reviews.flag') %} … {% endif %}
     # This is a thin wrapper over ``current_user.can(cap)``.

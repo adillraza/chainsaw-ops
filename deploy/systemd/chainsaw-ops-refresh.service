@@ -1,0 +1,15 @@
+[Unit]
+Description=Chainsaw Ops cache refresh from BigQuery (timer-driven)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/chainsaw-ops
+Environment=FLASK_APP=wsgi.py
+Environment=PATH=/opt/chainsaw-ops/venv/bin
+ExecStart=/opt/chainsaw-ops/venv/bin/flask refresh-cache
+TimeoutStartSec=15min
+StandardOutput=journal
+StandardError=journal

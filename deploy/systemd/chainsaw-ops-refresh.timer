@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh chainsaw-ops BigQuery cache at :05 and :35 (5 min after each Dataform run)
+
+[Timer]
+OnCalendar=*:05,35
+Persistent=true
+AccuracySec=15s
+Unit=chainsaw-ops-refresh.service
+
+[Install]
+WantedBy=timers.target
