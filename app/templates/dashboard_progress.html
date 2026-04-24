@@ -1,0 +1,165 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'Refreshing data' %}
+{% block title %}Refreshing data - Chainsawspares Ops{% endblock %}
+
+{% block content %}
+<section class="mx-auto max-w-3xl">
+  <div class="rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+    <div class="mb-6 flex items-center gap-3">
+      <span class="flex h-10 w-10 items-center justify-center rounded-md bg-brand-50 text-brand-600">
+        <i class="fas fa-sync-alt fa-spin"></i>
+      </span>
+      <div>
+        <h2 class="text-xl font-semibold text-slate-900">Refreshing data</h2>
+        <p class="text-sm text-slate-600">Pulling the latest PO snapshot from BigQuery.</p>
+      </div>
+    </div>
+
+    <div class="mb-6">
+      <div class="h-3 w-full overflow-hidden rounded-full bg-slate-100">
+        <div id="overall-bar" class="h-full bg-brand-600 transition-all duration-300" style="width: 0%"></div>
+      </div>
+      <p class="mt-1 text-right text-xs text-slate-500"><span id="overall-text">0%</span></p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {% for key, label, color in [('summary', 'PO summary', 'brand'), ('items', 'PO items', 'emerald'), ('comparison', 'Comparison', 'amber')] %}
+        <div class="rounded-md border border-slate-200 p-4">
+          <p class="text-xs uppercase tracking-wide text-slate-500">{{ label }}</p>
+          <p class="mt-1 text-2xl font-semibold text-slate-900" id="{{ key }}-count">0</p>
+          <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div id="{{ key }}-bar"
+                 class="h-full {% if color == 'brand' %}bg-brand-500{% elif color == 'emerald' %}bg-emerald-500{% else %}bg-amber-500{% endif %} transition-all duration-300"
+                 style="width: 0%"></div>
+          </div>
+          <p class="mt-1 text-xs text-slate-500" id="{{ key }}-status">Waiting…</p>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div id="status-messages" class="mt-6 space-y-2 text-sm"></div>
+
+    <div class="mt-6 flex items-center justify-between">
+      <button id="start-btn" type="button"
+              class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+        <i class="fas fa-play"></i> Start refresh
+      </button>
+      <a href="{{ url_for('dashboard.dashboard') }}" class="text-sm text-slate-500 hover:text-brand-700">Back to dashboard</a>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const autostart = params.get('autostart') === 'true';
+  const returnUrl = params.get('return') || "{{ url_for('dashboard.dashboard') }}";
+
+  let polling = null;
+  let isRefreshing = false;
+
+  const startBtn = document.getElementById('start-btn');
+  const overallBar = document.getElementById('overall-bar');
+  const overallText = document.getElementById('overall-text');
+  const messages = document.getElementById('status-messages');
+
+  function flash(kind, text) {
+    const el = document.createElement('div');
+    const palette = kind === 'success'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : kind === 'error'
+        ? 'border-rose-200 bg-rose-50 text-rose-800'
+        : 'border-slate-200 bg-slate-50 text-slate-700';
+    el.className = `rounded-md border px-3 py-2 ${palette}`;
+    el.textContent = text;
+    messages.appendChild(el);
+    setTimeout(() => el.remove(), 8000);
+  }
+
+  function updateTable(key, current, total) {
+    const bar = document.getElementById(`${key}-bar`);
+    const status = document.getElementById(`${key}-status`);
+    const count = document.getElementById(`${key}-count`);
+    count.textContent = current.toLocaleString();
+    if (total > 0) {
+      const pct = Math.min(100, Math.round((current / total) * 100));
+      bar.style.width = pct + '%';
+      status.textContent = current >= total ? 'Complete' : `${current.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`;
+    } else {
+      status.textContent = current > 0 ? `${current.toLocaleString()} cached` : 'Waiting…';
+    }
+  }
+
+  function poll() {
+    fetch('/api/system/cache-status')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) return;
+        updateTable('summary', d.summary_count || 0, d.summary_total || 0);
+        updateTable('items', d.items_count || 0, d.items_total || 0);
+        updateTable('comparison', d.comparison_count || 0, d.comparison_total || 0);
+
+        const totals = (d.summary_total || 0) + (d.items_total || 0) + (d.comparison_total || 0);
+        const counts = (d.summary_count || 0) + (d.items_count || 0) + (d.comparison_count || 0);
+        const pct = totals > 0 ? Math.min(100, Math.round((counts / totals) * 100)) : 0;
+        overallBar.style.width = pct + '%';
+        overallText.textContent = pct + '%';
+
+        const summaryDone = (d.summary_count || 0) > 0 && (d.summary_count >= (d.summary_total || 0) * 0.9);
+        const itemsDone = (d.items_count || 0) > 0 && (d.items_count >= (d.items_total || 0) * 0.9);
+        const comparisonDone = (d.comparison_count || 0) > 0 && (d.comparison_count >= (d.comparison_total || 0) * 0.9);
+
+        if (summaryDone && itemsDone && comparisonDone && !d.is_syncing) {
+          flash('success', 'Refresh complete. Redirecting…');
+          clearInterval(polling);
+          setTimeout(() => { window.location.href = returnUrl; }, 1500);
+        }
+      })
+      .catch(() => {});
+  }
+
+  function start() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing…';
+    fetch('/api/system/start-refresh', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          flash('info', 'Background refresh started.');
+          polling = setInterval(poll, 2000);
+        } else {
+          flash('error', d.message || 'Failed to start refresh.');
+          isRefreshing = false;
+          startBtn.disabled = false;
+          startBtn.innerHTML = '<i class="fas fa-play"></i> Start refresh';
+        }
+      })
+      .catch(err => {
+        flash('error', err.message);
+        isRefreshing = false;
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="fas fa-play"></i> Start refresh';
+      });
+  }
+
+  startBtn.addEventListener('click', start);
+
+  if (autostart) {
+    setTimeout(start, 500);
+  } else {
+    fetch('/api/system/cache-status')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.has_cached_data) {
+          window.location.href = returnUrl;
+        } else {
+          start();
+        }
+      });
+  }
+})();
+</script>
+{% endblock %}

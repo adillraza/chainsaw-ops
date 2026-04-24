@@ -1,0 +1,68 @@
+<div data-hx-table class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+  <div class="max-h-[calc(100vh-280px)] overflow-y-auto">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="px-3 py-2 text-left">PO ID</th>
+          <th class="px-3 py-2 text-left">SKU</th>
+          <th class="px-3 py-2 text-left">Manufacturer SKU</th>
+          <th class="px-3 py-2 text-left">Description</th>
+          <th class="px-3 py-2 text-right">Neto $</th>
+          <th class="px-3 py-2 text-right">REX $</th>
+          <th class="px-3 py-2 text-right">Diff</th>
+          <th class="px-3 py-2 text-left">Last note</th>
+          <th class="px-3 py-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in rows %}
+          <tr class="hover:bg-slate-50">
+            <td class="whitespace-nowrap px-3 py-2 font-mono">
+              <a class="font-semibold text-brand-700 hover:underline"
+                 href="{{ url_for('purchase_orders.order_detail', po_id=r.po_id) }}">{{ r.po_id }}</a>
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 font-mono">
+              {% if r.neto_product_id %}
+                <a href="https://www.chainsawspares.com.au/_cpanel/products/view?id={{ r.neto_product_id }}"
+                   target="_blank" rel="noopener"
+                   class="text-brand-700 hover:underline"
+                   title="Open in Neto (product ID {{ r.neto_product_id }})">{{ r.sku }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-slate-400"></i></a>
+              {% else %}
+                <span title="Neto product ID not yet synced">{{ r.sku }}</span>
+              {% endif %}
+              {% if r.is_kitted_item == true %}
+                <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                      title="Kitted item — kits shouldn't appear on a PO">
+                  <i class="fas fa-cubes text-[9px]"></i> Kit
+                </span>
+              {% endif %}
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 font-mono text-slate-600">{{ r.manufacturer_sku or '—' }}</td>
+            <td class="px-3 py-2 text-slate-600">{{ (r.short_description or '')[:60] }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">${{ '{:,.2f}'.format(r.neto_cost_price or 0) }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">${{ '{:,.2f}'.format(r.rex_supplier_buy_ex or 0) }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+              {% if r.disparity %}
+                <span class="rounded bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">{{ '{:+,.2f}'.format(r.difference or 0) }}</span>
+              {% else %}<span class="text-slate-400">{{ '{:+,.2f}'.format(r.difference or 0) }}</span>{% endif %}
+            </td>
+            <td class="px-3 py-2 text-xs text-slate-600">
+              {% if r.latest_item_note %}
+                <span title="{{ r.latest_item_note_user }}">{{ r.latest_item_note[:50] }}{% if r.latest_item_note|length > 50 %}…{% endif %}</span>
+              {% else %}<span class="text-slate-300">—</span>{% endif %}
+            </td>
+            <td class="px-3 py-2 text-right">
+              <a class="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                 href="{{ url_for('purchase_orders.order_detail', po_id=r.po_id) }}">Open</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" class="px-3 py-8 text-center text-sm text-slate-500">No items match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border-t border-slate-200 px-3 py-2">
+    {% include "purchase_orders/_partials/_pagination.html" %}
+  </div>
+</div>

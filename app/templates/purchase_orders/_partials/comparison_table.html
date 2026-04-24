@@ -1,0 +1,65 @@
+{# Server-rendered comparison table fragment.
+   Columns mirror the legacy item-comparison view, plus latest note + flag.
+   Headers carry tooltips and are clickable to sort (toggles asc/desc).
+   No pagination — all matching rows are returned (capped at row_cap).
+#}
+{% macro sort_link(key, col) -%}
+  {%- set is_active = (sort_key == key) -%}
+  {%- set new_dir = 'desc' if (is_active and sort_dir == 'asc') else 'asc' -%}
+  {%- set href = url_for('purchase_orders.comparison',
+        q=filters.q or none,
+        sku=filters.sku or none,
+        po_id=filters.po_id or none,
+        change_type=filters.change_type,
+        kitted='1' if filters.kitted else none,
+        sort=key,
+        dir=new_dir) -%}
+  <a href="{{ href }}"
+     hx-get="{{ href }}"
+     hx-target="[data-hx-table]"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     class="group inline-flex items-center gap-1 hover:text-slate-700"
+     title="{{ col.tooltip }}">
+    <span>{{ col.label }}</span>
+    {%- if is_active -%}
+      <i class="fas fa-sort-{{ 'down' if sort_dir == 'desc' else 'up' }} text-[10px] text-brand-600"></i>
+    {%- else -%}
+      <i class="fas fa-sort text-[10px] text-slate-300 group-hover:text-slate-400"></i>
+    {%- endif -%}
+  </a>
+{%- endmacro %}
+
+<div data-hx-table class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+  <div class="max-h-[calc(100vh-340px)] overflow-auto">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          {% for key, col in sort_columns.items() %}
+            <th class="px-3 py-2 select-none {% if col.align == 'right' %}text-right{% else %}text-left{% endif %}">
+              {{ sort_link(key, col) }}
+            </th>
+          {% endfor %}
+          <th class="px-3 py-2 text-right" title="Add a note or flag the item for warehouse review">Actions</th>
+        </tr>
+      </thead>
+      {% for r in rows %}
+        {% include "purchase_orders/_partials/comparison_row.html" %}
+      {% else %}
+        <tbody><tr><td colspan="12" class="px-3 py-8 text-center text-sm text-slate-500">No comparison rows match these filters.</td></tr></tbody>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="flex items-center justify-between border-t border-slate-200 px-3 py-2 text-xs text-slate-500">
+    <span>
+      Showing <strong class="text-slate-700">{{ '{:,}'.format(rows|length) }}</strong> item{{ '' if rows|length == 1 else 's' }}
+      {% if filters.po_id %}for PO #{{ filters.po_id }}{% endif %}
+    </span>
+    {% if truncated %}
+      <span class="rounded bg-amber-50 px-2 py-0.5 text-amber-700">
+        <i class="fas fa-triangle-exclamation"></i>
+        Result capped at {{ '{:,}'.format(row_cap) }} rows — refine filters to narrow the set.
+      </span>
+    {% endif %}
+  </div>
+</div>

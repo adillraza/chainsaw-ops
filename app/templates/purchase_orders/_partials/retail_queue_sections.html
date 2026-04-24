@@ -1,0 +1,43 @@
+{# Three-section retail review queue.
+
+   Sections (top to bottom):
+     1. Warehouse Completed - retail's action queue.
+     2. Pending Warehouse   - informational (awaiting warehouse).
+     3. Completed Reviews   - history.
+#}
+{% from "purchase_orders/_partials/review_row_macros.html" import review_section %}
+
+<div data-hx-queue
+     hx-get="{{ url_for('purchase_orders.retail', q=filters.q or none) }}"
+     hx-trigger="reviewUpdated from:body"
+     hx-target="[data-hx-queue]"
+     hx-swap="outerHTML">
+
+  {{ review_section(
+       'Warehouse Completed',
+       'Review warehouse comments and mark as resolved.',
+       'fa-check',
+       'emerald',
+       warehouse_completed,
+       'No warehouse-completed reviews waiting on retail.',
+       column_set='warehouse_completed') }}
+
+  {{ review_section(
+       'Pending Warehouse',
+       'Warehouse has not responded yet.',
+       'fa-hourglass-half',
+       'amber',
+       pending_warehouse,
+       'No pending warehouse reviews.',
+       column_set='default') }}
+
+  {{ review_section(
+       'Completed Reviews',
+       'Recently resolved by retail.',
+       'fa-check-double',
+       'slate',
+       completed,
+       'No closed reviews yet.',
+       column_set='completed') }}
+
+</div>

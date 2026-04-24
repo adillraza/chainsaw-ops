@@ -1,0 +1,103 @@
+{% set ep = request.endpoint or '' %}
+{% set role = current_user.role %}
+<aside class="flex h-full flex-shrink-0 flex-col border-r border-slate-200 bg-white shadow-sm transition-all"
+       :class="sidebarCollapsed ? 'w-16' : 'w-64'">
+  <div class="flex h-16 items-center justify-between border-b border-slate-200 px-3">
+    <a href="{{ url_for('dashboard.dashboard') }}" class="flex items-center gap-2 overflow-hidden">
+      <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-brand-600 to-brand-900 text-white">
+        <i class="fas fa-bolt"></i>
+      </span>
+      <span class="flex flex-col truncate" x-show="!sidebarCollapsed" x-cloak>
+        <span class="text-sm font-semibold leading-tight text-slate-900">Chainsawspares</span>
+        <span class="text-[11px] uppercase tracking-wide text-slate-500">Operations</span>
+      </span>
+    </a>
+    <button type="button"
+            class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+            :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+      <i class="fas fa-chevron-left text-xs transition-transform" :class="sidebarCollapsed && 'rotate-180'"></i>
+    </button>
+  </div>
+
+  <nav class="flex-1 overflow-y-auto px-2 py-4 text-sm">
+    {% macro nav_item(endpoint, label, icon, href=None) %}
+      {% set active = (ep == endpoint) %}
+      <a href="{{ href or url_for(endpoint) }}"
+         class="group mb-0.5 flex items-center gap-3 rounded-md px-3 py-2 transition
+                {% if active %}bg-brand-50 text-brand-700 font-semibold
+                {% else %}text-slate-700 hover:bg-slate-100{% endif %}">
+        <i class="fas {{ icon }} w-4 text-center {% if active %}text-brand-600{% else %}text-slate-400 group-hover:text-slate-600{% endif %}"></i>
+        <span class="truncate" x-show="!sidebarCollapsed" x-cloak>{{ label }}</span>
+      </a>
+    {% endmacro %}
+
+    {% macro nav_group(label, icon, items, default_open=false) %}
+      <div class="mb-1" x-data="{ open: {{ 'true' if default_open else 'false' }} }">
+        <button type="button"
+                class="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-slate-600 hover:bg-slate-100"
+                @click="open = !open">
+          <i class="fas {{ icon }} w-4 text-center text-slate-400 group-hover:text-slate-600"></i>
+          <span class="flex-1 truncate text-xs font-semibold uppercase tracking-wide" x-show="!sidebarCollapsed" x-cloak>{{ label }}</span>
+          <i class="fas fa-chevron-down text-xs text-slate-400 transition-transform"
+             x-show="!sidebarCollapsed" x-cloak :class="open && 'rotate-180'"></i>
+        </button>
+        <div class="ml-2 space-y-0.5 border-l border-slate-200 pl-2" x-show="open || sidebarCollapsed" x-cloak>
+          {% for it in items %}
+            <a href="{{ it.href }}"
+               class="group flex items-center gap-3 rounded-md px-3 py-1.5 text-slate-700 hover:bg-slate-100 hover:text-slate-900">
+              <i class="fas {{ it.icon }} w-4 text-center text-slate-400"></i>
+              <span class="truncate" x-show="!sidebarCollapsed" x-cloak>{{ it.label }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endmacro %}
+
+    {{ nav_item('dashboard.dashboard', 'Dashboard', 'fa-gauge-high') }}
+
+    {% set po_items = [
+      {'label': 'REX PO Orders',     'href': url_for('purchase_orders.orders'),         'icon': 'fa-shopping-cart'},
+      {'label': 'Comparison',        'href': url_for('purchase_orders.comparison'),     'icon': 'fa-balance-scale'},
+      {'label': 'Cost Price Check',  'href': url_for('purchase_orders.cost_prices'),    'icon': 'fa-dollar-sign'},
+    ] %}
+    {% if can('reviews.retail.view') %}
+      {% set po_items = po_items + [{'label': 'Retail Reviews',    'href': url_for('purchase_orders.retail'),    'icon': 'fa-user-check'}] %}
+    {% endif %}
+    {% if can('reviews.warehouse.view') %}
+      {% set po_items = po_items + [{'label': 'Warehouse Reviews', 'href': url_for('purchase_orders.warehouse'), 'icon': 'fa-warehouse'}] %}
+    {% endif %}
+    {% set po_items = po_items + [{'label': 'Change Log Guide',    'href': url_for('purchase_orders.changelog_guide'), 'icon': 'fa-info-circle'}] %}
+    {{ nav_group('PO Cross Check', 'fa-clipboard-check', po_items, default_open=true) }}
+
+    {% if can('validation.view') %}
+      {% set validation_items = [
+        {'label': 'MSL Changes', 'href': url_for('validation.msl_changes'), 'icon': 'fa-shield-halved'},
+      ] %}
+      {{ nav_group('Validation', 'fa-circle-check', validation_items, default_open=true) }}
+    {% endif %}
+
+    {% if can('users.manage') or can('roles.manage') %}
+      <div class="my-3 border-t border-slate-200"></div>
+      {% if can('users.manage') %}{{ nav_item('admin.admin', 'User Management', 'fa-users-gear') }}{% endif %}
+      {% if can('roles.manage') %}{{ nav_item('admin.roles_list', 'Roles & Permissions', 'fa-shield-halved') }}{% endif %}
+    {% endif %}
+  </nav>
+
+  <div class="border-t border-slate-200 px-3 py-3">
+    <div class="flex items-center gap-3">
+      <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+        {{ (current_user.username[:1] if current_user.username else 'U')|upper }}
+      </span>
+      <div class="flex-1 truncate" x-show="!sidebarCollapsed" x-cloak>
+        <div class="truncate text-sm font-medium text-slate-900">{{ current_user.username }}</div>
+        <div class="truncate text-[11px] uppercase tracking-wide text-slate-500">{{ role }}</div>
+      </div>
+      <a href="{{ url_for('auth.logout') }}"
+         class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-red-600"
+         title="Sign out">
+        <i class="fas fa-arrow-right-from-bracket text-xs"></i>
+      </a>
+    </div>
+  </div>
+</aside>

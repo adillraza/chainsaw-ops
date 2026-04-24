@@ -1,0 +1,235 @@
+{# Stage-aware review-detail drawer body.
+
+   Rendered by:
+     GET /po/reviews/<review_id>/drawer
+
+   Local variables:
+     - review        : ItemReview row
+     - mode          : 'warehouse_respond' | 'retail_close' | 'readonly'
+     - snapshot      : dict parsed from review.comparison_snapshot (or {})
+     - current_row   : CachedPurchaseOrderComparison or None (fresh live row if available)
+     - neto_url      : Optional deep link into Neto cpanel
+     - current_user  : auto-injected
+#}
+{% from "purchase_orders/_partials/change_log_macros.html" import tag as change_log_tag %}
+
+{% set status_label = {
+  'pending':               'Pending Warehouse',
+  'warehouse_in_progress': 'Warehouse In Progress',
+  'warehouse_closed':      'Warehouse Completed',
+  'retail_closed':         'Completed',
+  'cancelled':             'Cancelled',
+}.get(review.status, review.status) %}
+
+{% set status_color = {
+  'pending':               'amber',
+  'warehouse_in_progress': 'sky',
+  'warehouse_closed':      'emerald',
+  'retail_closed':         'slate',
+  'cancelled':             'slate',
+}.get(review.status, 'slate') %}
+
+<div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+  <div class="flex items-center gap-2">
+    <span class="flex h-7 w-7 items-center justify-center rounded-md bg-rose-100 text-rose-700">
+      <i class="fas fa-flag text-xs"></i>
+    </span>
+    <div>
+      <h2 id="review-drawer-title" class="text-sm font-semibold text-slate-900">
+        {% if mode == 'warehouse_respond' %}Warehouse review
+        {% elif mode == 'retail_close' %}Close review
+        {% else %}Review detail
+        {% endif %}
+      </h2>
+      <p class="text-[11px]">
+        <span class="rounded bg-{{ status_color }}-50 px-1.5 py-0.5 text-[10px] font-medium text-{{ status_color }}-700">{{ status_label }}</span>
+        <span class="text-slate-400">·</span>
+        <span class="text-slate-500">Flagged by {{ review.flagged_by }}</span>
+      </p>
+    </div>
+  </div>
+  <button type="button"
+          class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          @click="open = false"
+          aria-label="Close">
+    <i class="fas fa-times text-sm"></i>
+  </button>
+</div>
+
+<div class="flex-1 overflow-y-auto px-4 py-4">
+  {# ---- Context block ---- #}
+  <dl class="grid grid-cols-3 gap-y-2 text-xs">
+    <dt class="col-span-1 text-slate-500">PO ID</dt>
+    <dd class="col-span-2 text-right font-mono font-semibold text-slate-800">
+      <a class="text-brand-700 hover:underline"
+         href="{{ url_for('purchase_orders.comparison', po_id=review.po_id) }}">{{ review.po_id }}</a>
+    </dd>
+
+    {% if review.order_id %}
+      <dt class="col-span-1 text-slate-500">Order ID</dt>
+      <dd class="col-span-2 text-right font-mono text-slate-800">
+        <a href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id={{ review.order_id }}"
+           target="_blank" rel="noopener"
+           class="text-brand-700 hover:underline">{{ review.order_id }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[9px] text-slate-400"></i></a>
+      </dd>
+    {% endif %}
+
+    <dt class="col-span-1 text-slate-500">Item ID</dt>
+    <dd class="col-span-2 text-right font-mono text-slate-800">{{ review.po_item_id or '—' }}</dd>
+
+    <dt class="col-span-1 text-slate-500">SKU</dt>
+    <dd class="col-span-2 text-right font-mono text-slate-800">
+      {% if review.sku and neto_url %}
+        <a href="{{ neto_url }}" target="_blank" rel="noopener" class="text-brand-700 hover:underline"
+           title="Open in Neto cpanel">{{ review.sku }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[9px] text-slate-400"></i></a>
+      {% else %}{{ review.sku or '—' }}{% endif %}
+    </dd>
+
+    {% set product_name = (current_row.name if current_row else snapshot.get('short_description')) %}
+    {% if product_name %}
+      <dt class="col-span-1 text-slate-500">Product</dt>
+      <dd class="col-span-2 text-right text-slate-800">{{ product_name[:80] }}{% if product_name|length > 80 %}…{% endif %}</dd>
+    {% endif %}
+
+    {% set change_log_val = (current_row.change_log if current_row else snapshot.get('change_log')) %}
+    <dt class="col-span-1 text-slate-500">Change log</dt>
+    <dd class="col-span-2 text-right">{{ change_log_tag(change_log_val) }}</dd>
+  </dl>
+
+  {# ---- Quantity snapshot (prefer fresh, fall back to snapshot JSON) ---- #}
+  {% set q_rex_av = (current_row.rex_available_qty if current_row else snapshot.get('rex_available_qty')) or 0 %}
+  {% set q_neto_av = (current_row.neto_qty_available if current_row else snapshot.get('neto_qty_available')) or 0 %}
+  {% set q_orig_ord = (current_row.original_rex_qty_ordered if current_row else snapshot.get('original_rex_qty_ordered')) or 0 %}
+  {% set q_final_ord = (current_row.final_rex_qty_ordered if current_row else snapshot.get('final_rex_qty_ordered')) or 0 %}
+  {% set q_neto_ship = (current_row.neto_qty_shipped if current_row else snapshot.get('neto_qty_shipped')) or 0 %}
+  {% set q_rex_recv = (current_row.rex_qty_received if current_row else snapshot.get('rex_qty_received')) or 0 %}
+  <div class="mt-4 grid grid-cols-3 gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px]">
+    <div><div class="text-slate-500">REX avail</div><div class="font-semibold tabular-nums text-slate-800">{{ '{:,.0f}'.format(q_rex_av) }}</div></div>
+    <div><div class="text-slate-500">NETO avail</div><div class="font-semibold tabular-nums text-slate-800">{{ '{:,.0f}'.format(q_neto_av) }}</div></div>
+    <div><div class="text-slate-500">Original ordered</div><div class="font-semibold tabular-nums text-slate-800">{{ '{:,.0f}'.format(q_orig_ord) }}</div></div>
+    <div><div class="text-slate-500">Latest ordered</div><div class="font-semibold tabular-nums text-slate-800">{{ '{:,.0f}'.format(q_final_ord) }}</div></div>
+    <div><div class="text-slate-500">NETO shipped</div><div class="font-semibold tabular-nums text-slate-800">{{ '{:,.0f}'.format(q_neto_ship) }}</div></div>
+    <div><div class="text-slate-500">REX received</div><div class="font-semibold tabular-nums text-slate-800">{{ '{:,.0f}'.format(q_rex_recv) }}</div></div>
+  </div>
+
+  {# ---- Latest item note at flag time ---- #}
+  {% set latest_note = snapshot.get('latest_item_note') %}
+  {% if latest_note %}
+    <div class="mt-4 rounded-md border border-slate-200 bg-white p-2 text-xs">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Latest note at flag time</div>
+      <p class="mt-1 whitespace-pre-line text-slate-800">{{ latest_note }}</p>
+      <p class="mt-0.5 text-[10px] text-slate-400">
+        {{ snapshot.get('latest_item_note_user') or 'unknown' }}{% if snapshot.get('latest_item_note_date') %} · {{ (snapshot.latest_item_note_date or '')[:10] }}{% endif %}
+      </p>
+    </div>
+  {% endif %}
+
+  {# ---- Comments timeline ---- #}
+  <div class="mt-4 space-y-2">
+    <div class="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs">
+      <div class="flex items-center justify-between text-[10px]">
+        <span class="font-semibold uppercase tracking-wide text-rose-600">
+          <i class="fas fa-flag mr-1"></i> Retail — {{ review.flagged_by }}
+        </span>
+        <span class="text-rose-400">{{ review.flagged_at.strftime('%d %b %Y, %I:%M %p') if review.flagged_at else '' }}</span>
+      </div>
+      <p class="mt-1 whitespace-pre-line text-slate-800">
+        {{ review.flag_comment or '(no comment provided)' }}
+      </p>
+    </div>
+
+    {% if review.warehouse_comment or review.warehouse_closed_at %}
+      <div class="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs">
+        <div class="flex items-center justify-between text-[10px]">
+          <span class="font-semibold uppercase tracking-wide text-emerald-700">
+            <i class="fas fa-warehouse mr-1"></i> Warehouse — {{ review.warehouse_assigned_to or '—' }}
+          </span>
+          <span class="text-emerald-500">{{ review.warehouse_closed_at.strftime('%d %b %Y, %I:%M %p') if review.warehouse_closed_at else '' }}</span>
+        </div>
+        <p class="mt-1 whitespace-pre-line text-slate-800">
+          {{ review.warehouse_comment or '(marked complete without a comment)' }}
+        </p>
+      </div>
+    {% endif %}
+
+    {% if review.retail_comment or review.retail_closed_at %}
+      <div class="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
+        <div class="flex items-center justify-between text-[10px]">
+          <span class="font-semibold uppercase tracking-wide text-slate-600">
+            <i class="fas fa-user-check mr-1"></i> Retail close — {{ review.retail_closed_by or '—' }}
+          </span>
+          <span class="text-slate-400">{{ review.retail_closed_at.strftime('%d %b %Y, %I:%M %p') if review.retail_closed_at else '' }}</span>
+        </div>
+        <p class="mt-1 whitespace-pre-line text-slate-800">
+          {{ review.retail_comment or '(closed without a comment)' }}
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ---- Stage-aware action form ---- #}
+  {% if mode == 'warehouse_respond' %}
+    <form id="review-action-form"
+          class="mt-4 space-y-2"
+          hx-post="{{ url_for('purchase_orders.review_warehouse_complete', review_id=review.review_id) }}"
+          hx-target="#review-drawer-content"
+          hx-swap="innerHTML">
+      <label class="flex flex-col text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        Warehouse comment
+        <textarea name="comment" rows="4" maxlength="1000" required
+                  placeholder="What did you find? (required)"
+                  class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                  x-ref="actionComment"
+                  x-init="$nextTick(() => $refs.actionComment && $refs.actionComment.focus())"></textarea>
+      </label>
+    </form>
+  {% elif mode == 'retail_close' %}
+    <form id="review-action-form"
+          class="mt-4 space-y-2"
+          hx-post="{{ url_for('purchase_orders.review_retail_complete', review_id=review.review_id) }}"
+          hx-target="#review-drawer-content"
+          hx-swap="innerHTML">
+      <label class="flex flex-col text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        Retail closing comment
+        <textarea name="comment" rows="3" maxlength="1000"
+                  placeholder="Final comment (optional)"
+                  class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                  x-ref="actionComment"
+                  x-init="$nextTick(() => $refs.actionComment && $refs.actionComment.focus())"></textarea>
+      </label>
+    </form>
+  {% endif %}
+</div>
+
+{# ---- Footer actions ---- #}
+<div class="flex items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3">
+  <div>
+    {% if mode in ('warehouse_respond', 'retail_close') and can('reviews.cancel') %}
+      <form hx-post="{{ url_for('purchase_orders.review_cancel', review_id=review.review_id) }}"
+            hx-target="#review-drawer-content"
+            hx-swap="innerHTML"
+            hx-confirm="Cancel this review? Warehouse will no longer see it.">
+        <button type="submit"
+                class="text-xs text-slate-500 hover:text-rose-700 hover:underline">
+          <i class="fas fa-ban"></i> Cancel review
+        </button>
+      </form>
+    {% endif %}
+  </div>
+  <div class="flex items-center gap-2">
+    <button type="button"
+            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            @click="open = false">Close</button>
+    {% if mode == 'warehouse_respond' %}
+      <button type="submit" form="review-action-form"
+              class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700">
+        <i class="fas fa-check"></i> Mark as reviewed
+      </button>
+    {% elif mode == 'retail_close' %}
+      <button type="submit" form="review-action-form"
+              class="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700">
+        <i class="fas fa-check-double"></i> Mark as completed
+      </button>
+    {% endif %}
+  </div>
+</div>

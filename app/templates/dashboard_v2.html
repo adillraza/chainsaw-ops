@@ -1,0 +1,76 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'Dashboard' %}
+{% block title %}Dashboard - Chainsawspares Ops{% endblock %}
+
+{% block content %}
+  <section class="mb-6">
+    <h2 class="text-2xl font-semibold text-slate-900">Operations overview</h2>
+    <p class="mt-1 text-sm text-slate-600">Live snapshot of the BigQuery cache and the open review queue.</p>
+  </section>
+
+  <section class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+    {% set cards = [
+      ('PO records cached',      kpis.summary_count,    'fa-clipboard-list', 'brand'),
+      ('Item records cached',    kpis.items_count,      'fa-boxes-stacked',  'emerald'),
+      ('Comparison rows cached', kpis.comparison_count, 'fa-balance-scale',  'amber'),
+      ('Open reviews',           kpis.open_reviews,     'fa-flag',           'rose'),
+    ] %}
+    {% for label, value, icon, color in cards %}
+      <div class="flex items-start justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ label }}</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-900">{{ '{:,}'.format(value or 0) }}</p>
+        </div>
+        <span class="flex h-10 w-10 items-center justify-center rounded-md
+                     {% if color == 'brand' %}bg-brand-50 text-brand-600
+                     {% elif color == 'emerald' %}bg-emerald-50 text-emerald-600
+                     {% elif color == 'amber' %}bg-amber-50 text-amber-600
+                     {% elif color == 'rose' %}bg-rose-50 text-rose-600{% endif %}">
+          <i class="fas {{ icon }}"></i>
+        </span>
+      </div>
+    {% endfor %}
+  </section>
+
+  <section class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-slate-900">Cache status</h3>
+        <button type="button"
+                class="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                hx-post="/api/system/start-refresh" hx-swap="none">
+          <i class="fas fa-rotate"></i> Refresh
+        </button>
+      </div>
+      <dl class="grid grid-cols-2 gap-y-2 text-sm">
+        <dt class="text-slate-500">Last refresh</dt>
+        <dd class="text-slate-800">{{ kpis.last_refresh or '—' }}</dd>
+        <dt class="text-slate-500">Background sync</dt>
+        <dd class="text-slate-800">{% if kpis.is_syncing %}<span class="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Running</span>{% else %}<span class="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Idle</span>{% endif %}</dd>
+        <dt class="text-slate-500">BigQuery project</dt>
+        <dd class="font-mono text-xs text-slate-800">chainsawspares-385722</dd>
+      </dl>
+      <p class="mt-4 text-xs text-slate-500">
+        Migrated screens (PO Cross Check, Stock & Inventory) will appear in the sidebar as they ship.
+        For now, those links open the legacy shell — toggle with the <em>Legacy view</em> button.
+      </p>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 class="mb-3 text-sm font-semibold text-slate-900">Recent logins</h3>
+      {% if recent_logins %}
+        <ul class="space-y-2 text-sm">
+          {% for login in recent_logins %}
+            <li class="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-3 py-2">
+              <span class="text-slate-700">{{ login.login_time.strftime('%Y-%m-%d %H:%M') }}</span>
+              <span class="text-xs font-mono text-slate-500">{{ login.ip_address or '—' }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm italic text-slate-500">No recent activity.</p>
+      {% endif %}
+    </div>
+  </section>
+{% endblock %}

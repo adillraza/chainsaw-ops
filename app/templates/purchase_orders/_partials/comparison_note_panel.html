@@ -1,0 +1,55 @@
+{# Inline note panel for a single comparison row.
+   Returned by /po/comparison/row/<id>/note-form and swapped into
+   #cmp-detail-content-<id> via innerHTML.
+#}
+<div class="space-y-3">
+  <div class="flex items-center justify-between text-xs text-slate-500">
+    <div class="space-x-3">
+      <span><span class="text-slate-400">PO:</span> <span class="font-mono text-slate-700">{{ r.po_id }}</span></span>
+      <span><span class="text-slate-400">SKU:</span> <span class="font-mono text-slate-700">{{ r.sku or '—' }}</span></span>
+      <span><span class="text-slate-400">Item ID:</span> <span class="font-mono text-slate-700">{{ r.po_item_id or '—' }}</span></span>
+    </div>
+    <button type="button"
+            class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            onclick="document.getElementById('cmp-detail-{{ r.id }}').classList.add('hidden')"
+            title="Collapse">
+      <i class="fas fa-times text-xs"></i>
+    </button>
+  </div>
+
+  {% if notes %}
+    <ul class="max-h-[180px] space-y-1.5 overflow-y-auto">
+      {% for n in notes %}
+        <li class="rounded border border-slate-200 bg-white px-3 py-2">
+          <div class="flex items-center justify-between text-[11px] text-slate-500">
+            <span class="font-medium text-slate-700">{{ n.username }}</span>
+            <span>{{ (n.created_at or '')[:19].replace('T', ' ') }}</span>
+          </div>
+          <p class="mt-0.5 whitespace-pre-line text-sm text-slate-800">{{ n.comment }}</p>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-xs italic text-slate-400">No notes yet for this item.</p>
+  {% endif %}
+
+  {% if r.po_item_id %}
+    <form class="flex items-end gap-2"
+          hx-post="{{ url_for('purchase_orders.comparison_row_save_note', row_id=r.id) }}"
+          hx-target="#cmp-row-{{ r.id }}"
+          hx-swap="outerHTML">
+      <label class="flex flex-1 flex-col text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        Add a note
+        <textarea name="comment" rows="2" required
+                  placeholder="Note visible to retail and warehouse teams"
+                  class="mt-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"></textarea>
+      </label>
+      <button type="submit"
+              class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-700">
+        <i class="fas fa-paper-plane"></i> Save
+      </button>
+    </form>
+  {% else %}
+    <p class="text-xs text-rose-600">This row has no <code>po_item_id</code>; notes can't be attached.</p>
+  {% endif %}
+</div>

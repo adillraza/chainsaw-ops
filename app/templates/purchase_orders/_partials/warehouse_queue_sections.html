@@ -1,0 +1,33 @@
+{# Two-section warehouse review queue.
+
+   Sections (top to bottom):
+     1. Open Reviews   - warehouse's action queue.
+     2. Closed Reviews - history.
+#}
+{% from "purchase_orders/_partials/review_row_macros.html" import review_section %}
+
+<div data-hx-queue
+     hx-get="{{ url_for('purchase_orders.warehouse', q=filters.q or none) }}"
+     hx-trigger="reviewUpdated from:body"
+     hx-target="[data-hx-queue]"
+     hx-swap="outerHTML">
+
+  {{ review_section(
+       'Open Reviews',
+       'Newly flagged items appear first.',
+       'fa-flag',
+       'rose',
+       open_reviews,
+       'No open reviews. Nicely done.',
+       column_set='default') }}
+
+  {{ review_section(
+       'Closed Reviews',
+       'Recent reviews you have responded to.',
+       'fa-check',
+       'slate',
+       closed_reviews,
+       'No closed reviews yet.',
+       column_set='closed') }}
+
+</div>

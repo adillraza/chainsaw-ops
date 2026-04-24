@@ -1,0 +1,61 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'Cost price check' %}
+{% block title %}Cost price check - Chainsawspares Ops{% endblock %}
+
+{% block content %}
+<section class="mb-4 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h2 class="text-2xl font-semibold text-slate-900">Cost price check</h2>
+    <p class="mt-1 text-sm text-slate-600">Items where the REX supplier buy price differs from the Neto cost. Largest absolute differences first.</p>
+  </div>
+  {% if filters.po_id %}
+    <span class="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
+      <i class="fas fa-filter text-[10px]"></i>
+      Filtered by PO #{{ filters.po_id }}
+      <a href="{{ url_for('purchase_orders.cost_prices', q=filters.q or none, only_disparity=filters.only_disparity) }}"
+         class="rounded-full p-0.5 text-brand-600 hover:bg-brand-100 hover:text-brand-800"
+         title="Clear PO filter">
+        <i class="fas fa-times text-[10px]"></i>
+      </a>
+    </span>
+  {% endif %}
+</section>
+
+<form class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+      hx-get="{{ url_for('purchase_orders.cost_prices') }}"
+      hx-trigger="submit, change from:select"
+      hx-target="[data-hx-table]"
+      hx-swap="outerHTML"
+      hx-push-url="true">
+  <label class="flex flex-1 min-w-[220px] flex-col text-xs font-medium uppercase tracking-wide text-slate-500">
+    Search
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="PO ID, SKU, description"
+           class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+           hx-trigger="keyup changed delay:300ms, search"
+           hx-get="{{ url_for('purchase_orders.cost_prices') }}"
+           hx-target="[data-hx-table]"
+           hx-include="closest form"
+           hx-swap="outerHTML"
+           hx-push-url="true">
+  </label>
+  <label class="flex flex-col text-xs font-medium uppercase tracking-wide text-slate-500">
+    Show
+    <select name="only_disparity"
+            class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+      <option value="1" {% if filters.only_disparity == '1' %}selected{% endif %}>Disparities only</option>
+      <option value="0" {% if filters.only_disparity == '0' %}selected{% endif %}>All items</option>
+    </select>
+  </label>
+  {% if filters.po_id %}<input type="hidden" name="po_id" value="{{ filters.po_id }}">{% endif %}
+  <input type="hidden" name="page" value="1">
+  <input type="hidden" name="per_page" value="{{ meta.per_page }}">
+  <button type="submit" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700">
+    <i class="fas fa-filter"></i> Apply
+  </button>
+  <a href="{{ url_for('purchase_orders.cost_prices') }}"
+     class="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Reset</a>
+</form>
+
+{% include "purchase_orders/_partials/cost_prices_table.html" %}
+{% endblock %}

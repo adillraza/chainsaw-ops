@@ -1,0 +1,199 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'MSL Changes' %}
+{% block title %}MSL Changes - Chainsawspares Ops{% endblock %}
+
+{% block content %}
+<section class="mb-4">
+  <div class="flex items-start justify-between gap-4">
+    <div>
+      <h2 class="text-2xl font-semibold text-slate-900">MSL Changes</h2>
+      <p class="mt-1 text-sm text-slate-600">
+        Minimum stock level changes made in REX Ballarat.
+        Approve a row to remove it from the queue — it will only reappear if the MSL is changed again.
+      </p>
+    </div>
+    <div class="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+      <i class="fas fa-clipboard-list text-slate-500"></i>
+      {{ pending|length }} pending
+    </div>
+  </div>
+</section>
+
+{# =================================================================
+   PENDING QUEUE
+   ================================================================= #}
+<form method="POST"
+      action="{{ url_for('validation.msl_approve') }}"
+      x-data="{
+        allChecked: false,
+        selected: 0,
+        syncSelected() {
+          this.selected = this.$root.querySelectorAll('input[name=keys]:checked').length;
+        },
+        toggleAll(event) {
+          const check = event.target.checked;
+          this.$root.querySelectorAll('input[name=keys]').forEach(el => { el.checked = check; });
+          this.syncSelected();
+        },
+      }"
+      x-init="syncSelected()"
+      @change="syncSelected()"
+      class="rounded-lg border border-slate-200 bg-white shadow-sm">
+
+  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+    <div class="flex items-center gap-3">
+      <label class="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" x-model="allChecked" @change="toggleAll($event)"
+               {% if not pending %}disabled{% endif %}
+               class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+        Select all
+      </label>
+      <span class="text-xs text-slate-500" x-show="selected > 0" x-cloak>
+        <span x-text="selected"></span> selected
+      </span>
+    </div>
+    {% if can('validation.msl.approve') %}
+      <div class="flex items-center gap-2">
+        <input type="text" name="comment" maxlength="500"
+               placeholder="Optional comment (applied to all approved rows)"
+               class="w-72 rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-brand-500 focus:ring-brand-500">
+        <button type="submit"
+                :disabled="selected === 0"
+                :class="selected === 0
+                  ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'"
+                class="rounded-md px-3 py-1 text-xs font-semibold shadow-sm">
+          <i class="fas fa-check"></i> Approve selected
+          <span x-show="selected > 0" x-cloak>(<span x-text="selected"></span>)</span>
+        </button>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="max-h-[65vh] overflow-auto">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="w-10 px-3 py-2"></th>
+          <th class="px-3 py-2 text-left">SKU</th>
+          <th class="px-3 py-2 text-left">Description</th>
+          <th class="px-3 py-2 text-left">Supplier</th>
+          <th class="px-3 py-2 text-right">Available</th>
+          <th class="px-3 py-2 text-right">Carton qty</th>
+          <th class="px-3 py-2 text-right">Previous MSL</th>
+          <th class="px-3 py-2 text-right">New MSL</th>
+          <th class="px-3 py-2 text-right">Δ</th>
+          <th class="px-3 py-2 text-left">Modified</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in pending %}
+          {%- set prev = r.previous_msl or 0 -%}
+          {%- set new_msl = r.new_msl or 0 -%}
+          {%- set delta = new_msl - prev -%}
+          <tr class="hover:bg-slate-50">
+            <td class="px-3 py-2">
+              {% if can('validation.msl.approve') %}
+                <input type="checkbox" name="keys" value="{{ r.row_key }}"
+                       class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+              {% endif %}
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 font-mono text-xs font-medium text-slate-800">{{ r.manufacturer_sku }}</td>
+            <td class="max-w-[20rem] truncate px-3 py-2 text-slate-700" title="{{ r.short_description or '' }}">
+              {{ r.short_description or '—' }}
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">{{ r.supplier_code or '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right text-slate-700">{{ r.available if r.available is not none else '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right text-slate-700">{{ r.carton_quantity if r.carton_quantity is not none else '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right text-slate-500">{{ prev }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right font-semibold text-slate-900">{{ new_msl }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right">
+              {% if delta > 0 %}
+                <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">+{{ delta }}</span>
+              {% elif delta < 0 %}
+                <span class="rounded bg-rose-50 px-1.5 py-0.5 text-xs font-semibold text-rose-700">{{ delta }}</span>
+              {% else %}
+                <span class="text-xs text-slate-400">0</span>
+              {% endif %}
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-500">
+              {{ r.product_modified_on|format_dt('%d %b %Y %I:%M %p') if r.product_modified_on else '—' }}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="10" class="px-3 py-10 text-center text-sm text-slate-500">
+              <i class="fas fa-check-circle text-emerald-500"></i> Nothing pending. All caught up.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+{# =================================================================
+   HISTORY (last 30 days)
+   ================================================================= #}
+<section class="mt-6" x-data="{ open: false }">
+  <button type="button" @click="open = !open"
+          class="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+    <span>
+      <i class="fas fa-history text-slate-500"></i>
+      Recently decided
+      <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+        {{ history|length }} · last 30 days
+      </span>
+    </span>
+    <i class="fas fa-chevron-down transition-transform" :class="open && 'rotate-180'"></i>
+  </button>
+
+  <div x-show="open" x-cloak class="mt-2 overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="px-3 py-2 text-left">SKU</th>
+          <th class="px-3 py-2 text-left">Description</th>
+          <th class="px-3 py-2 text-right">Prev</th>
+          <th class="px-3 py-2 text-right">New</th>
+          <th class="px-3 py-2 text-left">Decision</th>
+          <th class="px-3 py-2 text-left">By</th>
+          <th class="px-3 py-2 text-left">At</th>
+          <th class="px-3 py-2 text-left">Comment</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for d in history %}
+          <tr class="hover:bg-slate-50">
+            <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-800">{{ d.manufacturer_sku }}</td>
+            <td class="max-w-[18rem] truncate px-3 py-2 text-slate-700" title="{{ d.short_description or '' }}">{{ d.short_description or '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right text-slate-500">{{ d.previous_msl if d.previous_msl is not none else '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right text-slate-700">{{ d.new_msl if d.new_msl is not none else '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2">
+              {% if d.decision == 'approved' %}
+                <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                  <i class="fas fa-check"></i> Approved
+                </span>
+              {% else %}
+                <span class="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                  <i class="fas fa-times"></i> Declined
+                </span>
+              {% endif %}
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">{{ d.decided_by }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-500">
+              {{ d.decided_at|format_dt('%d %b %Y %I:%M %p') if d.decided_at else '—' }}
+            </td>
+            <td class="max-w-[20rem] truncate px-3 py-2 text-xs text-slate-600" title="{{ d.comment or '' }}">{{ d.comment or '—' }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="8" class="px-3 py-8 text-center text-sm text-slate-500">No decisions in the last 30 days.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

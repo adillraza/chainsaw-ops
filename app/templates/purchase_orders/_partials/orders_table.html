@@ -1,0 +1,120 @@
+{# Server-rendered orders table fragment. Mounted by orders.html on first
+   load and swapped in by HTMX for filter / pagination updates.
+
+   Columns mirror the legacy PO Summary screen exactly: PO ID, Order ID(s),
+   Supplier, Lines, Neto/REX created/received by, Requested/Entered/Dispatched
+   /Received timestamps, Disparity badge, Status badge. #}
+{% set neto_order_url = 'https://www.chainsawspares.com.au/_cpanel/order/vieworder?id=' %}
+<div data-hx-table class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+  <div class="max-h-[calc(100vh-260px)] overflow-auto">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="px-3 py-2 text-left">PO ID</th>
+          <th class="px-3 py-2 text-left">Order ID</th>
+          <th class="px-3 py-2 text-left">Supplier</th>
+          <th class="px-3 py-2 text-right">Lines</th>
+          <th class="px-3 py-2 text-left">Neto created by</th>
+          <th class="px-3 py-2 text-left">REX created by</th>
+          <th class="px-3 py-2 text-left">REX received by</th>
+          <th class="px-3 py-2 text-left">Requested</th>
+          <th class="px-3 py-2 text-left">Entered</th>
+          <th class="px-3 py-2 text-left">Dispatched</th>
+          <th class="px-3 py-2 text-left">Received</th>
+          <th class="px-3 py-2 text-center">Disparity</th>
+          <th class="px-3 py-2 text-center">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in rows %}
+          <tr class="hover:bg-slate-50">
+            {# PO ID — clicking goes straight to the item-level comparison
+               for this PO. A small "stats" icon links to the PO overview. #}
+            <td class="whitespace-nowrap px-3 py-2 font-mono">
+              <a class="font-semibold text-brand-700 hover:underline"
+                 href="{{ url_for('purchase_orders.comparison', po_id=r.po_id) }}"
+                 title="Open item comparison for PO {{ r.po_id }}">{{ r.po_id }}</a>
+              <a class="ml-1 text-slate-400 hover:text-brand-700"
+                 href="{{ url_for('purchase_orders.order_detail', po_id=r.po_id) }}"
+                 title="Open PO stats">
+                <i class="fas fa-chart-line text-[10px]"></i>
+              </a>
+            </td>
+
+            {# Order ID(s): one row may map to multiple Neto orders #}
+            <td class="whitespace-nowrap px-3 py-2 font-mono text-slate-600">
+              {% set ids = (r.neto_order_ids.split(',') if (r.no_of_neto_orders and r.no_of_neto_orders > 1 and r.neto_order_ids) else ([r.order_id] if r.order_id else [])) %}
+              {% if ids %}
+                {% for oid in ids %}
+                  {% set oid = oid.strip() %}
+                  {% if oid %}
+                    <a class="text-brand-700 hover:underline"
+                       href="{{ neto_order_url }}{{ oid }}" target="_blank" rel="noopener">{{ oid }}</a>{% if not loop.last %}, {% endif %}
+                  {% endif %}
+                {% endfor %}
+              {% else %}<span class="text-slate-300">—</span>{% endif %}
+            </td>
+
+            {# Supplier #}
+            <td class="whitespace-nowrap px-3 py-2 text-slate-700">{{ r.supplier or '—' }}</td>
+
+            {# Lines #}
+            <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ r.item_count or 0 }}</td>
+
+            {# Neto created by #}
+            <td class="whitespace-nowrap px-3 py-2 text-slate-700">{{ r.neto_order_created_by or '—' }}</td>
+
+            {# REX created by #}
+            <td class="whitespace-nowrap px-3 py-2 text-slate-700">{{ r.rex_po_created_by or '—' }}</td>
+
+            {# REX received by #}
+            <td class="whitespace-nowrap px-3 py-2 text-slate-700">{{ r.received_by or '—' }}</td>
+
+            {# Requested / Entered / Dispatched / Received — date-only here so
+               all columns fit on screen. Full timestamps live on the PO Stats
+               page (linked via the chart icon next to each PO ID). #}
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.requested_date|format_dt('date') }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.entered_date|format_dt('date') }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.completed_date|format_dt('date') }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.received_date|format_dt('date') }}</td>
+
+            {# Disparity (true/false) — clicking jumps to Cost price check
+               filtered to this PO. `only_disparity` defaults to disparities-only
+               for `true` rows, but expands to all items for `false` rows so
+               the user can still see why nothing is flagged. #}
+            <td class="whitespace-nowrap px-3 py-2 text-center">
+              {% if r.disparity %}
+                <a href="{{ url_for('purchase_orders.cost_prices', po_id=r.po_id, only_disparity='1') }}"
+                   class="inline-block rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-200"
+                   title="Open cost price check filtered to PO {{ r.po_id }}">true</a>
+              {% else %}
+                <a href="{{ url_for('purchase_orders.cost_prices', po_id=r.po_id, only_disparity='0') }}"
+                   class="inline-block rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-200"
+                   title="Open cost price check for PO {{ r.po_id }}">false</a>
+              {% endif %}
+            </td>
+
+            {# Status (po_status) #}
+            <td class="whitespace-nowrap px-3 py-2 text-center">
+              {% set s = (r.po_status or '')|lower %}
+              {% if 'cancel' in s %}
+                <span class="inline-block rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">{{ r.po_status }}</span>
+              {% elif 'available' in s or 'received' in s or 'complete' in s %}
+                <span class="inline-block rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">{{ r.po_status }}</span>
+              {% elif 'on-order' in s or 'pending' in s or 'partial' in s %}
+                <span class="inline-block rounded bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700">{{ r.po_status }}</span>
+              {% elif r.po_status %}
+                <span class="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{{ r.po_status }}</span>
+              {% else %}<span class="text-slate-300">—</span>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="13" class="px-3 py-8 text-center text-sm text-slate-500">No purchase orders match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border-t border-slate-200 px-3 py-2">
+    {% include "purchase_orders/_partials/_pagination.html" %}
+  </div>
+</div>

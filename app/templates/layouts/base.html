@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Chainsawspares Ops{% endblock %}</title>
+
+  {# Tailwind via CDN (Phase 2 ships unbuilt; a tiny `npm run build:css`
+     pipeline replaces this in Phase 5 cleanup). #}
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.min.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+
+  {# HTMX + Alpine.js for sprinkles of interactivity (modals, inline edits,
+     partial swaps) without an SPA build. #}
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    body.v2 { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+    /* Make HTMX swaps a tiny bit nicer */
+    .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+  </style>
+
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="v2 h-full text-slate-800"
+      x-data="{ sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === '1' }"
+      x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebarCollapsed', v ? '1' : '0'))">
+  {% if current_user.is_authenticated %}
+    <div class="flex h-full">
+      {% include "partials/sidebar.html" %}
+
+      <div class="flex flex-1 flex-col overflow-hidden">
+        {% include "partials/topbar.html" %}
+
+        {% include "partials/review_drawer.html" %}
+
+        <main class="flex-1 overflow-y-auto bg-slate-50 p-6">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              <div class="mb-4 space-y-2">
+                {% for category, message in messages %}
+                  <div class="rounded-md border px-4 py-2 text-sm
+                              {% if category == 'error' %}border-red-200 bg-red-50 text-red-800
+                              {% elif category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-800
+                              {% else %}border-slate-200 bg-white text-slate-700{% endif %}">
+                    {{ message }}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endwith %}
+
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+  {% else %}
+    <main class="flex h-full items-center justify-center bg-slate-100">
+      {% block unauth_content %}{% endblock %}
+    </main>
+  {% endif %}
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,46 @@
+<div data-hx-table class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+  <div class="max-h-[calc(100vh-280px)] overflow-y-auto">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="px-3 py-2 text-left">PO ID</th>
+          <th class="px-3 py-2 text-left">SKU</th>
+          <th class="px-3 py-2 text-left">Status</th>
+          <th class="px-3 py-2 text-left">Flagged by</th>
+          <th class="px-3 py-2 text-left">Flagged</th>
+          <th class="px-3 py-2 text-left">Comment</th>
+          <th class="px-3 py-2 text-left">Assigned to</th>
+          <th class="px-3 py-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in rows %}
+          <tr class="hover:bg-slate-50">
+            <td class="whitespace-nowrap px-3 py-2 font-mono">
+              <a class="font-semibold text-brand-700 hover:underline"
+                 href="{{ url_for('purchase_orders.order_detail', po_id=r.po_id) }}">{{ r.po_id }}</a>
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 font-mono text-slate-700">{{ r.sku or '—' }}</td>
+            <td class="whitespace-nowrap px-3 py-2">
+              {% set color = 'amber' if r.status in ['pending'] else ('sky' if r.status == 'warehouse_in_progress' else ('emerald' if 'closed' in r.status else 'slate')) %}
+              <span class="rounded bg-{{ color }}-50 px-2 py-0.5 text-xs font-medium text-{{ color }}-700">{{ r.status }}</span>
+            </td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.flagged_by }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.flagged_at.strftime('%Y-%m-%d %H:%M') if r.flagged_at else '—' }}</td>
+            <td class="px-3 py-2 text-xs text-slate-700">{{ (r.flag_comment or '')[:80] }}{% if r.flag_comment and r.flag_comment|length > 80 %}…{% endif %}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-slate-600">{{ r.warehouse_assigned_to or '—' }}</td>
+            <td class="px-3 py-2 text-right">
+              <a class="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                 href="{{ url_for('purchase_orders.order_detail', po_id=r.po_id) }}">Open</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8" class="px-3 py-8 text-center text-sm text-slate-500">No reviews match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border-t border-slate-200 px-3 py-2">
+    {% include "purchase_orders/_partials/_pagination.html" %}
+  </div>
+</div>

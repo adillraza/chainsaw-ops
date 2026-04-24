@@ -1,0 +1,86 @@
+{# A single comparison row, wrapped in its own tbody so HTMX outerHTML swaps
+   replace both the main TR and the inline note panel TR atomically.
+#}
+{% from "purchase_orders/_partials/change_log_macros.html" import tag as change_log_tag %}
+{% set review = open_review_map.get(r.po_item_id|string) if r.po_item_id else None %}
+{% set has_note = (r.latest_item_note or '')|trim|length > 0 %}
+{% set is_kit = r.is_kitted_item == true %}
+<tbody id="cmp-row-{{ r.id }}" class="divide-y divide-slate-100">
+  <tr class="hover:bg-slate-50 {% if review %}bg-rose-50/30{% elif is_kit %}bg-amber-50/40{% endif %}">
+    <td class="whitespace-nowrap px-3 py-2 font-mono">
+      <a class="font-semibold text-brand-700 hover:underline"
+         href="{{ url_for('purchase_orders.comparison', po_id=r.po_id) }}">{{ r.po_id }}</a>
+    </td>
+    <td class="whitespace-nowrap px-3 py-2 font-mono text-slate-700">
+      {% if r.sku and r.neto_product_id %}
+        <a href="https://www.chainsawspares.com.au/_cpanel/products/view?id={{ r.neto_product_id }}"
+           target="_blank" rel="noopener"
+           class="text-brand-700 hover:underline"
+           title="Open in Neto (product ID {{ r.neto_product_id }})">{{ r.sku }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-slate-400"></i></a>
+      {% else %}
+        {{ r.sku or '—' }}
+      {% endif %}
+      {% if is_kit %}
+        <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+              title="Kitted item — kits shouldn't appear on a PO">
+          <i class="fas fa-cubes text-[9px]"></i> Kit
+        </span>
+      {% endif %}
+    </td>
+    <td class="px-3 py-2 text-slate-600" title="{{ r.name or '' }}">{{ (r.name or '')[:60] }}{% if (r.name or '')|length > 60 %}…{% endif %}</td>
+    <td class="whitespace-nowrap px-3 py-2">{{ change_log_tag(r.change_log) }}</td>
+    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_available_qty or 0) }}</td>
+    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_available or 0) }}</td>
+    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.original_rex_qty_ordered or 0) }}</td>
+    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.final_rex_qty_ordered or 0) }}</td>
+    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_shipped or 0) }}</td>
+    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_qty_received or 0) }}</td>
+    <td class="px-3 py-2 text-slate-600">
+      {% if has_note %}
+        <div class="max-w-[260px]">
+          <p class="truncate text-xs text-slate-700" title="{{ r.latest_item_note }}">{{ r.latest_item_note }}</p>
+          <p class="text-[10px] text-slate-400">
+            {{ r.latest_item_note_user or 'unknown' }}{% if r.latest_item_note_date %} · {{ r.latest_item_note_date.strftime('%d %b %Y') }}{% endif %}
+          </p>
+        </div>
+      {% else %}<span class="text-slate-300">—</span>{% endif %}
+    </td>
+    <td class="whitespace-nowrap px-3 py-2 text-right">
+      <div class="inline-flex items-center gap-1">
+        <button type="button"
+                class="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                onclick="
+                  const panel = document.getElementById('cmp-detail-{{ r.id }}');
+                  const wasHidden = panel.classList.contains('hidden');
+                  panel.classList.toggle('hidden');
+                  if (wasHidden) {
+                    htmx.ajax('GET', '{{ url_for('purchase_orders.comparison_row_note_form', row_id=r.id) }}', { target: '#cmp-detail-content-{{ r.id }}', swap: 'innerHTML' });
+                  }
+                ">
+          <i class="far fa-comment"></i> Note
+        </button>
+        {% if review %}
+          <button type="button"
+                  class="rounded bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-200"
+                  title="Flagged by {{ review.flagged_by }} — click to open review"
+                  onclick="window.openReviewDrawer('{{ url_for('purchase_orders.review_drawer', review_id=review.review_id) }}')">
+            <i class="fas fa-flag"></i> Flagged
+          </button>
+        {% elif can('reviews.flag') %}
+          <button type="button"
+                  class="rounded border border-rose-200 bg-white px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                  onclick="window.openReviewDrawer('{{ url_for('purchase_orders.comparison_row_flag_drawer', row_id=r.id) }}')">
+            <i class="fas fa-flag"></i> Flag
+          </button>
+        {% endif %}
+      </div>
+    </td>
+  </tr>
+  <tr id="cmp-detail-{{ r.id }}" class="hidden bg-slate-50/60">
+    <td colspan="12" class="px-3 py-2">
+      <div id="cmp-detail-content-{{ r.id }}" class="rounded-md border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-500">
+        Loading note panel…
+      </div>
+    </td>
+  </tr>
+</tbody>

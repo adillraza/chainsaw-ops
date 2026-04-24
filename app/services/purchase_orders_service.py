@@ -329,39 +329,46 @@ class BigQueryService:
             return None, "BigQuery client not initialized"
         
         try:
-            # Build the items query with calculated fields
+            # Build the items query with calculated fields. We LEFT JOIN with
+            # ``dataform.neto_product_list`` (hourly Dataform copy of
+            # ``netocssv2.Products``) to pull the Neto product ID, which the
+            # UI uses to build "open in Neto" deep links for each SKU.
             base_query = f"""
             SELECT DISTINCT
-                COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) as po_id,
-                po_item_id,
-                manufacturer_sku as sku,
-                supplier_sku,
-                manufacturer_sku,
-                short_description,
-                quantity_ordered as neto_qty_ordered,
-                quantity_ordered as rex_qty_ordered,
-                quantity_received as rex_qty_received,
-                neto_qty_available,
-                ROUND(neto_cost_price, 2) as neto_cost_price,
-                ROUND(rex_supplier_buy_ex, 2) as rex_supplier_buy_ex,
-                ROUND(rex_supplier_buy_ex, 2) - ROUND(neto_cost_price, 2) as difference,
+                COALESCE(CAST(r.po_id AS STRING), r.PurchaseOrderNumber) as po_id,
+                r.po_item_id,
+                r.manufacturer_sku as sku,
+                r.supplier_sku,
+                r.manufacturer_sku,
+                r.short_description,
+                r.quantity_ordered as neto_qty_ordered,
+                r.quantity_ordered as rex_qty_ordered,
+                r.quantity_received as rex_qty_received,
+                r.neto_qty_available,
+                ROUND(r.neto_cost_price, 2) as neto_cost_price,
+                ROUND(r.rex_supplier_buy_ex, 2) as rex_supplier_buy_ex,
+                ROUND(r.rex_supplier_buy_ex, 2) - ROUND(r.neto_cost_price, 2) as difference,
                 CASE 
-                    WHEN ABS(ROUND(rex_supplier_buy_ex, 2) - ROUND(neto_cost_price, 2)) > 0 
+                    WHEN ABS(ROUND(r.rex_supplier_buy_ex, 2) - ROUND(r.neto_cost_price, 2)) > 0 
                     THEN true 
                     ELSE false 
                 END as disparity,
-                OrderID,
-                created_on,
-                modified_on
-            FROM `{self.project_id}.dataform.neto_rex_purchase_order_report`
+                r.OrderID,
+                r.created_on,
+                r.modified_on,
+                CAST(np.ID AS STRING) AS neto_product_id,
+                r.is_kitted_item
+            FROM `{self.project_id}.dataform.neto_rex_purchase_order_report` r
+            LEFT JOIN `{self.project_id}.dataform.neto_product_list` np
+              ON np.SKU = r.manufacturer_sku
             """
             
             # Add filter for specific PO or Order ID
             where_clause = ""
             if po_id:
-                where_clause = f"WHERE CAST(COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) AS STRING) = '{po_id}'"
+                where_clause = f"WHERE CAST(COALESCE(CAST(r.po_id AS STRING), r.PurchaseOrderNumber) AS STRING) = '{po_id}'"
             elif order_id:
-                where_clause = f"WHERE CAST(OrderID AS STRING) = '{order_id}'"
+                where_clause = f"WHERE CAST(r.OrderID AS STRING) = '{order_id}'"
             
             # Complete query with ordering, optional pagination, and latest item note
             query = f"""
@@ -427,31 +434,37 @@ class BigQueryService:
             return None, "BigQuery client not initialized"
         
         try:
-            # Build the items query with calculated fields and notes - same as get_purchase_order_items but without WHERE clause
+            # Same shape as ``get_purchase_order_items`` but without the WHERE
+            # clause. We also LEFT JOIN ``neto_product_list`` so the cache can
+            # store the Neto product ID for "open in Neto" deep links.
             base_query = f"""
             SELECT DISTINCT
-                COALESCE(CAST(po_id AS STRING), PurchaseOrderNumber) as po_id,
-                po_item_id,
-                manufacturer_sku as sku,
-                supplier_sku,
-                manufacturer_sku,
-                short_description,
-                quantity_ordered as neto_qty_ordered,
-                quantity_ordered as rex_qty_ordered,
-                quantity_received as rex_qty_received,
-                neto_qty_available,
-                ROUND(neto_cost_price, 2) as neto_cost_price,
-                ROUND(rex_supplier_buy_ex, 2) as rex_supplier_buy_ex,
-                ROUND(rex_supplier_buy_ex, 2) - ROUND(neto_cost_price, 2) as difference,
+                COALESCE(CAST(r.po_id AS STRING), r.PurchaseOrderNumber) as po_id,
+                r.po_item_id,
+                r.manufacturer_sku as sku,
+                r.supplier_sku,
+                r.manufacturer_sku,
+                r.short_description,
+                r.quantity_ordered as neto_qty_ordered,
+                r.quantity_ordered as rex_qty_ordered,
+                r.quantity_received as rex_qty_received,
+                r.neto_qty_available,
+                ROUND(r.neto_cost_price, 2) as neto_cost_price,
+                ROUND(r.rex_supplier_buy_ex, 2) as rex_supplier_buy_ex,
+                ROUND(r.rex_supplier_buy_ex, 2) - ROUND(r.neto_cost_price, 2) as difference,
                 CASE 
-                    WHEN ABS(ROUND(rex_supplier_buy_ex, 2) - ROUND(neto_cost_price, 2)) > 0 
+                    WHEN ABS(ROUND(r.rex_supplier_buy_ex, 2) - ROUND(r.neto_cost_price, 2)) > 0 
                     THEN true 
                     ELSE false 
                 END as disparity,
-                OrderID,
-                created_on,
-                modified_on
-            FROM `{self.project_id}.dataform.neto_rex_purchase_order_report`
+                r.OrderID,
+                r.created_on,
+                r.modified_on,
+                CAST(np.ID AS STRING) AS neto_product_id,
+                r.is_kitted_item
+            FROM `{self.project_id}.dataform.neto_rex_purchase_order_report` r
+            LEFT JOIN `{self.project_id}.dataform.neto_product_list` np
+              ON np.SKU = r.manufacturer_sku
             """
             
             # Complete query with ordering, optional pagination, and latest item note
@@ -715,7 +728,9 @@ class BigQueryService:
                 c.OrderID,
                 n.comment as latest_item_note,
                 n.username as latest_item_note_user,
-                n.created_at as latest_item_note_date
+                n.created_at as latest_item_note_date,
+                CAST(np.ID AS STRING) AS neto_product_id,
+                c.is_kitted_item
             FROM `chainsawspares-385722.dataform.neto_rex_purchase_order_compared` c
             LEFT JOIN (
                 SELECT 
@@ -727,6 +742,8 @@ class BigQueryService:
                 FROM `chainsawspares-385722.operations.item_notes`
                 WHERE deleted_at IS NULL
             ) n ON CAST(c.po_item_id AS STRING) = n.po_item_id AND n.rn = 1
+            LEFT JOIN `chainsawspares-385722.dataform.neto_product_list` np
+              ON np.SKU = c.manufacturer_sku
             WHERE 1=1
             """
             
@@ -766,7 +783,9 @@ class BigQueryService:
                     'po_item_id': str(row.po_item_id) if row.po_item_id else None,
                     'latest_item_note': row.latest_item_note,
                     'latest_item_note_user': row.latest_item_note_user,
-                    'latest_item_note_date': row.latest_item_note_date.isoformat() if row.latest_item_note_date else None
+                    'latest_item_note_date': row.latest_item_note_date.isoformat() if row.latest_item_note_date else None,
+                    'neto_product_id': row.neto_product_id,
+                    'is_kitted_item': bool(row.is_kitted_item) if row.is_kitted_item is not None else None,
                 })
             
             print(f"Found {len(data)} comparison records for po_id={po_id}")
@@ -786,9 +805,22 @@ class BigQueryService:
             return [], "BigQuery client not initialized"
         
         try:
-            # Use DISTINCT to remove duplicates at the BigQuery level
-            # po_item_id is now directly in the comparison table
+            # Use DISTINCT to remove duplicates at the BigQuery level.
+            # We also LEFT JOIN with operations.item_notes so the latest note per
+            # po_item_id is fetched alongside the comparison row, eliminating the
+            # need for per-row note enrichment after caching.
             query = """
+            WITH latest_notes AS (
+              SELECT
+                po_item_id,
+                ARRAY_AGG(STRUCT(comment, username, created_at)
+                          ORDER BY created_at DESC LIMIT 1)[OFFSET(0)] AS n
+              FROM `chainsawspares-385722.operations.item_notes`
+              WHERE deleted_at IS NULL
+                AND po_item_id IS NOT NULL
+                AND po_item_id != 'PO'
+              GROUP BY po_item_id
+            )
             SELECT DISTINCT
                 c.po_id,
                 c.po_item_id,
@@ -801,8 +833,17 @@ class BigQueryService:
                 c.neto_quantity_shipped,
                 c.latest_po_quantity_ordered,
                 c.quantity_received,
-                c.OrderID
+                c.OrderID,
+                ln.n.comment    AS latest_item_note,
+                ln.n.username   AS latest_item_note_user,
+                ln.n.created_at AS latest_item_note_date,
+                CAST(np.ID AS STRING) AS neto_product_id,
+                c.is_kitted_item
             FROM `chainsawspares-385722.dataform.neto_rex_purchase_order_compared` c
+            LEFT JOIN latest_notes ln
+              ON CAST(c.po_item_id AS STRING) = ln.po_item_id
+            LEFT JOIN `chainsawspares-385722.dataform.neto_product_list` np
+              ON np.SKU = c.manufacturer_sku
             ORDER BY c.po_id, c.manufacturer_sku
             """
             
@@ -829,9 +870,14 @@ class BigQueryService:
                     'final_rex_qty_ordered': row.latest_po_quantity_ordered,
                     'rex_qty_received': row.quantity_received,
                     'OrderID': row.OrderID,
-                    'po_item_id': str(row.po_item_id) if row.po_item_id else None
+                    'po_item_id': str(row.po_item_id) if row.po_item_id else None,
+                    'latest_item_note': row.latest_item_note,
+                    'latest_item_note_user': row.latest_item_note_user,
+                    'latest_item_note_date': row.latest_item_note_date.isoformat() if row.latest_item_note_date else None,
+                    'neto_product_id': row.neto_product_id,
+                    'is_kitted_item': bool(row.is_kitted_item) if row.is_kitted_item is not None else None,
                 })
-            
+
             print(f"Found {len(data)} comparison records for caching")
             
             # Debug: Check po_item_id values in the data

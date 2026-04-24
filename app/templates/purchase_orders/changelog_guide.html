@@ -1,0 +1,126 @@
+{% extends "layouts/base.html" %}
+{% from "purchase_orders/_partials/change_log_macros.html" import tag as change_log_tag %}
+
+{% set page_title = 'Change Log Guide' %}
+{% block title %}Change Log Guide - Chainsawspares Ops{% endblock %}
+
+{% macro qty(value) -%}
+  {%- if value is none -%}<span class="text-slate-300">—</span>
+  {%- else -%}{{ value }}{%- endif -%}
+{%- endmacro %}
+
+{% macro entry_card(e) %}
+  <article class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="mb-2">{{ change_log_tag(e.code) }}</div>
+
+    <p class="text-sm text-slate-700">
+      <span class="font-semibold text-slate-900">Condition:</span> {{ e.condition }}
+    </p>
+    <p class="mt-2 text-sm text-slate-700">
+      <span class="font-semibold text-slate-900">Description:</span> {{ e.description }}
+    </p>
+
+    <div class="mt-3 overflow-hidden rounded-md border border-slate-200">
+      <table class="min-w-full divide-y divide-slate-200 text-xs">
+        <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-3 py-1.5 text-left font-semibold">Rex Qty Ordered</th>
+            <th class="px-3 py-1.5 text-left font-semibold">NETO qty invoiced</th>
+            <th class="px-3 py-1.5 text-left font-semibold">Rex Qty Received</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for ordered, invoiced, received in e.samples %}
+            <tr>
+              <td class="px-3 py-1.5 tabular-nums text-slate-800">{{ qty(ordered) }}</td>
+              <td class="px-3 py-1.5 tabular-nums text-slate-800">{{ qty(invoiced) }}</td>
+              <td class="px-3 py-1.5 tabular-nums text-slate-800">{{ qty(received) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-3 rounded-md border-l-4 border-brand-300 bg-brand-50/60 px-3 py-2 text-xs text-slate-700">
+      {% if e.samples|length > 1 %}<span class="font-semibold text-slate-900">Examples:</span>
+      {% else %}<span class="font-semibold text-slate-900">Result:</span>{% endif %}
+      {{ e.result }}
+    </div>
+
+    {% if e.note %}
+      <p class="mt-2 text-[11px] italic text-slate-500">
+        <i class="fas fa-circle-info mr-1"></i>{{ e.note }}
+      </p>
+    {% endif %}
+  </article>
+{% endmacro %}
+
+{% block content %}
+<section class="mb-5">
+  <h2 class="flex items-center gap-2 text-2xl font-semibold text-slate-900">
+    <i class="fas fa-circle-info text-brand-600"></i> Change Log Guide
+  </h2>
+  <p class="mt-1 text-sm text-slate-600">
+    Understanding the different change types in the
+    <a href="{{ url_for('purchase_orders.comparison') }}" class="font-medium text-brand-700 hover:underline">Comparison table</a>.
+  </p>
+</section>
+
+{# ----- Header card ----- #}
+<section class="mb-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+  <h3 class="text-lg font-semibold text-slate-900">Change Types Reference</h3>
+
+  <div class="mt-3 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+    <p class="flex items-center gap-2 font-semibold">
+      <i class="fas fa-clock text-sky-700"></i> Timing Context
+    </p>
+    <p class="mt-1 text-sky-800">
+      Change types are evaluated at different stages of the order lifecycle:
+    </p>
+    <ul class="mt-2 ml-6 list-disc space-y-1 text-sky-800">
+      <li><span class="font-semibold">Before NETO has invoiced:</span> the warehouse hasn't dispatched yet; the row is in flight.</li>
+      <li><span class="font-semibold">After NETO dispatch but before REX receival:</span> items are in transit or awaiting receival.</li>
+      <li><span class="font-semibold">After invoice has been received into REX:</span> items have been physically received and quantities updated.</li>
+    </ul>
+  </div>
+
+  <div class="mt-3 flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+    <i class="fas fa-database mt-0.5 text-slate-400"></i>
+    <span>
+      Source of truth: <code class="rounded bg-white px-1 py-0.5 font-mono text-slate-700">dataform.neto_rex_purchase_order_compared</code>.
+      The same colored tag is used everywhere a change log appears.
+    </span>
+  </div>
+</section>
+
+{# ----- Lifecycle stages ----- #}
+{% for stage in stages %}
+  <section class="mb-6">
+    <header class="mb-3 flex items-center gap-2">
+      <span class="flex h-7 w-7 items-center justify-center rounded-md bg-{{ stage.color }}-100 text-{{ stage.color }}-700">
+        <i class="fas {{ stage.icon }} text-xs"></i>
+      </span>
+      <div>
+        <h3 class="text-base font-semibold text-{{ stage.color }}-700">{{ stage.title }}</h3>
+        {% if stage.subtitle %}<p class="text-xs text-slate-500">{{ stage.subtitle }}</p>{% endif %}
+      </div>
+    </header>
+
+    {% if stage.entries|length == 1 %}
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {{ entry_card(stage.entries[0]) }}
+      </div>
+    {% else %}
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {% for e in stage.entries %}{{ entry_card(e) }}{% endfor %}
+      </div>
+    {% endif %}
+  </section>
+{% endfor %}
+
+<p class="mt-2 text-xs text-slate-500">
+  Tip: filter the
+  <a href="{{ url_for('purchase_orders.comparison') }}" class="text-brand-700 hover:underline">comparison list</a>
+  by change type to focus on a single category.
+</p>
+{% endblock %}

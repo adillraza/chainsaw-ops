@@ -1,0 +1,33 @@
+{# Reusable pager. Caller passes `meta` (page, per_page, total, pages) and the
+   target endpoint via `endpoint` so HTMX can swap the same fragment back. #}
+{% set base_args = filters.copy() %}
+{% set _ = base_args.update({'per_page': meta.per_page}) %}
+{% set _ = base_args.pop('page', None) %}
+<nav class="mt-3 flex items-center justify-between text-xs text-slate-600">
+  <span>
+    Showing <strong>{{ ((meta.page - 1) * meta.per_page) + (1 if rows else 0) }}</strong>
+    – <strong>{{ ((meta.page - 1) * meta.per_page) + rows|length }}</strong>
+    of <strong>{{ '{:,}'.format(meta.total) }}</strong>
+  </span>
+  <div class="flex items-center gap-1">
+    {% set prev_args = base_args.copy() %}{% set _ = prev_args.update({'page': meta.page - 1}) %}
+    {% set next_args = base_args.copy() %}{% set _ = next_args.update({'page': meta.page + 1}) %}
+    <a class="rounded border border-slate-200 bg-white px-2 py-1 hover:bg-slate-50 {% if meta.page <= 1 %}pointer-events-none opacity-40{% endif %}"
+       href="{{ url_for(request.endpoint, **prev_args) }}"
+       hx-get="{{ url_for(request.endpoint, **prev_args) }}"
+       hx-target="closest [data-hx-table]"
+       hx-swap="outerHTML"
+       hx-push-url="true">
+      <i class="fas fa-chevron-left"></i> Prev
+    </a>
+    <span class="px-2">page {{ meta.page }} / {{ meta.pages }}</span>
+    <a class="rounded border border-slate-200 bg-white px-2 py-1 hover:bg-slate-50 {% if meta.page >= meta.pages %}pointer-events-none opacity-40{% endif %}"
+       href="{{ url_for(request.endpoint, **next_args) }}"
+       hx-get="{{ url_for(request.endpoint, **next_args) }}"
+       hx-target="closest [data-hx-table]"
+       hx-swap="outerHTML"
+       hx-push-url="true">
+      Next <i class="fas fa-chevron-right"></i>
+    </a>
+  </div>
+</nav>

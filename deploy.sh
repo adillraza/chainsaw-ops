@@ -18,6 +18,12 @@ echo "📦 Updating dependencies..."
 source venv/bin/activate
 pip install -r requirements.txt --quiet
 
+# Apply database migrations (Alembic / Flask-Migrate).
+# Abort before restarting if migrations fail, so the old service keeps serving.
+echo "🗄️  Applying database migrations..."
+export FLASK_APP=wsgi.py
+flask db upgrade
+
 # Restart the service
 echo "♻️  Restarting chainsaw-ops service..."
 systemctl restart chainsaw-ops

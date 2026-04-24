@@ -1,0 +1,51 @@
+<header class="flex h-16 flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 shadow-sm">
+  <div class="min-w-0">
+    <h1 class="truncate text-base font-semibold text-slate-900">{{ page_title|default('Chainsawspares Ops') }}</h1>
+    {% block page_subtitle %}{% endblock %}
+  </div>
+
+  <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
+         x-data="{
+           status: 'loading…',
+           tooltip: '',
+           fmtMelbourne(ts) {
+             if (!ts) return '';
+             const d = new Date(ts);
+             if (isNaN(d)) return ts;
+             try {
+               return new Intl.DateTimeFormat('en-AU', {
+                 timeZone: 'Australia/Melbourne',
+                 day: '2-digit', month: 'short', year: 'numeric',
+                 hour: 'numeric', minute: '2-digit', hour12: true,
+               }).format(d).replace(',', ' ·');
+             } catch (e) { return ts; }
+           },
+           refresh() {
+             fetch('/api/system/cache-status').then(r => r.json()).then(d => {
+               if (!d || !d.success) { this.status = 'Cache: error'; return; }
+               if (d.is_syncing) { this.status = 'Syncing…'; this.tooltip = 'Background refresh in progress'; return; }
+               if (d.last_refresh_time) {
+                 this.status = 'Cache: ' + this.fmtMelbourne(d.last_refresh_time);
+                 this.tooltip = 'Raw UTC: ' + d.last_refresh_time;
+               } else {
+                 this.status = 'No cache';
+                 this.tooltip = '';
+               }
+             }).catch(() => { this.status = 'Cache: offline'; this.tooltip = ''; });
+           },
+         }"
+         x-init="refresh(); setInterval(() => refresh(), 60000)"
+         :title="tooltip">
+      <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+      <span x-text="status"></span>
+    </div>
+
+    <button type="button"
+            class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            hx-post="/api/system/start-refresh"
+            hx-swap="none">
+      <i class="fas fa-rotate me-1"></i> Refresh
+    </button>
+  </div>
+</header>

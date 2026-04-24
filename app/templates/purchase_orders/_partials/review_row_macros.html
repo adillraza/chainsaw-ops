@@ -1,0 +1,99 @@
+{# Shared table row for review rows, used by retail + warehouse queue sections.
+
+   Each row opens the shared review drawer on click (whole-row trigger for
+   a big click target; nested links still work thanks to stopPropagation).
+#}
+{% macro review_row(r, column_set='default') %}
+  <tr class="cursor-pointer transition hover:bg-slate-50"
+      onclick="window.openReviewDrawer('{{ url_for('purchase_orders.review_drawer', review_id=r.review_id) }}')">
+    <td class="whitespace-nowrap px-3 py-2 font-mono text-sm">
+      <a class="font-semibold text-brand-700 hover:underline"
+         onclick="event.stopPropagation();"
+         href="{{ url_for('purchase_orders.comparison', po_id=r.po_id) }}">{{ r.po_id }}</a>
+    </td>
+    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">
+      {% if r.order_id %}
+        <a class="font-mono text-brand-700 hover:underline"
+           onclick="event.stopPropagation();"
+           href="https://www.chainsawspares.com.au/_cpanel/order/vieworder?id={{ r.order_id }}"
+           target="_blank" rel="noopener">{{ r.order_id }}</a>
+      {% else %}<span class="text-slate-300">—</span>{% endif %}
+    </td>
+    <td class="whitespace-nowrap px-3 py-2 font-mono text-sm text-slate-700">{{ r.sku or '—' }}</td>
+    <td class="px-3 py-2 text-xs text-slate-700" title="{{ r.flag_comment or '' }}">
+      <div class="max-w-[320px] truncate">
+        <span class="font-semibold text-slate-800">{{ r.flagged_by }}:</span>
+        {{ (r.flag_comment or '(no comment)') }}
+      </div>
+    </td>
+    {% if column_set in ('warehouse_completed', 'completed', 'closed') %}
+      <td class="px-3 py-2 text-xs text-slate-700" title="{{ r.warehouse_comment or '' }}">
+        <div class="max-w-[320px] truncate">
+          {% if r.warehouse_comment or r.warehouse_assigned_to %}
+            <span class="font-semibold text-slate-800">{{ r.warehouse_assigned_to or 'warehouse' }}:</span>
+            {{ (r.warehouse_comment or '(no comment)') }}
+          {% else %}<span class="text-slate-400 italic">—</span>{% endif %}
+        </div>
+      </td>
+    {% endif %}
+    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-500">
+      {{ r.flagged_at.strftime('%d %b, %I:%M %p') if r.flagged_at else '—' }}
+    </td>
+    <td class="whitespace-nowrap px-3 py-2 text-right">
+      {% set status_color = {
+        'pending':               ('amber',   'Pending'),
+        'warehouse_in_progress': ('sky',     'In progress'),
+        'warehouse_closed':      ('emerald', 'Warehouse completed'),
+        'retail_closed':         ('slate',   'Closed'),
+        'cancelled':             ('rose',    'Cancelled'),
+      }.get(r.status, ('slate', r.status)) %}
+      <span class="rounded-full bg-{{ status_color[0] }}-50 px-2 py-0.5 text-[11px] font-semibold text-{{ status_color[0] }}-700">
+        {{ status_color[1] }}
+      </span>
+    </td>
+  </tr>
+{% endmacro %}
+
+
+{% macro review_section(title, subtitle, icon, color, rows, empty_msg, column_set='default') %}
+  <section class="mb-5 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <header class="flex items-center justify-between border-b border-slate-200 bg-{{ color }}-50/60 px-4 py-2">
+      <div class="flex items-center gap-2">
+        <span class="flex h-6 w-6 items-center justify-center rounded-md bg-{{ color }}-100 text-{{ color }}-700">
+          <i class="fas {{ icon }} text-[11px]"></i>
+        </span>
+        <div>
+          <h3 class="text-sm font-semibold text-slate-900">{{ title }}</h3>
+          {% if subtitle %}<p class="text-[11px] text-slate-500">{{ subtitle }}</p>{% endif %}
+        </div>
+      </div>
+      <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-{{ color }}-700 ring-1 ring-{{ color }}-200">
+        {{ rows|length }}
+      </span>
+    </header>
+    {% if rows %}
+      <div class="max-h-[46vh] overflow-y-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="px-3 py-2 text-left">PO ID</th>
+              <th class="px-3 py-2 text-left">Order ID</th>
+              <th class="px-3 py-2 text-left">SKU</th>
+              <th class="px-3 py-2 text-left">Retail comment</th>
+              {% if column_set in ('warehouse_completed', 'completed', 'closed') %}
+                <th class="px-3 py-2 text-left">Warehouse comment</th>
+              {% endif %}
+              <th class="px-3 py-2 text-left">Flagged</th>
+              <th class="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for r in rows %}{{ review_row(r, column_set=column_set) }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="px-4 py-6 text-center text-xs text-slate-400 italic">{{ empty_msg }}</div>
+    {% endif %}
+  </section>
+{% endmacro %}
