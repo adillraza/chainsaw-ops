@@ -42,9 +42,10 @@
     .htmx-request .htmx-indicator { opacity: 1; }
 
     /* Zebra striping — skip rows that already carry an explicit bg-* class
-       (disparity red, kitted amber, detail drawer, etc.) so semantic
-       highlights win. */
-    tbody tr:nth-child(even):not([class*="bg-"]) {
+       at a class-name boundary (disparity red, kitted amber, detail drawer).
+       We match "bg-" only at the start of the class attribute or after a
+       space, so variant classes like "hover:bg-slate-50" still get striped. */
+    tbody tr:nth-child(even):not([class^="bg-"]):not([class*=" bg-"]) {
       background-color: rgb(248 250 252); /* slate-50 */
     }
     /* More prominent hover than Tailwind's default hover:bg-slate-50.
