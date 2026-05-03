@@ -55,15 +55,13 @@ def webhook():
     # Best-effort: identify source from headers / body shape
     source = _detect_source(request.headers, body_dict)
 
-    # Try to pull a few common fields out of the payload so the inspector page
-    # can show useful columns without us reading the JSON each time. Fall
-    # through silently — the raw body is always stored.
-    event_type = _pluck(body_dict, "eventType", "event", "type") if body_dict else None
-    session_id = _pluck(
-        body_dict, "telephonySessionId", "sessionId", "contactId", "callId"
-    ) if body_dict else None
-    from_number = _pluck(body_dict, "from.phoneNumber", "fromAddress", "ani", "caller") if body_dict else None
-    to_number = _pluck(body_dict, "to.phoneNumber", "toAddress", "dnis", "called") if body_dict else None
+    # Pull a few common fields out of the payload so the inspector page
+    # can show useful columns without us reading the JSON each time.
+    parsed = _parse_event(body_dict, source) if body_dict else {}
+    event_type = parsed.get("event_type")
+    session_id = parsed.get("session_id")
+    from_number = parsed.get("from_number")
+    to_number = parsed.get("to_number")
 
     # Headers can contain anything, including secrets. Strip Authorization.
     headers_safe = {k: v for k, v in request.headers.items() if k.lower() not in ("authorization", "cookie")}
@@ -188,3 +186,84 @@ def _pluck(d: dict, *paths: str):
         if cur:
             return cur
     return None
+
+
+def _parse_event(body: dict, source: str) -> dict:
+    """Extract event_type / session_id / from_number / to_number from the
+    real payload shapes we see in the wild.
+
+    RingCentral PBX (telephony.sessions) wraps the actual call data in
+    ``body.parties[0]``. CXone (when wired) sends a flat shape with
+    ``contactId`` / ``fromAddress`` at the top level.
+
+    Falls back to the generic dotted-path lookup for unknown shapes so we
+    don't lose information from sources we haven't characterised yet.
+    """
+    if not isinstance(body, dict):
+        return {}
+
+    # --- RingCentral PBX telephony.sessions ---
+    inner = body.get("body") if isinstance(body.get("body"), dict) else None
+    parties = inner.get("parties") if inner else None
+    if isinstance(parties, list) and parties:
+        # The first party is the inbound side from RC's perspective. There
+        # can be multiple parties for transferred / forwarded calls; for
+        # display we keep it simple and use party 0.
+        p = parties[0] if isinstance(parties[0], dict) else {}
+        status_code = ((p.get("status") or {}).get("code")) or "?"
+        direction = p.get("direction") or "?"
+        return {
+            "event_type":  f"{direction}:{status_code}",
+            "session_id":  inner.get("telephonySessionId") or inner.get("sessionId"),
+            "from_number": (p.get("from") or {}).get("phoneNumber"),
+            "to_number":   (p.get("to") or {}).get("phoneNumber"),
+        }
+
+    # --- CXone (Studio Snippet posts a flat JSON we control) ---
+    if "contactId" in body or "fromAddress" in body:
+        return {
+            "event_type":  body.get("eventType") or "cxone.event",
+            "session_id":  body.get("contactId") or body.get("masterContactId"),
+            "from_number": body.get("fromAddress") or body.get("ANI"),
+            "to_number":   body.get("toAddress")   or body.get("DNIS"),
+        }
+
+    # --- Fallback: best-effort generic pluck ---
+    return {
+        "event_type":  _pluck(body, "eventType", "event", "type"),
+        "session_id":  _pluck(body, "telephonySessionId", "sessionId", "contactId", "callId"),
+        "from_number": _pluck(body, "from.phoneNumber", "fromAddress", "ani", "caller"),
+        "to_number":   _pluck(body, "to.phoneNumber",   "toAddress",   "dnis", "called"),
+    }
+
+
+def reparse_all_call_events():
+    """Re-extract event_type / session_id / from / to from stored body_json.
+
+    Wired up as the ``reparse-call-events`` Flask CLI command (see
+    :mod:`app.cli`). Used after deploying a parser change so the inspector
+    shows the new fields on rows captured before the fix.
+    """
+    rows = CallEvent.query.all()
+    n = 0
+    for r in rows:
+        try:
+            body = json.loads(r.body_json) if r.body_json else None
+        except Exception:
+            continue
+        parsed = _parse_event(body, r.source)
+        et = parsed.get("event_type")
+        sid = parsed.get("session_id")
+        fn = parsed.get("from_number")
+        tn = parsed.get("to_number")
+        if (
+            et != r.event_type or sid != r.session_id
+            or fn != r.from_number or tn != r.to_number
+        ):
+            r.event_type = (str(et)[:120] if et else None)
+            r.session_id = (str(sid)[:120] if sid else None)
+            r.from_number = (str(fn)[:50] if fn else None)
+            r.to_number = (str(tn)[:50] if tn else None)
+            n += 1
+    db.session.commit()
+    return n, len(rows)

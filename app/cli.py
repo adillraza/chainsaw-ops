@@ -13,6 +13,7 @@ from flask.cli import with_appcontext
 
 def register(app: Flask) -> None:
     app.cli.add_command(refresh_cache)
+    app.cli.add_command(reparse_call_events)
 
 
 @click.command("refresh-cache")
@@ -30,3 +31,16 @@ def refresh_cache() -> None:
         click.echo(f"refresh-cache: {message}", err=True)
         raise SystemExit(1)
     click.echo(f"refresh-cache: {message}")
+
+
+@click.command("reparse-call-events")
+@with_appcontext
+def reparse_call_events() -> None:
+    """Re-run the live_calls parser over every stored call_event row.
+
+    Used after deploying a parser change so old rows pick up the new
+    event_type / session_id / from_number / to_number values.
+    """
+    from app.blueprints.live_calls.routes import reparse_all_call_events
+    updated, total = reparse_all_call_events()
+    click.echo(f"reparse-call-events: updated {updated} of {total} rows")
