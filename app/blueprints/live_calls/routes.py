@@ -44,13 +44,19 @@ def webhook():
         resp.headers["Validation-Token"] = validation_token
         return resp, 200
 
-    # Capture raw body + headers
+    # Capture raw body + headers. Accept JSON (RC PBX) or form-encoded
+    # (CXone Studio's Rest Api Action only sends form-encoded). Whichever
+    # format arrives, we end up with a flat dict in body_dict.
     raw_body = request.get_data(as_text=True) or ""
     body_dict: dict | None = None
     try:
         body_dict = json.loads(raw_body) if raw_body else None
     except Exception:
         body_dict = None
+    # If body wasn't JSON, fall back to form-encoded parsing (request.form
+    # is parsed by Flask from the same raw bytes when Content-Type matches).
+    if body_dict is None and request.form:
+        body_dict = {k: v for k, v in request.form.items()}
 
     # Best-effort: identify source from headers / body shape
     source = _detect_source(request.headers, body_dict)
