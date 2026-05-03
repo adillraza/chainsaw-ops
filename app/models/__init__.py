@@ -4,6 +4,7 @@ Importing this package registers every model with the shared
 :data:`app.extensions.db` metadata so Alembic's autogenerate sees them.
 """
 from app.models.annotations import Annotation
+from app.models.call_events import CallEvent
 from app.models.purchase_orders import (
     CachedPurchaseOrderComparison,
     CachedPurchaseOrderItem,
@@ -22,6 +23,7 @@ __all__ = [
     "CachedPurchaseOrderComparison",
     "CachedPurchaseOrderItem",
     "CachedPurchaseOrderSummary",
+    "CallEvent",
     "CLOSED_REVIEW_STATUSES",
     "ItemReview",
     "LoginLog",

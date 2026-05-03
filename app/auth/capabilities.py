@@ -45,6 +45,9 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("users.manage",             "Create users, reset passwords, assign roles"),
         ("roles.manage",             "Create, edit, and delete roles and their capabilities"),
     ],
+    "Customer Service": [
+        ("support.calls.view",       "See the live-calls dashboard and customer 360 cards"),
+    ],
 }
 
 # Flat set used for validation.

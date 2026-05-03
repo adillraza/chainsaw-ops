@@ -73,6 +73,7 @@ def create_app(config_object: str | None = None) -> Flask:
     from app.blueprints.annotations import annotations_bp
     from app.blueprints.purchase_orders import purchase_orders_bp
     from app.blueprints.validation import validation_bp
+    from app.blueprints.live_calls import live_calls_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -82,6 +83,7 @@ def create_app(config_object: str | None = None) -> Flask:
     app.register_blueprint(annotations_bp)
     app.register_blueprint(purchase_orders_bp)
     app.register_blueprint(validation_bp)
+    app.register_blueprint(live_calls_bp)
 
     return app
 
