@@ -62,6 +62,11 @@
       x-data="{ sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === '1' }"
       x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebarCollapsed', v ? '1' : '0'))">
   {% if current_user.is_authenticated %}
+    {# Live-calls drawer (right side) — always-visible-when-allowed. #}
+    {% if can('support.calls.view') %}
+      {% include "partials/live_calls_drawer_frame.html" %}
+    {% endif %}
+
     <div class="flex h-full">
       {% include "partials/sidebar.html" %}
 

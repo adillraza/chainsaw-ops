@@ -148,6 +148,130 @@ def event_detail(event_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Active-calls feed — backs the live drawer
+# ---------------------------------------------------------------------------
+
+# Statuses that mean the call is still in flight (caller hasn't hung up,
+# agent hasn't dropped). Anything containing "Disconnected" is filtered out.
+_STILL_ACTIVE_KEYWORDS = ("Setup", "Proceeding", "Alerting", "Answered", "Hold")
+
+
+@live_calls_bp.route("/active", methods=["GET"])
+@require_capability("support.calls.view")
+def active_calls():
+    """Return one row per in-flight call, latest event only.
+
+    Source: ``call_event`` table on prod SQLite (every webhook delivery from
+    RC PBX). One call generates many events (Setup → Proceeding → Alerting →
+    Answered → Disconnected, often duplicated per-party). We collapse to one
+    row per ``session_id`` showing the most recent event, then drop any whose
+    most-recent event is a Disconnected.
+
+    Looks back 10 minutes only — calls that never get a Disconnected event
+    (rare, but possible if RC drops a webhook delivery) shouldn't haunt the
+    drawer forever.
+
+    Renders an HTML fragment by default (HTMX-friendly, swap ``innerHTML``
+    into the drawer body). Pass ``?format=json`` for the JSON variant.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import func, and_
+
+    since = datetime.utcnow() - timedelta(minutes=10)
+
+    # Subquery: max(received_at) per session_id within the window
+    latest_per_session = (
+        db.session.query(
+            CallEvent.session_id.label("sid"),
+            func.max(CallEvent.received_at).label("latest_at"),
+        )
+        .filter(CallEvent.received_at > since)
+        .filter(CallEvent.session_id.isnot(None))
+        .group_by(CallEvent.session_id)
+        .subquery()
+    )
+
+    # Join back to get the row for each (session_id, latest_at)
+    rows = (
+        db.session.query(CallEvent)
+        .join(
+            latest_per_session,
+            and_(
+                CallEvent.session_id == latest_per_session.c.sid,
+                CallEvent.received_at == latest_per_session.c.latest_at,
+            ),
+        )
+        .order_by(CallEvent.received_at.desc())
+        .all()
+    )
+
+    # Filter to "still active" — latest event is NOT a Disconnected
+    active = [r for r in rows if not _is_terminal(r.event_type)]
+
+    if request.args.get("format") == "json":
+        return jsonify({
+            "count": len(active),
+            "active": [_serialise_active(r) for r in active],
+        })
+
+    from flask import render_template
+    return render_template(
+        "partials/live_calls_drawer.html",
+        active=[_active_view_model(r) for r in active],
+    )
+
+
+def _is_terminal(event_type: str | None) -> bool:
+    """Return True when the latest event indicates the call is over."""
+    if not event_type:
+        return False
+    et = event_type.lower()
+    return "disconnected" in et
+
+
+def _serialise_active(evt) -> dict:
+    return {
+        "session_id":  evt.session_id,
+        "phone":       evt.from_number,
+        "to_number":   evt.to_number,
+        "status":      evt.event_type,
+        "received_at": evt.received_at.isoformat() + "Z",
+        "source":      evt.source,
+    }
+
+
+def _active_view_model(evt) -> dict:
+    """Template-friendly view model — adds a normalised AU local phone +
+    a short "ringing for X" duration string for the drawer card.
+    """
+    from datetime import datetime
+    raw_phone = evt.from_number or ""
+    # Normalise +61… → 0… so the drawer matches the URL the customer card uses
+    if raw_phone.startswith("+61"):
+        norm_phone = "0" + raw_phone[3:]
+    else:
+        norm_phone = raw_phone
+    # Pull the bare status code from "Direction:Status" composite
+    status_code = (evt.event_type or "").split(":", 1)[-1] if evt.event_type else ""
+    direction = (evt.event_type or "").split(":", 1)[0] if ":" in (evt.event_type or "") else None
+    secs = int((datetime.utcnow() - evt.received_at).total_seconds()) if evt.received_at else 0
+    return {
+        "session_id":   evt.session_id,
+        "raw_phone":    raw_phone,
+        "phone":        norm_phone,
+        "to_number":    evt.to_number,
+        "status_code":  status_code,
+        "direction":    direction,
+        "source":       evt.source,
+        "received_at":  evt.received_at,
+        "seconds_old":  secs,
+        # The "still ringing" states get visual emphasis in the template
+        "is_ringing":   status_code in ("Setup", "Proceeding", "Alerting"),
+        "is_connected": status_code in ("Answered", "Hold"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

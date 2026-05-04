@@ -1,0 +1,46 @@
+{# Right-side live-calls drawer.
+
+   Mounted once in layouts/base.html for any user with support.calls.view.
+   Body content (#live-calls-drawer-body) is HTMX-polled every 3s from
+   /api/calls/active and re-rendered server-side.
+
+   Collapsible: a small floating tab at right-edge expands/collapses the
+   panel; state persists in localStorage. #}
+
+<div x-data="{
+       open: localStorage.getItem('liveCallsDrawer') !== 'closed'
+     }"
+     x-init="$watch('open', v => localStorage.setItem('liveCallsDrawer', v ? 'open' : 'closed'))"
+     class="fixed right-0 top-16 bottom-0 z-30 flex">
+
+  {# Edge tab — always visible. Clicking toggles the drawer open/closed. #}
+  <button type="button"
+          @click="open = !open"
+          class="self-center -ml-3 flex h-16 w-7 items-center justify-center rounded-l-md border border-r-0 border-slate-200 bg-white shadow text-slate-500 hover:text-brand-700"
+          :title="open ? 'Hide live calls' : 'Show live calls'">
+    <i class="fas text-xs" :class="open ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
+  </button>
+
+  {# Drawer body. #}
+  <aside class="flex h-full w-72 flex-col border-l border-slate-200 bg-white shadow-xl"
+         x-show="open" x-cloak
+         x-transition:enter="transition transform duration-200"
+         x-transition:enter-start="translate-x-full"
+         x-transition:enter-end="translate-x-0"
+         x-transition:leave="transition transform duration-150"
+         x-transition:leave-start="translate-x-0"
+         x-transition:leave-end="translate-x-full">
+
+    {# This div is what HTMX swaps every 3 seconds. The endpoint returns
+       partials/live_calls_drawer.html. On boot we trigger one immediate
+       fetch via load + then poll every 3s. #}
+    <div id="live-calls-drawer-body" class="flex h-full flex-col"
+         hx-get="{{ url_for('live_calls.active_calls') }}"
+         hx-trigger="load, every 3s"
+         hx-swap="innerHTML">
+      <div class="flex flex-1 items-center justify-center text-xs text-slate-400">
+        <i class="fas fa-circle-notch fa-spin mr-2"></i> Loading…
+      </div>
+    </div>
+  </aside>
+</div>

@@ -1,0 +1,86 @@
+{# Live-calls drawer body — swapped in by HTMX every 3 seconds.
+
+   The outer drawer frame (positioning, header, expand/collapse state) lives
+   in live_calls_drawer_frame.html which is injected once into base.html.
+   This partial is just the contents that change as calls come and go. #}
+
+<div class="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+  <div>
+    <h3 class="text-sm font-semibold text-slate-900">Live calls</h3>
+    <p class="text-[11px] text-slate-500">
+      {% if active %}{{ active|length }} in flight{% else %}none right now{% endif %}
+    </p>
+  </div>
+  <span class="relative flex h-3 w-3">
+    {% if active %}
+      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+    {% endif %}
+    <span class="relative inline-flex h-3 w-3 rounded-full {% if active %}bg-emerald-500{% else %}bg-slate-300{% endif %}"></span>
+  </span>
+</div>
+
+{% if not active %}
+  <div class="flex flex-col items-center justify-center py-12 px-4 text-center text-xs text-slate-400">
+    <i class="fas fa-phone-slash text-2xl text-slate-200"></i>
+    <p class="mt-2">No active calls.</p>
+    <p class="mt-0.5 text-[11px] text-slate-300">Updates every 3 seconds.</p>
+  </div>
+{% else %}
+  <ul class="divide-y divide-slate-100 max-h-[calc(100vh-12rem)] overflow-y-auto">
+    {% for call in active %}
+      {# Each call card. Click → open the customer 360 view in the same tab. #}
+      <li>
+        <a href="{{ url_for('customer_360.card', phone=call.phone) }}"
+           class="block px-4 py-3 transition hover:bg-brand-50">
+          <div class="flex items-center justify-between gap-2">
+            {# Status pill — colour-coded by state #}
+            {% if call.is_ringing %}
+              <span class="relative inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                <span class="absolute -left-0.5 -top-0.5 flex h-2 w-2">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
+                  <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+                </span>
+                <span class="ml-2">Ringing · {{ call.status_code }}</span>
+              </span>
+            {% elif call.is_connected %}
+              <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                <i class="fas fa-circle text-[6px] text-emerald-600 mr-1"></i>
+                On call · {{ call.status_code }}
+              </span>
+            {% else %}
+              <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                {{ call.status_code or 'Unknown' }}
+              </span>
+            {% endif %}
+
+            <span class="text-[10px] text-slate-400">
+              {% if call.seconds_old < 60 %}{{ call.seconds_old }}s
+              {% elif call.seconds_old < 3600 %}{{ (call.seconds_old // 60) }}m
+              {% else %}{{ (call.seconds_old // 3600) }}h{% endif %}
+            </span>
+          </div>
+
+          <div class="mt-2 font-mono text-base text-slate-900">
+            {{ call.phone or '—' }}
+          </div>
+
+          <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+            <span>
+              {% if call.direction == 'Inbound' %}
+                <i class="fas fa-phone-arrow-down-left text-emerald-500"></i> incoming
+              {% elif call.direction == 'Outbound' %}
+                <i class="fas fa-phone-arrow-up-right text-sky-500"></i> outbound
+              {% endif %}
+              · {{ call.source }}
+            </span>
+            {% if call.to_number %}
+              <span class="font-mono text-slate-400 truncate" title="{{ call.to_number }}">
+                → {{ call.to_number[-4:] if call.to_number|length > 4 else call.to_number }}
+              </span>
+            {% endif %}
+          </div>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
