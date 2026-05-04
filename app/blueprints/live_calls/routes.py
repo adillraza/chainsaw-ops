@@ -730,6 +730,7 @@ def _recent_view_model(evt, first_at, pinned_session_ids: set, leg_count: int = 
     except Exception:
         body = {}
 
+    from app.template_filters import utc_to_mel_naive
     return {
         "session_id":    evt.session_id,
         "phone":         phone,
@@ -737,7 +738,8 @@ def _recent_view_model(evt, first_at, pinned_session_ids: set, leg_count: int = 
         "to_local":      to_local,
         "direction":     direction,
         "source":        evt.source,
-        "ended_at":      evt.received_at,
+        # call_event.received_at is naive UTC; templates assume naive=Mel.
+        "ended_at":      utc_to_mel_naive(evt.received_at),
         "duration_s":    duration_s,
         "agent_name":    agent_name,
         "is_pinned":     evt.session_id in pinned_session_ids or (evt.master_session_id and evt.master_session_id in pinned_session_ids),

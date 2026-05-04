@@ -13,6 +13,22 @@ EM_DASH = "—"
 MEL = pytz.timezone("Australia/Melbourne")
 
 
+def utc_to_mel_naive(dt: datetime | None) -> datetime | None:
+    """Convert a naive-UTC datetime to a naive-Mel datetime.
+
+    Use at the SQLite boundary: ``call_event.received_at``,
+    ``pinned_call.pinned_at`` and friends default to ``datetime.utcnow()``,
+    which produces a naive UTC value. The format_dt convention is
+    "naive = already Mel" (because most of our Dataform models pin to
+    Mel), so SQLite values must be shifted before they reach a template.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(MEL).replace(tzinfo=None)
+    return pytz.utc.localize(dt).astimezone(MEL).replace(tzinfo=None)
+
+
 def _strip_leading_zero(token: str) -> str:
     """Strip a single leading zero in an hour token (e.g. ``05`` -> ``5``)."""
     return token[1:] if token.startswith("0") and len(token) > 1 else token
@@ -39,16 +55,19 @@ def format_dt(value, fmt: str = "datetime") -> str:
     # whether the value carries a useful time component.
     if isinstance(value, datetime):
         dt = value
-        # Every datetime that reaches this filter is in UTC:
-        #   * BigQuery TIMESTAMP comes back tz-aware UTC
-        #   * SQLite columns default to ``datetime.utcnow()`` (naive UTC)
-        # Whether tz-aware or naive, treat it as UTC and convert to Mel for
-        # display. Today is the local frame an agent thinks in; UTC times
-        # ten hours behind otherwise surface as "future calls" / "5am calls
-        # actually happening at 3pm" — confusing and was an actual bug.
-        if dt.tzinfo is None:
-            dt = pytz.utc.localize(dt)
-        dt = dt.astimezone(MEL)
+        # Convention:
+        #   * tz-aware datetimes (e.g. BigQuery TIMESTAMP, comes back UTC) are
+        #     converted to Mel here.
+        #   * naive datetimes are assumed to ALREADY be in Mel — most of
+        #     our Dataform models pin DATETIME columns to Australia/Melbourne
+        #     so the card displays a local timestamp without any client-side
+        #     conversion.
+        # Anything coming from SQLite (``datetime.utcnow()`` defaults) is
+        # naive UTC and must be converted to Mel BEFORE reaching this filter,
+        # at the service / view-model boundary. Otherwise it's rendered as if
+        # already-Mel and ends up displayed 10 hours behind reality.
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(MEL)
     elif isinstance(value, date):
         dt = datetime.combine(value, time())
     else:

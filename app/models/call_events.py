@@ -67,5 +67,16 @@ class PinnedCall(db.Model):
 
     pinned_by = db.relationship("User", backref="pinned_calls", foreign_keys=[pinned_by_user_id])
 
+    @property
+    def pinned_at_local(self) -> datetime | None:
+        """Mel-local naive view of ``pinned_at`` for templates.
+
+        ``pinned_at`` is naive UTC (default ``datetime.utcnow``); the
+        format_dt template filter assumes "naive = already Mel", so
+        templates should use this property to display.
+        """
+        from app.template_filters import utc_to_mel_naive
+        return utc_to_mel_naive(self.pinned_at)
+
     def __repr__(self) -> str:
         return f"<PinnedCall sess={self.session_id} by={self.pinned_by_user_id}>"

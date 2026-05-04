@@ -253,14 +253,17 @@ class Customer360Service:
             except Exception:
                 pass
 
+            from app.template_filters import utc_to_mel_naive
             out.append({
                 # Use the actual contactId of the most recent leg (rather
                 # than the master_id used for grouping) so the call-details
                 # modal can look up the AI analysis row in BigQuery, which
                 # is keyed by contactId.
                 "session_id":       last.session_id,
-                "call_time":        first.received_at,
-                "_call_end":        last.received_at,
+                # call_event.received_at is naive UTC; the template filter
+                # convention is "naive = already Mel", so shift here.
+                "call_time":        utc_to_mel_naive(first.received_at),
+                "_call_end":        utc_to_mel_naive(last.received_at),
                 "direction":        direction,
                 "disposition":      disposition,
                 "duration_seconds": duration_s,
