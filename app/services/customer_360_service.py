@@ -111,9 +111,9 @@ class Customer360Service:
 
         ``history`` is the (possibly None) row from ``call_history_360`` that
         was loaded above. We:
-          * dedupe today's events into one row per session
+          * dedupe today's events into one row per session (master+overlap)
           * bump the totals (total_calls, connected_total, etc.)
-          * prepend today's sessions to last_5_calls (newest first), capped
+          * prepend today's sessions to recent_calls (newest first), capped
           * recompute last_call_date / days_since_last_call
 
         Tagged ``is_today: True`` per session so the template can mark them
@@ -138,7 +138,7 @@ class Customer360Service:
             "first_call_date": None,
             "last_call_date": None,
             "days_since_last_call": None,
-            "last_5_calls": [],
+            "recent_calls": [],
         }
 
         for call in today:
@@ -158,10 +158,11 @@ class Customer360Service:
                 if disp == key:
                     h[f"{key}_total"] = (h.get(f"{key}_total") or 0) + 1
 
-        # Sort today's newest-first and prepend; keep most recent 5 overall.
+        # Sort today's newest-first and prepend; keep most recent 100 overall
+        # (matches the BQ array cap so the template scrolls consistently).
         today_sorted = sorted(today, key=lambda c: c.get("call_time") or 0, reverse=True)
-        existing = h.get("last_5_calls") or []
-        h["last_5_calls"] = (today_sorted + existing)[:5]
+        existing = h.get("recent_calls") or h.get("last_5_calls") or []
+        h["recent_calls"] = (today_sorted + existing)[:100]
 
         # Recency
         from datetime import date
@@ -259,6 +260,7 @@ class Customer360Service:
                 # is keyed by contactId.
                 "session_id":       last.session_id,
                 "call_time":        first.received_at,
+                "_call_end":        last.received_at,
                 "direction":        direction,
                 "disposition":      disposition,
                 "duration_seconds": duration_s,
@@ -268,7 +270,12 @@ class Customer360Service:
                 "is_active":        not terminal,
             })
 
-        return out
+        # Cross-platform overlap merge: a single physical call can ring on
+        # CXone briefly then forward to a PBX line. The two legs have
+        # different session_ids and no shared masterContactId, but their
+        # time windows overlap. Walk in start-time order and merge any leg
+        # whose start is within 10s of the running max end-time.
+        return _merge_overlapping_legs(out)
 
     def _collect_skus(self, customers: list[dict]) -> list[str]:
         """Walk the customer rows and gather every distinct SKU we'll display."""
@@ -693,6 +700,73 @@ class Customer360Service:
 
 # Global singleton, mirroring purchase_orders_service.
 customer_360_service = Customer360Service()
+
+
+# ---------------------------------------------------------------------------
+# Cross-platform overlap merge
+# ---------------------------------------------------------------------------
+
+def _merge_overlapping_legs(entries: list[dict]) -> list[dict]:
+    """Merge same-phone legs whose time windows overlap, regardless of source.
+
+    A single physical call can ring on CXone briefly (e.g. 9 seconds)
+    before forwarding to a PBX line where it's actually answered for
+    several minutes. CXone and PBX track these as wholly separate
+    sessions with no shared identifier — the only signal they're the
+    same call is that their time windows overlap.
+
+    Walks ``entries`` in start-time order and clusters legs whose
+    ``call_time`` is within 10 seconds of the running max end-time. The
+    leg with the longest ``duration_seconds`` per cluster wins (the
+    platform that actually had the conversation; the bouncing leg is
+    typically very short). The 10s buffer absorbs minor clock skew
+    between PBX webhooks and the cxone-poller.
+    """
+    if not entries:
+        return entries
+    from datetime import timedelta
+
+    # Group by (phone-equivalent) — entries here are already for the
+    # same phone, so we just sort and run the gap-and-island walk.
+    sorted_entries = sorted(entries, key=lambda c: c.get("call_time") or 0)
+    clusters: list[list[dict]] = []
+    current: list[dict] = []
+    running_max_end = None
+    BUFFER = timedelta(seconds=10)
+
+    for e in sorted_entries:
+        start = e.get("call_time")
+        end = e.get("_call_end") or start
+        if not current:
+            current = [e]
+            running_max_end = end
+            continue
+        if start is None or running_max_end is None or start <= running_max_end + BUFFER:
+            current.append(e)
+            if end and end > running_max_end:
+                running_max_end = end
+        else:
+            clusters.append(current)
+            current = [e]
+            running_max_end = end
+    if current:
+        clusters.append(current)
+
+    out: list[dict] = []
+    for cluster in clusters:
+        if len(cluster) == 1:
+            out.append(cluster[0])
+            continue
+        # Pick the leg with the longest duration as primary
+        primary = max(cluster, key=lambda c: c.get("duration_seconds") or 0)
+        # Carry a hint that this was a multi-platform / multi-leg call
+        primary = dict(primary)
+        primary["leg_count"] = len(cluster)
+        primary["is_transferred"] = True
+        out.append(primary)
+    # Newest first for the UI
+    out.sort(key=lambda c: c.get("call_time") or 0, reverse=True)
+    return out
 
 
 def _row_to_dict(row) -> Optional[dict]:

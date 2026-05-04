@@ -241,7 +241,9 @@ def active_calls():
 
 
 def _collapse_to_master(rows: list) -> list[tuple]:
-    """Group leg rows by ``COALESCE(master_session_id, session_id)``.
+    """Group leg rows by ``COALESCE(master_session_id, session_id)``,
+    then run a second pass that merges same-phone legs whose time
+    windows overlap (cross-platform CXone↔PBX forwards).
 
     Returns ``[(primary_event, state, seconds_since_end, leg_count), …]``
     where:
@@ -253,30 +255,83 @@ def _collapse_to_master(rows: list) -> list[tuple]:
         else "recently_ended" (within ``ENDED_LINGER_SECONDS``) — masters
         whose every leg ended longer ago than the linger window are
         dropped from the visible list.
-      * ``leg_count`` is the number of legs in this master group; the
-        template renders a "transferred" hint when > 1.
+      * ``leg_count`` is the number of legs collapsed into this card.
+        The template renders a "transferred (N legs)" hint when > 1.
     """
     from collections import defaultdict
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
+    # Pass 1: group by master_session_id (CXone transfers).
     legs_by_master: dict = defaultdict(list)
     for r in rows:
         key = r.master_session_id or r.session_id
         legs_by_master[key].append(r)
 
     now = datetime.utcnow()
-    out = []
+    by_master = []   # [(primary, state, secs_end, leg_count, phone_norm)]
     for legs in legs_by_master.values():
         non_terminal = [r for r in legs if not _is_terminal(r.event_type)]
         if non_terminal:
             primary = max(non_terminal, key=lambda r: r.received_at)
-            out.append((primary, "active", 0, len(legs)))
+            state, secs_end = "active", 0
         else:
             primary = max(legs, key=lambda r: r.received_at)
             secs_end = (now - primary.received_at).total_seconds()
-            if secs_end <= ENDED_LINGER_SECONDS:
-                out.append((primary, "recently_ended", secs_end, len(legs)))
-    # Newest first
+            if secs_end > ENDED_LINGER_SECONDS:
+                continue
+            state = "recently_ended"
+        # Track the earliest event in this group as the call's start —
+        # used by the overlap-merge pass below.
+        first_at = min(r.received_at for r in legs)
+        last_at  = max(r.received_at for r in legs)
+        # Normalise the phone so CXone (+61…) and PBX (0…) entries collide.
+        raw = primary.from_number or ""
+        phone_norm = "0" + raw[3:] if raw.startswith("+61") else raw
+        by_master.append({
+            "primary": primary, "state": state, "secs_end": secs_end,
+            "leg_count": len(legs), "phone_norm": phone_norm,
+            "first_at": first_at, "last_at": last_at,
+        })
+
+    # Pass 2: merge same-phone groups whose time windows overlap (within
+    # a 10s buffer). This catches CXone-then-PBX forwards where both
+    # platforms tracked the same physical call independently.
+    by_master.sort(key=lambda g: (g["phone_norm"], g["first_at"]))
+    BUFFER = timedelta(seconds=10)
+    clusters: list[list[dict]] = []
+    current: list[dict] = []
+    running_max_end = None
+    current_phone = None
+    for g in by_master:
+        if (current_phone is None
+                or g["phone_norm"] != current_phone
+                or g["first_at"] > (running_max_end + BUFFER)):
+            if current:
+                clusters.append(current)
+            current = [g]
+            current_phone = g["phone_norm"]
+            running_max_end = g["last_at"]
+        else:
+            current.append(g)
+            if g["last_at"] > running_max_end:
+                running_max_end = g["last_at"]
+    if current:
+        clusters.append(current)
+
+    out = []
+    for cluster in clusters:
+        if len(cluster) == 1:
+            g = cluster[0]
+            out.append((g["primary"], g["state"], g["secs_end"], g["leg_count"]))
+            continue
+        # Multi-leg cluster: pick the most-active leg as primary
+        # (active over ended; among ended pick most recent).
+        active = [g for g in cluster if g["state"] == "active"]
+        chosen = max(active or cluster, key=lambda g: g["primary"].received_at)
+        leg_count = sum(g["leg_count"] for g in cluster)
+        out.append((chosen["primary"], chosen["state"], chosen["secs_end"], leg_count))
+
+    # Newest first for the drawer
     out.sort(key=lambda x: x[0].received_at, reverse=True)
     return out
 
@@ -573,29 +628,73 @@ def recent_calls():
         .all()
     )
 
-    # Collapse legs that share a masterContactId (CXone transfers) into
-    # a single row. PBX events have NULL master_session_id and fall back
-    # to session_id, so they're effectively passed through unchanged.
+    # Pass 1 — collapse legs that share a masterContactId (CXone transfers).
     from collections import defaultdict
+    from datetime import timedelta
     legs_by_master: dict = defaultdict(list)
     for evt, first_at in rows:
         key = evt.master_session_id or evt.session_id
         legs_by_master[key].append((evt, first_at))
 
     pinned_session_ids = _pinned_session_ids_global()
-    collapsed = []
+    by_master = []
     for legs in legs_by_master.values():
-        # All legs ended? Then this master is "ended". Pick the latest leg
-        # as the representative one — that's typically the receiving agent
-        # of a transfer (and has the longest agentSeconds).
+        # /recent only shows fully-ended calls; if any leg is still alive
+        # the master belongs to /active.
         if not all(_is_terminal(evt.event_type) for evt, _ in legs):
-            continue  # still active; belongs in /active, not /recent
+            continue
         primary_evt, primary_first = max(legs, key=lambda x: x[0].received_at)
-        # Use the earliest first_at across all legs so the displayed
-        # duration spans the whole call (transfer included), not just
-        # the last leg.
         earliest_first = min((fa for _, fa in legs if fa), default=primary_first)
-        collapsed.append((primary_evt, earliest_first, len(legs)))
+        # Phone normalised so CXone (+61…) and PBX (0…) cluster together.
+        raw = primary_evt.from_number or ""
+        phone_norm = "0" + raw[3:] if raw.startswith("+61") else raw
+        by_master.append({
+            "primary": primary_evt,
+            "first_at": earliest_first,
+            "last_at": primary_evt.received_at,
+            "leg_count": len(legs),
+            "phone_norm": phone_norm,
+        })
+
+    # Pass 2 — merge same-phone groups whose time windows overlap (within
+    # 10s). Catches CXone-rings-then-forwards-to-PBX scenarios where the
+    # two platforms tracked the same physical call as separate sessions.
+    by_master.sort(key=lambda g: (g["phone_norm"], g["first_at"] or g["last_at"]))
+    BUFFER = timedelta(seconds=10)
+    clusters: list[list[dict]] = []
+    current: list[dict] = []
+    running_max_end = None
+    current_phone = None
+    for g in by_master:
+        start = g["first_at"] or g["last_at"]
+        if (current_phone is None
+                or g["phone_norm"] != current_phone
+                or start > (running_max_end + BUFFER)):
+            if current:
+                clusters.append(current)
+            current = [g]
+            current_phone = g["phone_norm"]
+            running_max_end = g["last_at"]
+        else:
+            current.append(g)
+            if g["last_at"] > running_max_end:
+                running_max_end = g["last_at"]
+    if current:
+        clusters.append(current)
+
+    collapsed = []
+    for cluster in clusters:
+        if len(cluster) == 1:
+            g = cluster[0]
+            collapsed.append((g["primary"], g["first_at"], g["leg_count"]))
+            continue
+        # Multi-platform cluster: pick the longest leg as primary (the
+        # platform where the conversation actually happened), keep the
+        # earliest first_at so the duration spans the whole call.
+        chosen = max(cluster, key=lambda g: (g["last_at"] - (g["first_at"] or g["last_at"])).total_seconds())
+        earliest = min((g["first_at"] for g in cluster if g["first_at"]), default=chosen["first_at"])
+        leg_count = sum(g["leg_count"] for g in cluster)
+        collapsed.append((chosen["primary"], earliest, leg_count))
 
     # Newest first, cap at 20
     collapsed.sort(key=lambda x: x[0].received_at, reverse=True)
