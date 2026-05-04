@@ -1,15 +1,20 @@
-{# Right-side live-calls drawer — outer frame.
+{# Right-side live-calls drawer — three-section accordion frame.
 
-   State (`liveCallsDrawerOpen`) lives in the body's Alpine scope so the
-   main content wrapper in base.html can shift its right padding when the
-   drawer is open vs collapsed.
+   Sections (fixed order, only ONE expanded at a time):
+     1. Live Calls    — currently in-flight, polled every 3s
+     2. Recent Calls  — last 20 ended sessions, polled every 10s
+     3. Pin Calls     — agent-pinned calls, polled when pin-changed event fires
 
-   Body content (#live-calls-drawer-body) is HTMX-polled every 3s from
-   /api/calls/active and re-rendered server-side. #}
+   Each section's body is HTMX-fetched from its own endpoint.
+   The expanded section gets ``flex-1`` so it absorbs all leftover height,
+   collapsed sections show only their header. State is saved to localStorage
+   so the agent's choice persists across navigation.
+
+   Drawer open/close is in the body's Alpine scope (set in base.html). #}
 
 <div class="fixed right-0 top-0 bottom-0 z-30 flex">
 
-  {# Edge tab — always visible. Clicking toggles the drawer open/closed. #}
+  {# Edge tab — toggles the whole drawer #}
   <button type="button"
           @click="liveCallsDrawerOpen = !liveCallsDrawerOpen"
           class="self-center -ml-3 flex h-16 w-7 items-center justify-center rounded-l-md border border-r-0 border-slate-200 bg-white shadow text-slate-500 hover:text-brand-700"
@@ -17,26 +22,97 @@
     <i class="fas text-xs" :class="liveCallsDrawerOpen ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
   </button>
 
-  {# Drawer body. #}
+  {# Drawer body #}
   <aside class="flex h-full w-72 flex-col border-l border-slate-200 bg-white shadow-xl"
          x-show="liveCallsDrawerOpen" x-cloak
+         x-data="{
+           openSection: localStorage.getItem('liveCallsOpenSection') || 'live'
+         }"
+         x-init="$watch('openSection', v => localStorage.setItem('liveCallsOpenSection', v))"
          x-transition:enter="transition transform duration-200"
          x-transition:enter-start="translate-x-full"
          x-transition:enter-end="translate-x-0"
          x-transition:leave="transition transform duration-150"
          x-transition:leave-start="translate-x-0"
-         x-transition:leave-end="translate-x-full">
+         x-transition:leave-end="translate-x-full"
+         {# Listen for the cross-section pin-changed event to refresh Pin Calls. #}
+         @pin-changed.window="$dispatch('refresh-pin-calls')">
 
-    {# This div is what HTMX swaps every 3 seconds. The endpoint returns
-       partials/live_calls_drawer.html. On boot we trigger one immediate
-       fetch via load + then poll every 3s. #}
-    <div id="live-calls-drawer-body" class="flex h-full flex-col"
-         hx-get="{{ url_for('live_calls.active_calls') }}"
-         hx-trigger="load, every 3s"
-         hx-swap="innerHTML">
-      <div class="flex flex-1 items-center justify-center text-xs text-slate-400">
-        <i class="fas fa-circle-notch fa-spin mr-2"></i> Loading…
+    {# ============================================================
+       Section 1: LIVE CALLS
+       ============================================================ #}
+    <section class="flex flex-col border-b border-slate-200 min-h-0"
+             :class="openSection === 'live' ? 'flex-1' : ''">
+      <button type="button"
+              @click="openSection = 'live'"
+              class="flex h-12 flex-shrink-0 items-center justify-between px-4 text-left transition hover:bg-slate-50"
+              :class="openSection === 'live' ? 'bg-white' : 'bg-slate-50'">
+        <span class="flex items-center gap-2">
+          <i class="fas fa-circle text-[8px] text-emerald-500"></i>
+          <span class="text-sm font-semibold text-slate-900">Live Calls</span>
+        </span>
+        <i class="fas text-xs text-slate-400" :class="openSection === 'live' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+      <div x-show="openSection === 'live'" x-cloak class="flex-1 overflow-y-auto"
+           id="live-section-body"
+           hx-get="{{ url_for('live_calls.active_calls') }}"
+           hx-trigger="load, every 3s, refresh-pin-calls from:body delay:200ms"
+           hx-swap="innerHTML">
+        <div class="flex flex-1 items-center justify-center text-xs text-slate-400 p-6">
+          <i class="fas fa-circle-notch fa-spin mr-2"></i> Loading…
+        </div>
       </div>
-    </div>
+    </section>
+
+    {# ============================================================
+       Section 2: RECENT CALLS
+       ============================================================ #}
+    <section class="flex flex-col border-b border-slate-200 min-h-0"
+             :class="openSection === 'recent' ? 'flex-1' : ''">
+      <button type="button"
+              @click="openSection = 'recent'"
+              class="flex h-12 flex-shrink-0 items-center justify-between px-4 text-left transition hover:bg-slate-50"
+              :class="openSection === 'recent' ? 'bg-white' : 'bg-slate-50'">
+        <span class="flex items-center gap-2">
+          <i class="fas fa-clock-rotate-left text-[11px] text-slate-500"></i>
+          <span class="text-sm font-semibold text-slate-900">Recent Calls</span>
+        </span>
+        <i class="fas text-xs text-slate-400" :class="openSection === 'recent' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+      <div x-show="openSection === 'recent'" x-cloak class="flex-1 overflow-y-auto"
+           hx-get="{{ url_for('live_calls.recent_calls') }}"
+           hx-trigger="load, every 10s, refresh-pin-calls from:body delay:200ms"
+           hx-swap="innerHTML">
+        <div class="flex flex-1 items-center justify-center text-xs text-slate-400 p-6">
+          <i class="fas fa-circle-notch fa-spin mr-2"></i> Loading…
+        </div>
+      </div>
+    </section>
+
+    {# ============================================================
+       Section 3: PIN CALLS
+       ============================================================ #}
+    <section class="flex flex-col min-h-0"
+             :class="openSection === 'pin' ? 'flex-1' : ''">
+      <button type="button"
+              @click="openSection = 'pin'"
+              class="flex h-12 flex-shrink-0 items-center justify-between px-4 text-left transition hover:bg-slate-50"
+              :class="openSection === 'pin' ? 'bg-white' : 'bg-slate-50'">
+        <span class="flex items-center gap-2">
+          <i class="fas fa-thumbtack text-[11px] text-amber-500"></i>
+          <span class="text-sm font-semibold text-slate-900">Pin Calls</span>
+        </span>
+        <i class="fas text-xs text-slate-400" :class="openSection === 'pin' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+      <div x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto"
+           hx-get="{{ url_for('live_calls.pinned_calls') }}"
+           hx-trigger="load, refresh-pin-calls from:body delay:200ms"
+           hx-swap="innerHTML">
+        <div class="flex flex-1 items-center justify-center text-xs text-slate-400 p-6">
+          <i class="fas fa-circle-notch fa-spin mr-2"></i> Loading…
+        </div>
+      </div>
+    </section>
+
   </aside>
 </div>

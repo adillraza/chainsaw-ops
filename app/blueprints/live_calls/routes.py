@@ -5,11 +5,12 @@ import json
 import logging
 
 from flask import Response, current_app, jsonify, request
+from flask_login import current_user, login_required
 
 from app.auth.abilities import require_capability
 from app.blueprints.live_calls import live_calls_bp
 from app.extensions import db
-from app.models.call_events import CallEvent
+from app.models.call_events import CallEvent, PinnedCall
 
 log = logging.getLogger(__name__)
 
@@ -230,10 +231,11 @@ def active_calls():
             "events": [_serialise_active(r) for r, _, _ in visible],
         })
 
+    pinned_set = _pinned_session_ids_for_user()
     from flask import render_template
     return render_template(
         "partials/live_calls_drawer.html",
-        active=[_active_view_model(r, state, secs_end) for r, state, secs_end in visible],
+        active=[_active_view_model(r, state, secs_end, pinned_set) for r, state, secs_end in visible],
         active_count=sum(1 for _, s, _ in visible if s == "active"),
         ended_count=sum(1 for _, s, _ in visible if s == "recently_ended"),
     )
@@ -258,7 +260,7 @@ def _serialise_active(evt) -> dict:
     }
 
 
-def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0) -> dict:
+def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0, pinned_set: set | None = None) -> dict:
     """Template-friendly view model — adds a normalised AU local phone +
     a short "ringing for X" duration string for the drawer card.
 
@@ -302,6 +304,7 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0)
         "seconds_since_end": int(seconds_since_end),
         "is_ringing":   state == "active" and status_code in ("Setup", "Proceeding", "Alerting"),
         "is_connected": state == "active" and status_code in ("Answered", "Hold"),
+        "is_pinned":    bool(pinned_set and evt.session_id in pinned_set),
     }
 
 
@@ -431,3 +434,184 @@ def reparse_all_call_events():
             n += 1
     db.session.commit()
     return n, len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Recent calls section — last 20 ended sessions
+# ---------------------------------------------------------------------------
+
+@live_calls_bp.route("/recent", methods=["GET"])
+@require_capability("support.calls.view")
+def recent_calls():
+    """Return the last 20 *ended* call sessions (one row per session_id).
+
+    Distinct from /active (which only shows in-flight). Recent shows calls
+    whose latest event is a Disconnected — the agent's "I just hung up,
+    let me look up the customer" buffer.
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, and_
+    from flask import render_template
+
+    since = datetime.utcnow() - timedelta(hours=12)
+
+    # Latest event per session
+    latest = (
+        db.session.query(
+            CallEvent.session_id.label("sid"),
+            func.max(CallEvent.received_at).label("latest_at"),
+            func.min(CallEvent.received_at).label("first_at"),
+        )
+        .filter(CallEvent.received_at > since)
+        .filter(CallEvent.session_id.isnot(None))
+        .group_by(CallEvent.session_id)
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(CallEvent, latest.c.first_at)
+        .join(
+            latest,
+            and_(
+                CallEvent.session_id == latest.c.sid,
+                CallEvent.received_at == latest.c.latest_at,
+            ),
+        )
+        .order_by(latest.c.latest_at.desc())
+        .all()
+    )
+
+    # Keep only Disconnected (i.e. ended) and cap at 20.
+    pinned_session_ids = _pinned_session_ids_for_user()
+    ended = [
+        _recent_view_model(evt, first_at, pinned_session_ids)
+        for evt, first_at in rows
+        if _is_terminal(evt.event_type)
+    ][:20]
+
+    return render_template("partials/live_calls_recent.html", recent=ended)
+
+
+def _recent_view_model(evt, first_at, pinned_session_ids: set) -> dict:
+    """Build a card view model for a recently-ended session."""
+    raw_phone = evt.from_number or ""
+    phone = "0" + raw_phone[3:] if raw_phone.startswith("+61") else raw_phone
+    raw_to = evt.to_number or ""
+    to_local = "0" + raw_to[3:] if raw_to.startswith("+61") else raw_to
+    direction = (evt.event_type or "").split(":", 1)[0] if ":" in (evt.event_type or "") else None
+
+    duration_s = int((evt.received_at - first_at).total_seconds()) if first_at else 0
+
+    # Pull agentName from body if it's there
+    agent_name = None
+    try:
+        from urllib.parse import parse_qs as _parse_qs
+        raw = evt.body_json or ""
+        if raw.startswith("{"):
+            body = json.loads(raw)
+        else:
+            parsed = _parse_qs(raw, keep_blank_values=True)
+            body = {k: (v[0] if v else "") for k, v in parsed.items()}
+        agent_name = (body.get("agentName") or "").strip() or None
+    except Exception:
+        body = {}
+
+    return {
+        "session_id":    evt.session_id,
+        "phone":         phone,
+        "to_local":      to_local,
+        "direction":     direction,
+        "source":        evt.source,
+        "ended_at":      evt.received_at,
+        "duration_s":    duration_s,
+        "agent_name":    agent_name,
+        "is_pinned":     evt.session_id in pinned_session_ids,
+    }
+
+
+def _pinned_session_ids_for_user() -> set:
+    if not getattr(current_user, "is_authenticated", False):
+        return set()
+    rows = PinnedCall.query.with_entities(PinnedCall.session_id).filter_by(user_id=current_user.id).all()
+    return {r[0] for r in rows}
+
+
+# ---------------------------------------------------------------------------
+# Pin Calls section
+# ---------------------------------------------------------------------------
+
+@live_calls_bp.route("/pinned", methods=["GET"])
+@require_capability("support.calls.view")
+def pinned_calls():
+    """List the current agent's pinned calls, newest pin first."""
+    from flask import render_template
+    rows = (
+        PinnedCall.query
+        .filter_by(user_id=current_user.id)
+        .order_by(PinnedCall.pinned_at.desc())
+        .all()
+    )
+    return render_template("partials/live_calls_pinned.html", pinned=rows)
+
+
+@live_calls_bp.route("/pin/<path:session_id>", methods=["POST"])
+@require_capability("support.calls.view")
+def pin_call(session_id: str):
+    """Pin a call. Idempotent. Snapshots display fields from call_event."""
+    existing = PinnedCall.query.filter_by(user_id=current_user.id, session_id=session_id).first()
+    if existing:
+        return ("", 204)
+
+    # Snapshot from the latest call_event row for this session
+    evt = (
+        CallEvent.query
+        .filter(CallEvent.session_id == session_id)
+        .order_by(CallEvent.received_at.desc())
+        .first()
+    )
+    agent_name = None
+    skill = None
+    if evt:
+        try:
+            from urllib.parse import parse_qs as _parse_qs
+            raw = evt.body_json or ""
+            if raw.startswith("{"):
+                body = json.loads(raw)
+            else:
+                parsed = _parse_qs(raw, keep_blank_values=True)
+                body = {k: (v[0] if v else "") for k, v in parsed.items()}
+            agent_name = (body.get("agentName") or "").strip() or None
+            skill = body.get("skill") or None
+        except Exception:
+            pass
+
+    direction = None
+    status_at_pin = None
+    if evt and evt.event_type:
+        if ":" in evt.event_type:
+            direction, status_at_pin = evt.event_type.split(":", 1)
+        else:
+            status_at_pin = evt.event_type
+
+    pin = PinnedCall(
+        user_id=current_user.id,
+        session_id=session_id,
+        phone=evt.from_number if evt else None,
+        to_number=evt.to_number if evt else None,
+        direction=direction,
+        status_at_pin=status_at_pin,
+        source=evt.source if evt else None,
+        agent_name=agent_name,
+        skill=skill,
+    )
+    db.session.add(pin)
+    db.session.commit()
+    return ("", 204)
+
+
+@live_calls_bp.route("/pin/<path:session_id>", methods=["DELETE"])
+@require_capability("support.calls.view")
+def unpin_call(session_id: str):
+    PinnedCall.query.filter_by(user_id=current_user.id, session_id=session_id).delete()
+    db.session.commit()
+    return ("", 204)

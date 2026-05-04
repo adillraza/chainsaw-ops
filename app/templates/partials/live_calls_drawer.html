@@ -1,113 +1,109 @@
-{# Live-calls drawer body — swapped in by HTMX every 3 seconds.
-   The outer drawer frame (positioning, header, expand/collapse state) lives
-   in live_calls_drawer_frame.html which is injected once into base.html.
-   This partial is just the contents that change as calls come and go. #}
+{# Section body for "Live Calls" — swapped in by HTMX every 3s.
+   Outer accordion frame (header, expand/collapse) lives in
+   live_calls_drawer_frame.html. This partial is the scrollable body. #}
 
-<div class="flex h-16 items-center justify-between border-b border-slate-200 px-4">
-  <div>
-    <h3 class="text-sm font-semibold text-slate-900">Live calls</h3>
-    <p class="text-[11px] text-slate-500">
-      {% if active_count and ended_count %}
-        {{ active_count }} in flight · {{ ended_count }} just ended
-      {% elif active_count %}
-        {{ active_count }} in flight
-      {% elif ended_count %}
-        {{ ended_count }} just ended
-      {% else %}
-        none right now
-      {% endif %}
-    </p>
-  </div>
-  <span class="relative flex h-3 w-3">
-    {% if active_count %}
-      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
-    {% endif %}
-    <span class="relative inline-flex h-3 w-3 rounded-full {% if active_count %}bg-emerald-500{% elif ended_count %}bg-slate-300{% else %}bg-slate-200{% endif %}"></span>
-  </span>
-</div>
+<div class="flex h-full flex-col">
+  {% if not active %}
+    <div class="flex flex-1 flex-col items-center justify-center px-4 py-10 text-center text-xs text-slate-400">
+      <i class="fas fa-phone-slash text-3xl text-slate-200"></i>
+      <p class="mt-3">No active calls.</p>
+      <p class="mt-0.5 text-[11px] text-slate-300">Updates every 3 seconds.</p>
+    </div>
+  {% else %}
+    {# Sub-header showing counts #}
+    <div class="flex h-9 flex-shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 px-4 text-[11px] text-slate-500">
+      <span>
+        {% if active_count and ended_count %}{{ active_count }} in flight · {{ ended_count }} just ended
+        {% elif active_count %}{{ active_count }} in flight
+        {% elif ended_count %}{{ ended_count }} just ended
+        {% endif %}
+      </span>
+      <span class="relative flex h-2 w-2">
+        {% if active_count %}<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>{% endif %}
+        <span class="relative inline-flex h-2 w-2 rounded-full {% if active_count %}bg-emerald-500{% elif ended_count %}bg-slate-300{% else %}bg-slate-200{% endif %}"></span>
+      </span>
+    </div>
 
-{% if not active %}
-  <div class="flex flex-col items-center justify-center py-12 px-4 text-center text-xs text-slate-400">
-    <i class="fas fa-phone-slash text-3xl text-slate-200"></i>
-    <p class="mt-3">No active calls.</p>
-    <p class="mt-0.5 text-[11px] text-slate-300">Updates every 3 seconds.</p>
-  </div>
-{% else %}
-  <ul class="divide-y divide-slate-100 max-h-[calc(100vh-12rem)] overflow-y-auto">
-    {% for call in active %}
-      {# Card colour scheme:
-           is_ringing       → amber pulse, full opacity
-           is_connected     → emerald, full opacity
-           recently_ended   → slate, ~55% opacity #}
-      <li class="{{ 'opacity-60' if call.is_recently_ended else '' }}">
-        <a href="{{ url_for('customer_360.card', phone=call.phone) }}"
-           class="block px-4 py-4 transition
-                  {% if call.is_ringing %}bg-amber-50/40 hover:bg-amber-50
-                  {% elif call.is_connected %}bg-emerald-50/40 hover:bg-emerald-50
-                  {% elif call.is_recently_ended %}hover:bg-slate-100
-                  {% else %}hover:bg-brand-50{% endif %}">
+    <ul class="flex-1 divide-y divide-slate-100 overflow-y-auto">
+      {% for call in active %}
+        <li class="{{ 'opacity-60' if call.is_recently_ended else '' }}">
+          <div class="relative">
+            {# Pin button — top-right corner, click to pin / unpin #}
+            <button type="button"
+                    class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md text-xs transition
+                           {% if call.is_pinned %}text-amber-500 hover:bg-amber-50
+                           {% else %}text-slate-300 hover:bg-slate-100 hover:text-amber-500{% endif %}"
+                    title="{{ 'Unpin this call' if call.is_pinned else 'Pin this call for follow-up' }}"
+                    {% if call.is_pinned %}
+                      hx-delete="{{ url_for('live_calls.unpin_call', session_id=call.session_id) }}"
+                    {% else %}
+                      hx-post="{{ url_for('live_calls.pin_call', session_id=call.session_id) }}"
+                    {% endif %}
+                    hx-swap="none"
+                    hx-on::after-request="window.dispatchEvent(new CustomEvent('pin-changed'))">
+              <i class="fas fa-thumbtack {% if call.is_pinned %}{% else %}fa-rotate-by{% endif %}"
+                 {% if not call.is_pinned %}style="--fa-rotate-angle: 30deg;"{% endif %}></i>
+            </button>
 
-          {# Top row — status pill + elapsed timer #}
-          <div class="flex items-center justify-between gap-2">
-            {% if call.is_ringing %}
-              <span class="relative inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-                <span class="absolute -left-1 -top-1 flex h-2.5 w-2.5">
-                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
-                  <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+            <a href="{{ url_for('customer_360.card', phone=call.phone) }}"
+               class="block px-4 py-3 pr-10 transition
+                      {% if call.is_ringing %}bg-amber-50/40 hover:bg-amber-50
+                      {% elif call.is_connected %}bg-emerald-50/40 hover:bg-emerald-50
+                      {% elif call.is_recently_ended %}hover:bg-slate-100
+                      {% else %}hover:bg-brand-50{% endif %}">
+
+              <div class="flex items-center justify-between gap-2">
+                {% if call.is_ringing %}
+                  <span class="relative inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                    <span class="absolute -left-1 -top-1 flex h-2.5 w-2.5">
+                      <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
+                      <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+                    </span>
+                    <span class="ml-2">Ringing · {{ call.status_code }}</span>
+                  </span>
+                {% elif call.is_connected %}
+                  <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                    <i class="fas fa-circle text-[7px] text-emerald-600 mr-1"></i>
+                    On call · {{ call.status_code }}
+                  </span>
+                {% elif call.is_recently_ended %}
+                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    <i class="fas fa-phone-slash text-[10px] text-slate-400 mr-1"></i>
+                    Ended {{ call.seconds_since_end }}s ago
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                    {{ call.status_code or 'Unknown' }}
+                  </span>
+                {% endif %}
+
+                <span class="text-[10px] text-slate-400 whitespace-nowrap">
+                  {% if call.is_recently_ended %}{# already shown in pill #}
+                  {% elif call.seconds_old < 60 %}{{ call.seconds_old }}s
+                  {% elif call.seconds_old < 3600 %}{{ (call.seconds_old // 60) }}m
+                  {% else %}{{ (call.seconds_old // 3600) }}h{% endif %}
                 </span>
-                <span class="ml-2">Ringing · {{ call.status_code }}</span>
-              </span>
-            {% elif call.is_connected %}
-              <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
-                <i class="fas fa-circle text-[7px] text-emerald-600 mr-1"></i>
-                On call · {{ call.status_code }}
-              </span>
-            {% elif call.is_recently_ended %}
-              <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <i class="fas fa-phone-slash text-[10px] text-slate-400 mr-1"></i>
-                Ended {{ call.seconds_since_end }}s ago
-              </span>
-            {% else %}
-              <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                {{ call.status_code or 'Unknown' }}
-              </span>
-            {% endif %}
+              </div>
 
-            <span class="text-[10px] text-slate-400 whitespace-nowrap">
-              {% if call.is_recently_ended %}
-                {# already shown in pill #}
-              {% elif call.seconds_old < 60 %}
-                {{ call.seconds_old }}s
-              {% elif call.seconds_old < 3600 %}
-                {{ (call.seconds_old // 60) }}m
-              {% else %}
-                {{ (call.seconds_old // 3600) }}h
-              {% endif %}
-            </span>
-          </div>
+              <div class="mt-2 font-mono text-lg font-medium tracking-tight text-slate-800">
+                {{ call.phone or '—' }}
+              </div>
 
-          {# Caller phone — the headline. Lighter than before; medium weight. #}
-          <div class="mt-2 font-mono text-lg font-medium tracking-tight text-slate-800">
-            {{ call.phone or '—' }}
+              <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                <span class="whitespace-nowrap">
+                  {% if call.direction == 'Inbound' %}<i class="fas fa-phone-arrow-down-left text-emerald-500"></i> incoming
+                  {% elif call.direction == 'Outbound' %}<i class="fas fa-phone-arrow-up-right text-sky-500"></i> outbound{% endif %}
+                </span>
+                {% if call.to_local %}
+                  <span class="truncate font-mono text-[11px] text-slate-500" title="dialed {{ call.to_number }}">
+                    → {{ call.to_local }}
+                  </span>
+                {% endif %}
+              </div>
+            </a>
           </div>
-
-          {# Footer row — direction · WHICH JJ NUMBER WAS DIALED. #}
-          <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-            <span class="whitespace-nowrap">
-              {% if call.direction == 'Inbound' %}
-                <i class="fas fa-phone-arrow-down-left text-emerald-500"></i> incoming
-              {% elif call.direction == 'Outbound' %}
-                <i class="fas fa-phone-arrow-up-right text-sky-500"></i> outbound
-              {% endif %}
-            </span>
-            {% if call.to_local %}
-              <span class="truncate font-mono text-[11px] text-slate-500" title="dialed {{ call.to_number }}">
-                → {{ call.to_local }}
-              </span>
-            {% endif %}
-          </div>
-        </a>
-      </li>
-    {% endfor %}
-  </ul>
-{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

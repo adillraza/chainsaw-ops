@@ -159,33 +159,37 @@
   {% endif %}
 
   {# ----------------------------------------------------------------- #}
+  {# QUICK STATS — full-width strip, sits between header and grid     #}
+  {# ----------------------------------------------------------------- #}
+  {% if primary %}
+    <section class="mb-4">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {% set stats = [
+          ('Lifetime',       '$' ~ ('%.0f' % (primary.lifetime_value or 0)), 'fa-dollar-sign'),
+          ('Orders',         primary.lifetime_order_count or 0,              'fa-cart-shopping'),
+          ('AOV',            '$' ~ ('%.0f' % (primary.avg_order_value or 0)),'fa-chart-line'),
+          ('Customer since', primary.customer_since | format_dt('date'),     'fa-flag-checkered')
+        ] %}
+        {% for label, value, icon in stats %}
+          <div class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <div class="text-[11px] uppercase tracking-wide text-slate-500">{{ label }}</div>
+            <div class="mt-0.5 flex items-center justify-between">
+              <span class="text-lg font-semibold text-slate-900">{{ value }}</span>
+              <i class="fas {{ icon }} text-slate-300"></i>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {# ----------------------------------------------------------------- #}
   {# 2-COLUMN GRID — left: transactional · right: call signal          #}
   {# ----------------------------------------------------------------- #}
   <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-    {# === LEFT: profile + recent order + RMAs + REX ================ #}
+    {# === LEFT: recent order + past orders + RMAs + REX ============= #}
     <div class="space-y-4">
-
-      {# Quick stats ----------------------------------------------- #}
-      {% if primary %}
-        <div class="grid grid-cols-2 gap-3">
-          {% set stats = [
-            ('Lifetime',     '$' ~ ('%.0f' % (primary.lifetime_value or 0)), 'fa-dollar-sign'),
-            ('Orders',       primary.lifetime_order_count or 0,              'fa-cart-shopping'),
-            ('AOV',          '$' ~ ('%.0f' % (primary.avg_order_value or 0)),'fa-chart-line'),
-            ('Customer since', primary.customer_since | format_dt('date'),  'fa-flag-checkered')
-          ] %}
-          {% for label, value, icon in stats %}
-            <div class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-              <div class="text-[11px] uppercase tracking-wide text-slate-500">{{ label }}</div>
-              <div class="mt-0.5 flex items-center justify-between">
-                <span class="text-lg font-semibold text-slate-900">{{ value }}</span>
-                <i class="fas {{ icon }} text-slate-300"></i>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-      {% endif %}
 
       {# Recent order ------------------------------------------------ #}
       {% if primary and primary.recent_order_id %}
