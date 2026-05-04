@@ -79,22 +79,12 @@ Rule layer on top of phases 1–3. Read by the UI as a single column on the
 | Customer badge | rule-based | `gold` / `regular` / `watchlist` / `new` / `lapsed` |
 | Risk flags | RMA rate, refund history, abandoned-call count | Watchlist signal cluster |
 
-### Phase 5 — Email (gated on the email project)
+### Phase 5+ — Email and stretch features
 
-| Block | Source | Notes |
-|---|---|---|
-| Sales-inbox thread count | future email pipeline | |
-| Recent email topics | future | AI-summarised |
-| Email sentiment trend | future | |
-
-### Phase 6 — "Magic" stretch features
-
-| Block | Source | Notes |
-|---|---|---|
-| Live transcription of *current* call | RC streaming + Vertex AI | Side panel, real-time |
-| Suggested next-best-action | LLM over full context | "Offer 10% off — they've had 2 RMAs in 6mo" |
-| Auto-draft follow-up email | LLM | One-click after-call |
-| Cross-channel timeline | calls + orders + emails + RMAs merged | Single chronological story |
+Moved to [`BACKLOG.md`](../BACKLOG.md). Includes the email-pipeline
+panels (sales-inbox count, AI-summarised topics, sentiment trend) and
+the "magic" stretch features (live transcription, next-best-action,
+auto-draft email, cross-channel timeline).
 
 ---
 
@@ -117,19 +107,10 @@ regardless of customer linkage. So even unknown numbers carry history:
 call-analyzer pipeline. If we've transcribed prior calls from this number we
 can summarise them by phone, not by customer.
 
-**4. Inline "Attach to customer" widget — the flywheel**
-A small search box on the card. Mid-call, the agent types name / email / order
-ID → quick search → picks the right customer → clicks "Link". Two effects:
-
-- Card flips into full Phase-1 view from that moment.
-- Mapping persists in a `phone_to_customer_override` table that the daily
-  `customer_360` model reads. Next time this number calls, the system already
-  knows.
-
-This is the **self-improving loop**: every agent-linked call permanently raises
-match coverage. Expected to claw back ~10–15 percentage points over the first
-few weeks of use without any Neto data cleanup. The remaining genuinely-new
-callers stay in unknown-mode — which is fine because that's what they are.
+**4. Inline "Attach to customer" widget** (flywheel) —
+see [`BACKLOG.md`](../BACKLOG.md). Mid-call agent linking turns every
+unknown-caller into a permanent mapping. Expected to claw back ~10–15
+percentage points of match rate without any Neto data cleanup.
 
 ---
 
@@ -184,24 +165,22 @@ Format consistency is excellent (RC always +61 E.164, Neto always 04…
 local — single normalisation), so the unmatched cohort is a data-coverage
 issue (number not on file), not a normalisation issue.
 
-Improving it without UI changes: pull phone numbers from `neto_orders` (not
-just `neto_customers`), pull from past call transcripts where the customer
-self-identified, and let agents link mid-call (the flywheel above). A
-realistic ceiling with all three: 65–70%.
+See [`BACKLOG.md`](../BACKLOG.md) for the three layered ideas to lift
+this ceiling to ~65–70%.
 
 ---
 
 ## Open questions
 
-- **RingCentral live-event API access** — does our plan support push events or
-  only polling?
-- **Multi-agent display** — does the card appear on every agent's dashboard, or
-  only the agent who picked up? RC exposes called-extension on each call leg.
-- **PII / capability gating** — only show full Customer 360 to a new
-  `support.calls.view` capability, granted to support staff.
-- **Cross-channel ID resolution** — once email is in scope, we'll need a
-  `customer_identity` model that links phone, email, customer_id, and
-  agent-linked overrides.
+- **PII / capability gating** — ✅ implemented as `support.calls.view`.
+- **RingCentral live-event API access** — ✅ resolved: we use RC PBX
+  webhook subscriptions (push) plus a long-polling `cxone-poller` daemon
+  for CXone (`/contacts/active`).
+- **Multi-agent display** — open. See [`BACKLOG.md`](../BACKLOG.md):
+  *Multi-agent display — show on the agent who picked up*.
+- **Cross-channel ID resolution** — open; a partial answer is already
+  in [`BACKLOG.md`](../BACKLOG.md) under
+  *Customer 360 — fuzzy account linking* and *Phone-coverage improvements*.
 
 ---
 
@@ -216,9 +195,12 @@ realistic ceiling with all three: 65–70%.
 | Nightly schedule wired (23:00 Mel daily) | ✅ 2026-05-03 |
 | Phase 2 model live: `call_history_360` (34k phones) | ✅ 2026-05-03 |
 | Phase 3 model live: `call_behavior_360` (2k phones with AI insights) | ✅ 2026-05-03 |
-| Flask blueprint + UI | next |
-| Live call detection (RC webhook → SSE) | after the UI |
-| Email integration | gated on email project |
+| Flask blueprint + UI | ✅ 2026-05-03 |
+| Live call detection (RC PBX webhook + CXone poller → drawer) | ✅ 2026-05-04 |
+| Pinned calls (team-shared) + 3-section drawer | ✅ 2026-05-04 |
+| Master-contact + cross-platform overlap merge | ✅ 2026-05-04 |
+| Email integration | gated on email project — see `BACKLOG.md` |
+| Stretch features (live transcription, next-best-action, auto-draft) | see `BACKLOG.md` |
 
 ---
 
