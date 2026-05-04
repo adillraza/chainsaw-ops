@@ -89,6 +89,7 @@ def neto_url(kind: str, id_value) -> str | None:
         "customer": "customer/view",
         "order":    "order/vieworder",
         "rma":      "rma/editrma",
+        "product":  "products/view",
     }
     path = paths.get(kind)
     if path is None:

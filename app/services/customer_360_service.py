@@ -88,7 +88,45 @@ class Customer360Service:
         if empty["usernames"]:
             empty["customers"] = self._fetch_customers(empty["usernames"])
 
+        # --- Query 3: enrich SKUs in the card with their Neto product_id so
+        # the template can link each SKU to the cpanel product page. We do
+        # this as one bulk lookup rather than per-line. Cheap (~30 SKUs max
+        # per card, single equality scan on neto_product_list).
+        empty["product_id_by_sku"] = self._fetch_product_ids(self._collect_skus(empty["customers"]))
+
         return empty
+
+    def _collect_skus(self, customers: list[dict]) -> list[str]:
+        """Walk the customer rows and gather every distinct SKU we'll display."""
+        skus: set[str] = set()
+        for cust in customers or []:
+            for src in (
+                cust.get("recent_order_lines") or [],
+                cust.get("top_items") or [],
+                cust.get("last_rma_lines") or [],
+            ):
+                for item in src:
+                    sku = (item or {}).get("sku")
+                    if sku:
+                        skus.add(sku)
+        return list(skus)
+
+    def _fetch_product_ids(self, skus: list[str]) -> dict[str, str]:
+        """Bulk SKU → Neto product ID lookup against ``dataform.neto_product_list``."""
+        if not skus or self.client is None:
+            return {}
+        sql = f"""
+        SELECT SKU, ID
+        FROM `{PROJECT}.{DATASET}.neto_product_list`
+        WHERE SKU IN UNNEST(@skus)
+        """
+        job = self.client.query(
+            sql,
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ArrayQueryParameter("skus", "STRING", skus)]
+            ),
+        )
+        return {row.SKU: row.ID for row in job.result() if row.SKU and row.ID}
 
     # ------------------------------------------------------------------
     # Internal queries

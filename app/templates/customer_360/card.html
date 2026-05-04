@@ -9,6 +9,20 @@
   'lapsed':    ('zinc',    'Lapsed (1y+)')
 } %}
 
+{# Macro — render a SKU as a Neto product link when we have its product_id,
+   otherwise plain. Used in Recent order lines, Top items, Last RMA lines. #}
+{% macro sku_link(sku) %}
+  {% set pid = (c.product_id_by_sku or {}).get(sku) %}
+  {% if pid %}
+    <a href="{{ neto_url('product', pid) }}" target="_blank" rel="noopener"
+       class="font-mono text-xs text-brand-700 hover:underline" title="Open product in Neto ↗">
+      {{ sku }}<i class="fas fa-arrow-up-right-from-square ml-0.5 text-[9px] text-slate-400"></i>
+    </a>
+  {% else %}
+    <span class="font-mono text-xs text-slate-500">{{ sku }}</span>
+  {% endif %}
+{% endmacro %}
+
 {% block content %}
   {# ----------------------------------------------------------------- #}
   {# HEADER STRIP — caller identity at a glance                        #}
@@ -143,7 +157,7 @@
                 {% for line in primary.recent_order_lines[:8] %}
                   <li class="flex items-center justify-between py-2">
                     <div>
-                      <span class="font-mono text-xs text-slate-500">{{ line.sku }}</span>
+                      {{ sku_link(line.sku) }}
                       <span class="ml-2 text-slate-800">{{ line.name or '—' }}</span>
                     </div>
                     <div class="text-right text-slate-600 whitespace-nowrap">
@@ -222,7 +236,7 @@
             {% for it in primary.top_items %}
               <li class="flex items-center justify-between py-1.5">
                 <div>
-                  <span class="font-mono text-xs text-slate-500">{{ it.sku }}</span>
+                  {{ sku_link(it.sku) }}
                   <span class="ml-2 text-slate-800">{{ it.name or '—' }}</span>
                 </div>
                 <div class="text-right text-slate-600 whitespace-nowrap">
@@ -264,7 +278,7 @@
                 <ul class="mt-2 divide-y divide-slate-100">
                   {% for ln in primary.last_rma_lines[:5] %}
                     <li class="py-1.5">
-                      <span class="font-mono text-xs text-slate-500">{{ ln.sku }}</span>
+                      {{ sku_link(ln.sku) }}
                       <span class="ml-2 text-slate-800">{{ ln.name or '—' }}</span>
                       {% if ln.reason %}<span class="ml-2 text-xs text-rose-700">{{ ln.reason }}</span>{% endif %}
                       {% if ln.outcome %}<span class="ml-2 text-xs text-slate-500">→ {{ ln.outcome }}</span>{% endif %}
