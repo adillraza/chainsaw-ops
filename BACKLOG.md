@@ -320,13 +320,21 @@ single biggest agent productivity unlock we could build, and it's
   answer + chunks + clickable links to the source PDFs in GCS.
 
 **Phasing:**
-1. Ingest catalogue (no PDFs yet) → search over product
-   attributes/descriptions. Ships in ~1 week.
-2. Add PDF ingestion (manuals, brochures). Document AI OCR pipeline
-   running daily on a GCS bucket.
-3. **Per-customer panel on the 360 card**: "About this customer's
-   products" — auto-loads spec snippets for the SKUs they've bought.
-   Zero typing required for the most common case.
+1. **Phase 1 — full implementation spec ready.** See
+   [`docs/kb-phase1-spec.md`](docs/kb-phase1-spec.md). Covers:
+   exact source list (~3.4k SharePoint files + 6k Dataform rows),
+   architecture, BQ schema with vector index, extraction strategy
+   per file type, chunking strategy, retrieval API, UI sketch, cost
+   budget (under $1 one-time + ~$5/month run rate), 7 smoke-test
+   queries, week-by-week rollout plan, day-1 checklist. Built on
+   Microsoft Graph credentials already in GCP Secret Manager and a
+   thorough SharePoint reconnaissance (`docs/sharepoint-*.md`).
+   **Ships in ~3 weeks of focused work.**
+2. **Phase 2 — refresh automation.** SharePoint webhooks → Cloud
+   Function → BQ. Re-embed only changed files.
+3. **Phase 3 — per-customer panel on the 360 card.** "About this
+   customer's products" — auto-loads spec snippets for the SKUs
+   they've bought. Zero typing required for the most common case.
 
 **Effort.** L overall, but Phase 1 is M. Phase 1 alone gives agents
 a useful catalogue search even without manuals.
