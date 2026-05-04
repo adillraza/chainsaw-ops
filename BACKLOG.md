@@ -11,6 +11,96 @@ Each entry should include:
 
 ---
 
+## Follow-up tracker — turn promises into a workable agent task list
+
+**Why.** Real example seen 2026-04-30, caller `0447006770` (Cole):
+
+- Cole calls about Honda HRU216 mower blades (`JM7013-2BBx4`). The
+  website lists "170mm from centre of mounting hole to tip" — but his
+  existing blades are 170mm *overall*, only 150mm from centre. He calls
+  to verify whether the listing is wrong before buying.
+- Michele was alone on the phones, couldn't measure a blade in stock,
+  and **promised a callback** after lunch.
+- 4 days pass. No callback. **No system anywhere knows this promise was
+  made.**
+- Today (2026-05-04) Cole calls back twice — still chasing. He's now an
+  active call right when this idea was sparked.
+
+This is a missed sale plus a customer experience hit, and it's
+*invisible* in the current dashboard. The AI transcript classifier
+already saw "Michele promised a callback" — but that intent goes
+nowhere, just into the transcript text. Multiply by every "I'll email
+you the photos / quote / shipping info" promise across the team and
+the unseen backlog is probably big.
+
+**What.** A team-wide follow-up workflow, four phases so it can ship
+incrementally:
+
+### Phase 1 — Manual follow-ups (foundation)
+- New SQLite table `call_followup`: id, session_id, phone,
+  customer_username (nullable), assigned_user_id, status (open /
+  in_progress / closed), summary, created_at, due_at, closed_at,
+  closed_by_user_id
+- Comment thread (reuse `Annotation` pattern or new
+  `followup_comment` table)
+- Button on the call-details modal: **"Flag for follow-up"** →
+  creates row, optional summary, optional assignee
+- New Customer Service tab **"Follow-ups"** with filter pills
+  (*Mine · All open · Overdue · Closed*), click a row to open the
+  same call modal plus comment thread + status controls.
+- Capability gating: `support.followups.view` (everyone) +
+  `support.followups.manage` (claim/assign/close).
+
+### Phase 2 — AI auto-detection
+- Extend the call classifier prompt to extract follow-up intent:
+  ```
+  follow_up_required: bool
+  follow_up_reason: short text
+  follow_up_action_promised: short text  # "callback after lunch", "send photos", "check stock and reply"
+  follow_up_owner_hint: agent | customer | unspecified
+  ```
+- One-time **bulk re-classify** of the historic transcripts in
+  `recording_fetch_status` / `call_classifications`. Cost is negligible
+  (Gemini Flash, ~$10 for 10k calls).
+- Auto-create `call_followup` rows from the re-classified backlog —
+  `status=open, assigned_user_id=NULL`. Filter pill "Unassigned" lets
+  the team claim from the pile in spare time.
+- Wire the classifier so new calls get the field on first analysis,
+  not just the backfill.
+
+### Phase 3 — Customer 360 integration
+- Red banner on the customer card when this phone has any open
+  follow-up: *"Open follow-up: Michele promised a callback (4 days ago)"*
+  with a one-click jump to the task.
+- When the agent picks up a call from a phone with an open follow-up,
+  the Live Calls drawer card gets a small badge so they know before
+  saying "hello".
+
+### Phase 4 — SLA & manager view
+- Optional `due_at` per follow-up; "overdue" colour state
+- Manager dashboard: who has the most open / overdue tasks, average
+  age, weekly closure rate
+- Routing rules: auto-assign new follow-ups to the agent who took the
+  original call (when known)
+
+**Effort.** L overall, but each phase is M and shippable on its own.
+Phase 1 alone removes the "we have no system" problem. Phase 2 turns
+it into a list someone can actually attack without manual flagging.
+
+**Open questions.**
+- Do follow-ups for callers with no Neto record (like Cole) live by
+  phone alone? Yes — phone is the durable key. If the caller later
+  registers, the customer card will surface their history *plus* their
+  open follow-up by phone match.
+- One follow-up per call, or per customer? Probably per call (links
+  cleanly to a transcript), with a customer-level rollup view in the
+  follow-ups tab so "5 open across this customer" is visible.
+- AI false positives? Flag is just "open + unassigned". Agents can
+  bulk-dismiss garbage. False negatives matter more (we miss real
+  promises) — phrasing in the prompt should err generous.
+
+---
+
 ## Customer 360 — fuzzy account linking across duplicate Neto accounts
 
 **Why.** Customers often re-register under a new email/username over the
