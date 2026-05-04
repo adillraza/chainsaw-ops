@@ -15,23 +15,28 @@ depends_on = None
 
 
 def upgrade():
-    """Per-user pinned calls.
+    """Team-shared pinned calls.
 
-    Pinning a call snapshots the relevant fields (phone, agent, etc.) so the
-    pin survives even after the source ``call_event`` rows have been pruned.
-    Each (user, session_id) is unique — pinning the same session twice
-    silently no-ops, unpinning is by session_id under the same user.
+    Pins are global — anyone on the team can pin or unpin, and everyone
+    sees the same list. ``pinned_by_user_id`` is kept for display
+    attribution but not for access control. Each ``session_id`` can be
+    pinned at most once (re-pinning is a no-op).
+
+    Display fields are snapshotted at pin time so the pin keeps rendering
+    after the source ``call_event`` rows are pruned or rolled into BigQuery.
     """
     # SQLite can't ALTER TABLE ADD CONSTRAINT, so the unique constraint
     # has to be inlined into CREATE TABLE rather than added afterwards.
     op.create_table(
         'pinned_call',
         sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('user.id'), nullable=False),
-        sa.Column('session_id', sa.String(length=120), nullable=False),
+        sa.Column('session_id', sa.String(length=120), nullable=False, unique=True),
         sa.Column('pinned_at', sa.DateTime(), nullable=False, server_default=sa.func.current_timestamp()),
-        # Snapshotted at pin time so the pin keeps rendering after the source
-        # call_event rows are pruned or rolled into BigQuery.
+        # Display attribution only — nullable so the column can be added
+        # without a backfill if we ever pin from a system/poller context.
+        sa.Column('pinned_by_user_id', sa.Integer(), sa.ForeignKey('user.id'), nullable=True),
+        # Snapshotted at pin time so the pin keeps rendering after the
+        # source call_event rows are pruned or rolled into BigQuery.
         sa.Column('phone',          sa.String(length=50),  nullable=True),
         sa.Column('to_number',      sa.String(length=50),  nullable=True),
         sa.Column('direction',      sa.String(length=20),  nullable=True),
@@ -39,14 +44,14 @@ def upgrade():
         sa.Column('source',         sa.String(length=40),  nullable=True),
         sa.Column('agent_name',     sa.String(length=120), nullable=True),
         sa.Column('skill',          sa.String(length=120), nullable=True),
+        sa.Column('customer_name',  sa.String(length=200), nullable=True),
         sa.Column('note',           sa.Text(),             nullable=True),
-        sa.UniqueConstraint('user_id', 'session_id', name='uq_pinned_call_user_session'),
     )
-    op.create_index('ix_pinned_call_user_id',    'pinned_call', ['user_id'])
-    op.create_index('ix_pinned_call_session_id', 'pinned_call', ['session_id'])
+    op.create_index('ix_pinned_call_session_id',         'pinned_call', ['session_id'])
+    op.create_index('ix_pinned_call_pinned_by_user_id',  'pinned_call', ['pinned_by_user_id'])
 
 
 def downgrade():
-    op.drop_index('ix_pinned_call_session_id', table_name='pinned_call')
-    op.drop_index('ix_pinned_call_user_id',    table_name='pinned_call')
+    op.drop_index('ix_pinned_call_pinned_by_user_id', table_name='pinned_call')
+    op.drop_index('ix_pinned_call_session_id',        table_name='pinned_call')
     op.drop_table('pinned_call')

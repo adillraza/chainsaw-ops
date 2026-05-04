@@ -31,20 +31,24 @@ class CallEvent(db.Model):
 
 
 class PinnedCall(db.Model):
-    """A call an agent has pinned for follow-up.
+    """A call any agent has pinned for follow-up.
 
-    Snapshots the call's display fields at pin time so the pin survives
-    after the source ``call_event`` rows are pruned or migrated into BQ.
+    Pins are **shared across the whole team** — anyone can pin/unpin, and
+    everyone sees the same Pin Calls list. ``pinned_by_user_id`` is kept
+    for display attribution ("pinned by X") but not for access control.
+
+    Snapshots the call's display fields (including the resolved customer
+    name) at pin time so the pin keeps rendering even after the source
+    ``call_event`` rows are pruned or rolled into BigQuery.
     """
     __tablename__ = "pinned_call"
-    __table_args__ = (
-        db.UniqueConstraint("user_id", "session_id", name="uq_pinned_call_user_session"),
-    )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
-    session_id = db.Column(db.String(120), nullable=False, index=True)
+    session_id = db.Column(db.String(120), nullable=False, unique=True, index=True)
     pinned_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Who pinned it (display only, nullable so anonymous / system pins work)
+    pinned_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
 
     # Snapshotted at pin time
     phone         = db.Column(db.String(50))
@@ -54,9 +58,10 @@ class PinnedCall(db.Model):
     source        = db.Column(db.String(40))
     agent_name    = db.Column(db.String(120))
     skill         = db.Column(db.String(120))
+    customer_name = db.Column(db.String(200))
     note          = db.Column(db.Text)
 
-    user = db.relationship("User", backref="pinned_calls")
+    pinned_by = db.relationship("User", backref="pinned_calls", foreign_keys=[pinned_by_user_id])
 
     def __repr__(self) -> str:
-        return f"<PinnedCall user={self.user_id} sess={self.session_id}>"
+        return f"<PinnedCall sess={self.session_id} by={self.pinned_by_user_id}>"

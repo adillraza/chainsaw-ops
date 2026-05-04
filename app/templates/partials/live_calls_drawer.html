@@ -85,7 +85,10 @@
                 </span>
               </div>
 
-              <div class="mt-2 font-mono text-lg font-medium tracking-tight text-slate-800">
+              <div class="mt-2 truncate text-lg font-semibold tracking-tight {% if call.customer_name %}text-slate-900{% else %}text-slate-400{% endif %}">
+                {{ call.customer_name or 'No Name' }}
+              </div>
+              <div class="mt-0.5 font-mono text-sm text-slate-600">
                 {{ call.phone or '—' }}
               </div>
 

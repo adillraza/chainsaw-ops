@@ -17,6 +17,7 @@ connection pools open.
 """
 from __future__ import annotations
 
+import functools
 import re
 from typing import Optional
 
@@ -388,6 +389,57 @@ class Customer360Service:
     # ------------------------------------------------------------------
     # Internal queries
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Lightweight phone → name lookup for the live-calls drawer
+    # ------------------------------------------------------------------
+    #
+    # The drawer polls every 3s; we don't want to round-trip BigQuery for
+    # the same phone over and over. ``lru_cache`` keeps results in-process
+    # for the lifetime of the worker. ``None`` results are cached too so
+    # unknown numbers don't re-query forever. If a customer's name changes
+    # in Neto, restart the service to bust the cache (rare).
+
+    @functools.lru_cache(maxsize=4096)
+    def get_name_for_phone(self, raw_phone: str) -> Optional[str]:
+        """Return ``"First Last"`` for a phone, or ``None`` if no match.
+
+        Resolves phone → username via ``customer_phone_lookup`` and picks
+        the highest-lifetime-value customer when multiple records share
+        the number (household / repeat-guest case).
+        """
+        phone = normalize_phone(raw_phone)
+        if not phone or self.client is None:
+            return None
+        sql = f"""
+        WITH matched_usernames AS (
+          SELECT u AS username
+          FROM `{PROJECT}.{DATASET}.customer_phone_lookup`,
+               UNNEST(usernames) AS u
+          WHERE phone = @phone
+        )
+        SELECT c.name_first, c.name_last
+        FROM matched_usernames m
+        JOIN `{PROJECT}.{DATASET}.customer_360` c ON c.Username = m.username
+        ORDER BY COALESCE(c.lifetime_value, 0) DESC
+        LIMIT 1
+        """
+        try:
+            job = self.client.query(
+                sql,
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("phone", "STRING", phone)]
+                ),
+            )
+            row = next(iter(job.result()), None)
+        except Exception:
+            return None
+        if row is None:
+            return None
+        first = (row.name_first or "").strip()
+        last = (row.name_last or "").strip()
+        full = (first + " " + last).strip()
+        return full or None
 
     def _fetch_phone_bundle(self, phone: str) -> dict:
         # Avoid the reserved word `lookup` (BQ keyword) in column aliases.

@@ -231,7 +231,7 @@ def active_calls():
             "events": [_serialise_active(r) for r, _, _ in visible],
         })
 
-    pinned_set = _pinned_session_ids_for_user()
+    pinned_set = _pinned_session_ids_global()
     from flask import render_template
     return render_template(
         "partials/live_calls_drawer.html",
@@ -290,6 +290,7 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0,
         "session_id":   evt.session_id,
         "raw_phone":    raw_phone,
         "phone":        norm_phone,
+        "customer_name": _resolve_customer_name(norm_phone),
         "to_number":    evt.to_number,
         "to_local":     to_local,
         "status_code":  status_code,
@@ -306,6 +307,21 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0,
         "is_connected": state == "active" and status_code in ("Answered", "Hold"),
         "is_pinned":    bool(pinned_set and evt.session_id in pinned_set),
     }
+
+
+def _resolve_customer_name(phone: str) -> str | None:
+    """Look up the display name for a phone via the LRU-cached
+    ``Customer360Service.get_name_for_phone`` on the module-level
+    singleton. Soft-fails to ``None`` so a BigQuery hiccup never
+    breaks the drawer render.
+    """
+    if not phone:
+        return None
+    try:
+        from app.services.customer_360_service import customer_360_service
+        return customer_360_service.get_name_for_phone(phone)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -482,7 +498,7 @@ def recent_calls():
     )
 
     # Keep only Disconnected (i.e. ended) and cap at 20.
-    pinned_session_ids = _pinned_session_ids_for_user()
+    pinned_session_ids = _pinned_session_ids_global()
     ended = [
         _recent_view_model(evt, first_at, pinned_session_ids)
         for evt, first_at in rows
@@ -519,6 +535,7 @@ def _recent_view_model(evt, first_at, pinned_session_ids: set) -> dict:
     return {
         "session_id":    evt.session_id,
         "phone":         phone,
+        "customer_name": _resolve_customer_name(phone),
         "to_local":      to_local,
         "direction":     direction,
         "source":        evt.source,
@@ -529,10 +546,9 @@ def _recent_view_model(evt, first_at, pinned_session_ids: set) -> dict:
     }
 
 
-def _pinned_session_ids_for_user() -> set:
-    if not getattr(current_user, "is_authenticated", False):
-        return set()
-    rows = PinnedCall.query.with_entities(PinnedCall.session_id).filter_by(user_id=current_user.id).all()
+def _pinned_session_ids_global() -> set:
+    """Return the set of session_ids pinned by anyone (team-shared pins)."""
+    rows = PinnedCall.query.with_entities(PinnedCall.session_id).all()
     return {r[0] for r in rows}
 
 
@@ -543,11 +559,10 @@ def _pinned_session_ids_for_user() -> set:
 @live_calls_bp.route("/pinned", methods=["GET"])
 @require_capability("support.calls.view")
 def pinned_calls():
-    """List the current agent's pinned calls, newest pin first."""
+    """List ALL pinned calls (team-shared), newest pin first."""
     from flask import render_template
     rows = (
         PinnedCall.query
-        .filter_by(user_id=current_user.id)
         .order_by(PinnedCall.pinned_at.desc())
         .all()
     )
@@ -557,8 +572,12 @@ def pinned_calls():
 @live_calls_bp.route("/pin/<path:session_id>", methods=["POST"])
 @require_capability("support.calls.view")
 def pin_call(session_id: str):
-    """Pin a call. Idempotent. Snapshots display fields from call_event."""
-    existing = PinnedCall.query.filter_by(user_id=current_user.id, session_id=session_id).first()
+    """Pin a call. Team-shared and idempotent — re-pinning a session
+    silently no-ops. Snapshots display fields from the latest call_event
+    plus the resolved customer name so the pin keeps rendering even
+    after the source rows are pruned.
+    """
+    existing = PinnedCall.query.filter_by(session_id=session_id).first()
     if existing:
         return ("", 204)
 
@@ -593,16 +612,22 @@ def pin_call(session_id: str):
         else:
             status_at_pin = evt.event_type
 
+    # Resolve the caller name now so the pin survives after BQ refresh
+    raw_phone = evt.from_number if evt else None
+    phone_local = ("0" + raw_phone[3:]) if (raw_phone and raw_phone.startswith("+61")) else (raw_phone or "")
+    customer_name = _resolve_customer_name(phone_local) if phone_local else None
+
     pin = PinnedCall(
-        user_id=current_user.id,
         session_id=session_id,
-        phone=evt.from_number if evt else None,
+        pinned_by_user_id=current_user.id if getattr(current_user, "is_authenticated", False) else None,
+        phone=raw_phone,
         to_number=evt.to_number if evt else None,
         direction=direction,
         status_at_pin=status_at_pin,
         source=evt.source if evt else None,
         agent_name=agent_name,
         skill=skill,
+        customer_name=customer_name,
     )
     db.session.add(pin)
     db.session.commit()
@@ -612,6 +637,7 @@ def pin_call(session_id: str):
 @live_calls_bp.route("/pin/<path:session_id>", methods=["DELETE"])
 @require_capability("support.calls.view")
 def unpin_call(session_id: str):
-    PinnedCall.query.filter_by(user_id=current_user.id, session_id=session_id).delete()
+    """Unpin a call. Team-shared — anyone can unpin any pin."""
+    PinnedCall.query.filter_by(session_id=session_id).delete()
     db.session.commit()
     return ("", 204)
