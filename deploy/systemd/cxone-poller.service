@@ -8,6 +8,10 @@ PartOf=chainsaw-ops.service
 Type=simple
 User=root
 WorkingDirectory=/opt/chainsaw-ops
+# CXone credentials (CXONE_USERNAME etc.) live in /opt/chainsaw-ops/.env
+# alongside the rest of the ops env. Loaded here so we don't depend on the
+# gcloud CLI being on the systemd PATH.
+EnvironmentFile=/opt/chainsaw-ops/.env
 Environment=PATH=/opt/chainsaw-ops/venv/bin
 Environment=GCP_PROJECT=chainsawspares-385722
 Environment=CHAINSAW_WEBHOOK_URL=http://127.0.0.1:5001/api/calls/webhook
@@ -20,8 +24,6 @@ StandardError=journal
 # doesn't spam the journal.
 Restart=on-failure
 RestartSec=15
-StartLimitIntervalSec=300
-StartLimitBurst=10
 
 [Install]
 WantedBy=multi-user.target
