@@ -56,6 +56,39 @@ def format_dt(value, fmt: str = "datetime") -> str:
     return dt.strftime(fmt)
 
 
+# ---------------------------------------------------------------------------
+# Neto control-panel deep links
+# ---------------------------------------------------------------------------
+# Centralised so we don't sprinkle the base URL across templates. Used by the
+# customer 360 card to surface clickable links into the live Neto cpanel.
+
+_NETO_BASE = "https://www.chainsawspares.com.au/_cpanel"
+
+
+def neto_url(kind: str, id_value) -> str | None:
+    """Build a Neto control-panel link for the given resource.
+
+    ``kind`` is one of:
+      * ``customer`` — customer profile (id is the Username)
+      * ``order``    — order detail (id is the OrderID, e.g. ``JJ617208``)
+      * ``rma``      — RMA edit page (id is the RmaID)
+
+    Returns ``None`` when the id is empty so templates can ``{% if %}``-guard.
+    """
+    if not id_value:
+        return None
+    paths = {
+        "customer": "customer/view",
+        "order":    "order/vieworder",
+        "rma":      "rma/editrma",
+    }
+    path = paths.get(kind)
+    if path is None:
+        return None
+    return f"{_NETO_BASE}/{path}?id={id_value}"
+
+
 def register(app) -> None:
     """Wire the filters into a Flask app's Jinja environment."""
     app.add_template_filter(format_dt, name="format_dt")
+    app.jinja_env.globals["neto_url"] = neto_url

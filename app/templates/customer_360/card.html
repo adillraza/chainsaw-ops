@@ -24,7 +24,17 @@
               {{ badge_label }}
             </span>
             <h2 class="text-2xl font-semibold text-slate-900">
-              {{ (primary.name_first or '') }} {{ (primary.name_last or '') }}
+              {% set cust_url = neto_url('customer', primary.Username) %}
+              {% if cust_url %}
+                <a href="{{ cust_url }}" target="_blank" rel="noopener"
+                   class="hover:text-brand-700 hover:underline"
+                   title="Open customer in Neto cpanel ↗">
+                  {{ (primary.name_first or '') }} {{ (primary.name_last or '') }}
+                  <i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-slate-400"></i>
+                </a>
+              {% else %}
+                {{ (primary.name_first or '') }} {{ (primary.name_last or '') }}
+              {% endif %}
             </h2>
             {% if c.customers|length > 1 %}
               <span class="text-sm text-slate-500">+{{ c.customers|length - 1 }} other matching record(s)</span>
@@ -112,7 +122,17 @@
           </div>
           <div class="px-4 py-3">
             <div class="flex items-baseline justify-between">
-              <span class="font-mono text-sm text-brand-700">{{ primary.recent_order_id }}</span>
+              {% set ord_url = neto_url('order', primary.recent_order_id) %}
+              {% if ord_url %}
+                <a href="{{ ord_url }}" target="_blank" rel="noopener"
+                   class="font-mono text-sm text-brand-700 hover:text-brand-900 hover:underline"
+                   title="Open order in Neto cpanel ↗">
+                  {{ primary.recent_order_id }}
+                  <i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-slate-400"></i>
+                </a>
+              {% else %}
+                <span class="font-mono text-sm text-brand-700">{{ primary.recent_order_id }}</span>
+              {% endif %}
               <span class="text-base font-semibold text-slate-900">${{ '%.2f' % (primary.recent_order_total or 0) }}</span>
             </div>
             {% if primary.recent_ship_name %}
@@ -138,6 +158,56 @@
                 {% endif %}
               </ul>
             {% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+      {# Past orders panel (last 20) -------------------------------- #}
+      {% if primary and primary.recent_orders %}
+        <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <h3 class="text-sm font-semibold text-slate-900">Past orders</h3>
+            <span class="text-xs text-slate-500">
+              showing {{ primary.recent_orders|length }} most recent
+              {% if primary.lifetime_order_count and primary.lifetime_order_count > primary.recent_orders|length %}
+                of {{ primary.lifetime_order_count }}
+              {% endif %}
+            </span>
+          </div>
+          <div class="max-h-80 overflow-auto">
+            <table class="w-full text-sm">
+              <thead class="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th class="px-3 py-2 text-left">Date</th>
+                  <th class="px-3 py-2 text-left">Order ID</th>
+                  <th class="px-3 py-2 text-right">Lines</th>
+                  <th class="px-3 py-2 text-right">Total</th>
+                  <th class="px-3 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                {% for o in primary.recent_orders %}
+                  <tr>
+                    <td class="px-3 py-2 whitespace-nowrap text-slate-600">{{ o.order_date }}</td>
+                    <td class="px-3 py-2 whitespace-nowrap font-mono">
+                      {% set ou = neto_url('order', o.order_id) %}
+                      {% if ou %}
+                        <a href="{{ ou }}" target="_blank" rel="noopener"
+                           class="text-brand-700 hover:underline" title="Open in Neto ↗">
+                          {{ o.order_id }}
+                          <i class="fas fa-arrow-up-right-from-square ml-0.5 text-[10px] text-slate-400"></i>
+                        </a>
+                      {% else %}
+                        {{ o.order_id }}
+                      {% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-right text-slate-600">{{ o.line_count or 0 }}</td>
+                    <td class="px-3 py-2 text-right font-semibold text-slate-900">${{ '%.2f' % (o.total or 0) }}</td>
+                    <td class="px-3 py-2 text-xs text-slate-600">{{ o.status or '—' }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
         </div>
       {% endif %}
@@ -174,7 +244,18 @@
           <div class="px-4 py-3 text-sm">
             {% if primary.lifetime_rma_count and primary.lifetime_rma_count > 0 %}
               <div class="text-slate-700">
-                Last RMA: <span class="font-mono">{{ primary.last_rma_id }}</span> on {{ primary.last_rma_issued }}
+                {% set rma_u = neto_url('rma', primary.last_rma_id) %}
+                Last RMA:
+                {% if rma_u %}
+                  <a href="{{ rma_u }}" target="_blank" rel="noopener"
+                     class="font-mono text-brand-700 hover:underline" title="Open RMA in Neto ↗">
+                    {{ primary.last_rma_id }}
+                    <i class="fas fa-arrow-up-right-from-square ml-0.5 text-[10px] text-slate-400"></i>
+                  </a>
+                {% else %}
+                  <span class="font-mono">{{ primary.last_rma_id }}</span>
+                {% endif %}
+                on {{ primary.last_rma_issued }}
                 {% if primary.lifetime_refunded %}
                   · ${{ '%.2f' % primary.lifetime_refunded }} refunded lifetime
                 {% endif %}
