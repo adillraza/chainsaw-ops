@@ -22,6 +22,8 @@ def upgrade():
     Each (user, session_id) is unique — pinning the same session twice
     silently no-ops, unpinning is by session_id under the same user.
     """
+    # SQLite can't ALTER TABLE ADD CONSTRAINT, so the unique constraint
+    # has to be inlined into CREATE TABLE rather than added afterwards.
     op.create_table(
         'pinned_call',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -38,14 +40,13 @@ def upgrade():
         sa.Column('agent_name',     sa.String(length=120), nullable=True),
         sa.Column('skill',          sa.String(length=120), nullable=True),
         sa.Column('note',           sa.Text(),             nullable=True),
+        sa.UniqueConstraint('user_id', 'session_id', name='uq_pinned_call_user_session'),
     )
-    op.create_index('ix_pinned_call_user_id',     'pinned_call', ['user_id'])
-    op.create_index('ix_pinned_call_session_id',  'pinned_call', ['session_id'])
-    op.create_unique_constraint('uq_pinned_call_user_session', 'pinned_call', ['user_id', 'session_id'])
+    op.create_index('ix_pinned_call_user_id',    'pinned_call', ['user_id'])
+    op.create_index('ix_pinned_call_session_id', 'pinned_call', ['session_id'])
 
 
 def downgrade():
-    op.drop_constraint('uq_pinned_call_user_session', 'pinned_call', type_='unique')
     op.drop_index('ix_pinned_call_session_id', table_name='pinned_call')
     op.drop_index('ix_pinned_call_user_id',    table_name='pinned_call')
     op.drop_table('pinned_call')
