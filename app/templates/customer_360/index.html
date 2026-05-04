@@ -1,0 +1,33 @@
+{% extends "layouts/base.html" %}
+{% block title %}Customer 360 — Chainsawspares Ops{% endblock %}
+
+{% block content %}
+  <section class="mb-6">
+    <h2 class="text-2xl font-semibold text-slate-900">Customer 360</h2>
+    <p class="mt-1 text-sm text-slate-600">
+      Manual phone lookup. Live calls show up automatically once the dashboard sidebar is wired in.
+    </p>
+  </section>
+
+  <form method="post" action="{{ url_for('customer_360.search') }}"
+        class="flex max-w-xl items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <label for="phone" class="text-sm font-medium text-slate-700 whitespace-nowrap">Phone number</label>
+    <input id="phone" name="phone" type="text"
+           placeholder="0419565200 or +61419565200"
+           class="flex-1 rounded-md border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+           autofocus>
+    <button type="submit"
+            class="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+      <i class="fas fa-magnifying-glass text-xs"></i> Look up
+    </button>
+  </form>
+
+  <section class="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+    <p class="font-medium text-slate-700">Tips</p>
+    <ul class="mt-2 list-disc space-y-1 pl-5">
+      <li>Either format works — input is normalised to AU local (<code>04XXXXXXXX</code>) before lookup.</li>
+      <li>One phone may map to multiple Neto customers (legitimate guest-checkout pattern). The card shows all matches.</li>
+      <li>Numbers with no Neto match still show call history and behaviour insights when we've seen them before.</li>
+    </ul>
+  </section>
+{% endblock %}
