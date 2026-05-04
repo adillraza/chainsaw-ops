@@ -199,20 +199,81 @@ user, give that card a special "yours" badge or auto-open the customer
 
 ---
 
-## Email pipeline — sales inbox into the customer card
+## Sales-inbox pipeline — customer panel + knowledge base feed
 
-**Why.** Today the customer card shows orders, RMAs, calls, but nothing
-from the sales inbox. Agents handling a call often need "have we
-emailed this person recently?" context.
+**Why.** Two reasons, very different shapes:
 
-**What.** Gated on a separate email-ingestion project. Once that lands,
-add three blocks to the card:
-- Sales-inbox thread count + most recent date
-- Recent email topics (AI-summarised)
-- Email sentiment trend
+1. **Customer 360 panel** — agents on a call regularly need "have we
+   emailed this person recently and what about?" Today: zero visibility.
+2. **Knowledge base feed** — years of sales emails contain the highest-
+   quality product knowledge we have. *"Does JM7013-2BBx4 fit HRU216?
+   Yes, 21" deck only, won't fit HRU214"* — that's an answer a real
+   agent gave a real customer in a real thread, signed off as correct.
+   Multiplied by every product compatibility / fitment / spec question
+   we've ever answered: institutional memory becomes searchable.
 
-**Effort.** L. Blocked on email pipeline existing. Once it does, the
-card-side wiring is M.
+The same ingestion pipeline serves both. Build the pipe once, light up
+the panel and the KB feed independently.
+
+**What.**
+
+### Pipeline (foundation, reused by both)
+- **Auth**: Microsoft Graph API + admin consent for the sales mailbox(es).
+  Service principal, OAuth 2.0 client-credentials flow.
+- **Backfill**: pull all historic threads → BQ table
+  `sales_emails` (thread_id, message_id, direction, from/to,
+  subject, body_text, attachments[], received_at). Embedding cost
+  is trivial (~$1 for years of mail at our volume).
+- **Live**: Graph subscription webhooks → Cloud Function → BQ insert,
+  near-real-time.
+- **Identity link**: match the customer side of each thread to a Neto
+  Username via email address (uses the same email-based lookup the
+  fuzzy-account-linking item proposes).
+
+### Use 1 — Customer 360 panel
+- New "Emails" section on the card, between Call History and
+  Behaviour insights.
+- Thread list, newest first, with AI one-line summary per thread:
+  *"3 threads in 2025: 'replacement blade availability',
+  'shipping delay query', 'after-sale fitment question'."*
+- Click a thread → modal showing the messages (similar to the
+  call-details modal pattern). Inline image rendering.
+- Especially powerful for **callers without a Neto record but with
+  email history** (the Cole pattern).
+
+### Use 2 — Knowledge base feed (links to *Product knowledge base*)
+- Periodic Dataform job: select threads where the agent reply
+  contains a product SKU / dimension / fitment claim (regex or LLM
+  classifier).
+- Extract the agent's answer + the customer's question as a chunk:
+  *"Q: Does JM7013-2BBx4 fit HRU216? A: Yes, 21" deck only, won't fit
+  HRU214. — thread #4419, 2024-08-12, agent: Dallas"*
+- Embed and add to the vector store with `source = "sales_email"`.
+  Joins catalogue + manual chunks. Agent copilot retrieves from all
+  three sources transparently.
+- Bonus: surface a "previously answered" link on the customer card
+  when the chunk's customer matches the current caller.
+
+### Phasing
+1. **Pipeline + panel** (uses A above): backfill + live ingestion +
+   panel on the card. Ships in ~2 weeks.
+2. **Thread summarisation**: Gemini Flash one-liner per thread,
+   nightly batch. Cheap, agent-quality wording.
+3. **KB extraction**: classifier + chunk extraction → vector store
+   feed. Lights up agent copilot with prior-answer matches.
+4. **(Stretch) Auto-draft replies** — given a new inbound email,
+   pre-draft a response using the customer's order history + KB.
+   One-click "send" on agent review.
+
+**Effort.** L overall. Each phase is M and shippable independently.
+
+**Open questions.**
+- Which mailboxes? Just `sales@`, or also support / orders / personal
+  agent inboxes? Probably start with one.
+- Attachment OCR (PDFs, photos of broken parts) — defer to phase 2 of
+  the *Product knowledge base* item.
+- Retention: do we hold full bodies forever, or summarise + drop after
+  N years? Depends on Microsoft retention + our preference.
 
 ---
 
