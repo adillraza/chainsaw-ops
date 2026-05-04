@@ -231,19 +231,122 @@ by datetime, with a small icon per event type. Probably collapsible:
 
 ---
 
+## Product knowledge base — RAG over 6k products + manuals
+
+**Why.** We carry 6,000+ active products with hundreds of brochures
+and manuals (PDFs). No agent can carry that in their head. Cole's call
+(see *Follow-up tracker* above) is the canonical case: "what's the
+overall length of this blade?" is a 5-second answer if you can search
+the spec sheet, a 4-day callback if you can't.
+
+A queryable knowledge base over the catalogue + product docs is the
+single biggest agent productivity unlock we could build, and it's
+**cheap and tractable today**.
+
+**What.** A standard RAG pipeline:
+- **Ingest**: `dataform.neto_product_list` attributes + REX product
+  data (already in BQ), plus PDF manuals/brochures (Vertex AI Document
+  AI for OCR + extraction).
+- **Chunk + embed**: ~500-token chunks, Vertex AI `text-embedding-004`.
+  One-time cost for 6k products + manuals ≈ **$2**.
+- **Store**: BigQuery Vector Search — we already pay for BQ, this adds
+  effectively zero infra. (Vertex AI Vector Search is the alternative
+  if BQ Vector turns out to have limits.)
+- **Query path**: agent types → embed → top-5 chunks → Gemini Flash
+  answers with citations to the source document. ~$0.001 per query.
+- **UI**: search box at the top of the Customer 360 card (or a
+  dedicated "Ask the catalogue" tab in Customer Service). Returns
+  answer + chunks + clickable links to the source PDFs in GCS.
+
+**Phasing:**
+1. Ingest catalogue (no PDFs yet) → search over product
+   attributes/descriptions. Ships in ~1 week.
+2. Add PDF ingestion (manuals, brochures). Document AI OCR pipeline
+   running daily on a GCS bucket.
+3. **Per-customer panel on the 360 card**: "About this customer's
+   products" — auto-loads spec snippets for the SKUs they've bought.
+   Zero typing required for the most common case.
+
+**Effort.** L overall, but Phase 1 is M. Phase 1 alone gives agents
+a useful catalogue search even without manuals.
+
+**Open questions.**
+- Where do the PDFs currently live? Need a manifest + GCS upload
+  pipeline.
+- Spec sheets that exist as **images** (not text PDFs) — Document AI
+  handles those but quality varies.
+- Versioning when product specs change (mowers replaced, suppliers
+  switched). Probably re-embed monthly.
+
+---
+
 ## Live transcription of the *current* call
 
 **Why.** The agent's hardest job is "what's this person actually
 asking?" Real-time transcription would mean the agent can scan as the
 caller speaks, catch SKUs / order numbers / addresses without asking
-to repeat.
+to repeat. Plus it's the foundation for an agent copilot (see
+*Agent copilot* below).
 
-**What.** RC streaming audio → Vertex AI Speech-to-Text streaming →
-side panel on the customer card, scrolling as the call progresses.
-Probably works well enough at ~2-3 second latency for skim-reading.
+**What.** Two parts, with very different effort:
+- **Transcription itself** is the easy bit. Google Cloud Speech-to-Text
+  v2 streaming, AU English, ~300ms latency, ~$0.024/min — essentially
+  free at our call volume.
+- **Getting the audio stream** is the hard bit. Three paths, ranked by
+  realism:
+  1. **CXone Real-Time Audio (RTA)** — NICE/CXone exposes a real-time
+     audio WebSocket for "agent assist" integrations. **Worth a 2-hour
+     spike to confirm whether our tier includes it.** If yes, this is
+     the clean path: pipe the WebSocket → Google STT → side panel.
+     ~1 week of integration work after the spike.
+  2. **RingCentral Media Streaming** — equivalent for the store/PBX
+     calls. Same shape, different vendor.
+  3. Custom RTP/SIP pipe — months of telephony work; only if both
+     above paths are blocked.
 
-**Effort.** L. RC streaming setup is non-trivial; pricing on streaming
-STT needs a check.
+**Phasing:**
+1. **Spike**: confirm what audio API our CXone tier exposes
+   (and what RC offers for the PBX side).
+2. Live transcript side panel on the customer card — agents can
+   scan as caller speaks. Standalone value even without copilot.
+
+**Effort.** Spike: S (afternoon). Phase 1 build: L if API access works
+out, much larger if we have to build telephony infra ourselves.
+
+---
+
+## Agent copilot — live transcript × knowledge base
+
+**Why.** Once both *Product knowledge base* and *Live transcription*
+exist, the natural composition is: detect SKUs / product names /
+intent words in the transcript stream → fire a KB query → drop the
+answer onto the agent's screen in real-time.
+
+**Cole's call would have looked like this:**
+- Cole says "JM7013-2BBx4"
+- System detects the SKU, queries KB
+- Sidebar shows: *"170mm overall, 150mm centre-to-tip, mounting hole
+  13mm — source: Honda HRU216 service manual p.4"*
+- Agent reads it back to Cole, closes the sale on the call
+
+This is a real product category — Cresta, Observe.AI, Salesforce
+Einstein for Service all do it. We can build the equivalent for our
+catalogue at a fraction of the cost.
+
+**What.**
+- Keyword detector running on the transcript stream — SKUs, brand
+  names, dimension queries, order IDs, common problem patterns
+- KB query fired on every detected hit, results de-duplicated against
+  what's already on screen
+- Suggestion cards in a transcript-side rail, click to expand the
+  source document
+- (Stretch) Gemini summarises mid-call: *"Customer is a homeowner
+  asking about replacement blades for their HRU216. They've
+  measured their existing blades. They want pre-purchase
+  confirmation that ours fit."*
+
+**Effort.** L. Depends entirely on phases 1 and 2 of the KB and Live
+Transcription items.
 
 ---
 
