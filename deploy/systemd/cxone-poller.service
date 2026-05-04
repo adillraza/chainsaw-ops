@@ -1,0 +1,27 @@
+[Unit]
+Description=CXone live-calls bridge — long-polls /contacts/active and POSTs to chainsaw-ops webhook
+After=network-online.target chainsaw-ops.service
+Wants=network-online.target
+PartOf=chainsaw-ops.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chainsaw-ops
+Environment=PATH=/opt/chainsaw-ops/venv/bin
+Environment=GCP_PROJECT=chainsawspares-385722
+Environment=CHAINSAW_WEBHOOK_URL=http://127.0.0.1:5001/api/calls/webhook
+Environment=CXONE_POLL_INTERVAL=3
+ExecStart=/opt/chainsaw-ops/venv/bin/python /opt/chainsaw-ops/scripts/cxone_active_calls_poller.py
+StandardOutput=journal
+StandardError=journal
+
+# Crash-loop protection: restart with backoff so a temporary CXone outage
+# doesn't spam the journal.
+Restart=on-failure
+RestartSec=15
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Install]
+WantedBy=multi-user.target
