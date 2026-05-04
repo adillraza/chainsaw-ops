@@ -99,7 +99,7 @@
             ('Lifetime',     '$' ~ ('%.0f' % (primary.lifetime_value or 0)), 'fa-dollar-sign'),
             ('Orders',       primary.lifetime_order_count or 0,              'fa-cart-shopping'),
             ('AOV',          '$' ~ ('%.0f' % (primary.avg_order_value or 0)),'fa-chart-line'),
-            ('Customer since', primary.customer_since or '—',               'fa-flag-checkered')
+            ('Customer since', primary.customer_since | format_dt('date'),  'fa-flag-checkered')
           ] %}
           {% for label, value, icon in stats %}
             <div class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -118,7 +118,7 @@
         <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <h3 class="text-sm font-semibold text-slate-900">Most recent order</h3>
-            <span class="text-xs text-slate-500">{{ primary.recent_order_date }} · {{ primary.recent_order_status or '?' }}</span>
+            <span class="text-xs text-slate-500">{{ primary.recent_order_date | format_dt('date') }} · {{ primary.recent_order_status or '?' }}</span>
           </div>
           <div class="px-4 py-3">
             <div class="flex items-baseline justify-between">
@@ -188,7 +188,7 @@
               <tbody class="divide-y divide-slate-100">
                 {% for o in primary.recent_orders %}
                   <tr>
-                    <td class="px-3 py-2 whitespace-nowrap text-slate-600">{{ o.order_date }}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-slate-600">{{ o.order_date | format_dt('date') }}</td>
                     <td class="px-3 py-2 whitespace-nowrap font-mono">
                       {% set ou = neto_url('order', o.order_id) %}
                       {% if ou %}
@@ -255,7 +255,7 @@
                 {% else %}
                   <span class="font-mono">{{ primary.last_rma_id }}</span>
                 {% endif %}
-                on {{ primary.last_rma_issued }}
+                on {{ primary.last_rma_issued | format_dt('date') }}
                 {% if primary.lifetime_refunded %}
                   · ${{ '%.2f' % primary.lifetime_refunded }} refunded lifetime
                 {% endif %}
@@ -290,9 +290,13 @@
           </p>
           {% if primary.rex_recent_order and primary.rex_recent_order.rex_order_id %}
             <p class="mt-1 text-emerald-700">
-              Most recent in-store order: {{ primary.rex_recent_order.order_number or primary.rex_recent_order.rex_order_id }}
+              Most recent in-store order:
+              {{ primary.rex_recent_order.order_number or primary.rex_recent_order.rex_order_id }}
               · ${{ '%.2f' % (primary.rex_recent_order.order_total or 0) }}
               · {{ primary.rex_recent_order.rex_order_status or '?' }}
+              {% if primary.rex_recent_order.rex_order_created_at %}
+                · placed {{ primary.rex_recent_order.rex_order_created_at | format_dt('datetime') }}
+              {% endif %}
             </p>
           {% endif %}
         </div>
@@ -330,7 +334,7 @@
               {% for call in h.last_5_calls %}
                 <li class="flex items-center justify-between py-2">
                   <div>
-                    <span class="text-slate-800">{{ call.call_time.strftime('%b %d, %H:%M') if call.call_time else '?' }}</span>
+                    <span class="text-slate-800">{{ call.call_time | format_dt('datetime') }}</span>
                     <span class="ml-2 text-xs text-slate-500">{{ call.direction }} · {{ call.disposition }} · {{ call.source }}</span>
                   </div>
                   <span class="text-xs text-slate-500">{{ call.duration_seconds or 0 }}s</span>
@@ -392,7 +396,7 @@
               <div class="border-t border-slate-100 pt-3">
                 <div class="text-[11px] uppercase tracking-wide text-slate-500">Most recent analysed call</div>
                 <div class="mt-1 text-sm text-slate-700">
-                  {{ b.last_call.call_date }}
+                  {{ b.last_call.call_date | format_dt('date') }}
                   {% if b.last_call.duration_seconds %}· {{ b.last_call.duration_seconds }}s{% endif %}
                   {% if b.last_call.agent_name %}· agent {{ b.last_call.agent_name }}{% endif %}
                   {% if b.last_call.sentiment_label %}

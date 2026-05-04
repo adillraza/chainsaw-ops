@@ -7,7 +7,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
+import pytz
+
 EM_DASH = "—"
+MEL = pytz.timezone("Australia/Melbourne")
 
 
 def _strip_leading_zero(token: str) -> str:
@@ -36,6 +39,11 @@ def format_dt(value, fmt: str = "datetime") -> str:
     # whether the value carries a useful time component.
     if isinstance(value, datetime):
         dt = value
+        # Convert any timezone-aware datetime (e.g. BigQuery TIMESTAMP returning
+        # UTC) into Melbourne local time before formatting. Naive datetimes are
+        # treated as already-Mel (the convention upstream of this filter).
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(MEL)
     elif isinstance(value, date):
         dt = datetime.combine(value, time())
     else:
