@@ -111,6 +111,98 @@ class Customer360Service:
                         skus.add(sku)
         return list(skus)
 
+    # ------------------------------------------------------------------
+    # Active call lookup — for the "Call in progress" panel
+    # ------------------------------------------------------------------
+
+    def get_active_call_for_phone(self, raw_phone: str) -> dict | None:
+        """If this phone has a currently in-flight call_event, return its
+        details (session, latest event, agent name, skill, dialed number).
+
+        Reads from the local SQLite ``call_event`` table populated by
+        webhook deliveries (RC PBX) and the cxone-poller daemon. Matches
+        the phone in either AU local (``04…``) or E.164 (``+61…``) form
+        because the two sources don't always agree on which one they emit.
+
+        Returns ``None`` when no active call is found.
+        """
+        from urllib.parse import parse_qs
+        from datetime import datetime, timedelta
+        from sqlalchemy import or_
+
+        from app.models.call_events import CallEvent
+
+        phone = normalize_phone(raw_phone)
+        if not phone:
+            return None
+        e164 = "+61" + phone[1:] if phone.startswith("0") and len(phone) >= 2 else phone
+
+        since = datetime.utcnow() - timedelta(minutes=10)
+        events = (
+            CallEvent.query
+            .filter(CallEvent.received_at > since)
+            .filter(CallEvent.session_id.isnot(None))
+            .filter(or_(CallEvent.from_number == phone, CallEvent.from_number == e164))
+            .order_by(CallEvent.received_at.desc())
+            .all()
+        )
+        if not events:
+            return None
+
+        # Group by session: pick latest event, also track earliest received_at
+        # for the call's "ringing/talking for X" timer.
+        latest_per_session: dict[str, "CallEvent"] = {}
+        earliest_at: dict[str, datetime] = {}
+        for e in events:
+            sid = e.session_id
+            if sid not in latest_per_session:
+                latest_per_session[sid] = e  # rows came in DESC, first wins
+            if sid not in earliest_at or e.received_at < earliest_at[sid]:
+                earliest_at[sid] = e.received_at
+
+        # Find a session whose latest event is NOT a Disconnected
+        for sid, latest in latest_per_session.items():
+            if latest.event_type and "disconnected" in latest.event_type.lower():
+                continue
+
+            # Pull agentName / skill out of the body — the CXone poller posts
+            # form-encoded so body_json is `key=value&key=value`.
+            body: dict = {}
+            raw = latest.body_json or ""
+            if raw.startswith("{"):
+                # Some sources may post JSON; try that first.
+                import json as _json
+                try:
+                    body = _json.loads(raw)
+                except Exception:
+                    pass
+            elif "=" in raw:
+                parsed = parse_qs(raw, keep_blank_values=True)
+                body = {k: (v[0] if v else "") for k, v in parsed.items()}
+
+            # event_type is composite "Direction:Status" — split for the badge
+            status_code = (latest.event_type or "").split(":", 1)[-1]
+            direction = (latest.event_type or "").split(":", 1)[0] if ":" in (latest.event_type or "") else None
+            elapsed = int((datetime.utcnow() - earliest_at[sid]).total_seconds()) if earliest_at[sid] else 0
+            return {
+                "session_id":     sid,
+                "event_type":     latest.event_type,
+                "status_code":    status_code,
+                "direction":      direction,
+                "from_number":    latest.from_number,
+                "to_number":      latest.to_number,
+                "source":         latest.source,
+                "agent_name":     (body.get("agentName") or "").strip() or None,
+                "skill":          body.get("skill") or None,
+                "media_type":     body.get("mediaTypeName") or None,
+                "started_at":     earliest_at[sid],
+                "elapsed_seconds": elapsed,
+                "is_ringing":     status_code in ("Setup", "Proceeding", "Alerting"),
+                "is_connected":   status_code in ("Answered", "Hold"),
+            }
+
+        return None
+
     def _fetch_product_ids(self, skus: list[str]) -> dict[str, str]:
         """Bulk SKU → Neto product ID lookup against ``dataform.neto_product_list``."""
         if not skus or self.client is None:

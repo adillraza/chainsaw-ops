@@ -26,6 +26,9 @@ def index():
 def card(phone: str):
     """Render the customer card for the given phone number."""
     payload = customer_360_service.get_card(phone)
+    # Attach any in-flight call so the template can render the "Call in
+    # progress" panel at the top.
+    payload["active_call"] = customer_360_service.get_active_call_for_phone(phone)
     return render_template("customer_360/card.html", c=payload)
 
 
