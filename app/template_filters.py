@@ -39,11 +39,16 @@ def format_dt(value, fmt: str = "datetime") -> str:
     # whether the value carries a useful time component.
     if isinstance(value, datetime):
         dt = value
-        # Convert any timezone-aware datetime (e.g. BigQuery TIMESTAMP returning
-        # UTC) into Melbourne local time before formatting. Naive datetimes are
-        # treated as already-Mel (the convention upstream of this filter).
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(MEL)
+        # Every datetime that reaches this filter is in UTC:
+        #   * BigQuery TIMESTAMP comes back tz-aware UTC
+        #   * SQLite columns default to ``datetime.utcnow()`` (naive UTC)
+        # Whether tz-aware or naive, treat it as UTC and convert to Mel for
+        # display. Today is the local frame an agent thinks in; UTC times
+        # ten hours behind otherwise surface as "future calls" / "5am calls
+        # actually happening at 3pm" — confusing and was an actual bug.
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        dt = dt.astimezone(MEL)
     elif isinstance(value, date):
         dt = datetime.combine(value, time())
     else:

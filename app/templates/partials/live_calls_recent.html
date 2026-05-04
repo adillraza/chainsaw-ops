@@ -48,7 +48,7 @@
                 </span>
 
                 <span class="text-[10px] text-slate-400 whitespace-nowrap">
-                  {% if call.ended_at %}{{ call.ended_at.strftime('%H:%M') }}{% endif %}
+                  {% if call.ended_at %}{{ call.ended_at | format_dt('time') }}{% endif %}
                 </span>
               </div>
 

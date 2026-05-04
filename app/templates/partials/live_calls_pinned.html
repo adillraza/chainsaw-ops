@@ -39,7 +39,7 @@
                 </span>
 
                 <span class="text-[10px] text-slate-400 whitespace-nowrap">
-                  {% if call.pinned_at %}{{ call.pinned_at.strftime('%d %b %H:%M') }}{% endif %}
+                  {% if call.pinned_at %}{{ call.pinned_at | format_dt('datetime') }}{% endif %}
                 </span>
               </div>
 
