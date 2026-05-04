@@ -203,10 +203,14 @@ class Customer360Service:
         if not events:
             return []
 
-        # Group by session_id
+        # Group by master_session_id when present (CXone transfers share
+        # this) — falls back to session_id for PBX events. Without this
+        # collapse a single warm-transferred call would appear twice in
+        # today's call history strip.
         sessions: dict[str, list] = {}
         for e in events:
-            sessions.setdefault(e.session_id, []).append(e)
+            key = e.master_session_id or e.session_id
+            sessions.setdefault(key, []).append(e)
 
         out: list[dict] = []
         for sid, sess_events in sessions.items():
@@ -249,7 +253,11 @@ class Customer360Service:
                 pass
 
             out.append({
-                "session_id":       sid,
+                # Use the actual contactId of the most recent leg (rather
+                # than the master_id used for grouping) so the call-details
+                # modal can look up the AI analysis row in BigQuery, which
+                # is keyed by contactId.
+                "session_id":       last.session_id,
                 "call_time":        first.received_at,
                 "direction":        direction,
                 "disposition":      disposition,
@@ -315,19 +323,22 @@ class Customer360Service:
         if not events:
             return None
 
-        # Group by session: pick latest event, also track earliest received_at
-        # for the call's "ringing/talking for X" timer.
-        latest_per_session: dict[str, "CallEvent"] = {}
+        # Group by master_session_id (CXone transferred legs share this) so
+        # the panel doesn't flicker between two different agent names when
+        # a warm transfer is happening — we display the currently-active
+        # leg only. PBX events have NULL master and fall through to
+        # session_id, so they're unaffected.
+        latest_per_master: dict[str, "CallEvent"] = {}
         earliest_at: dict[str, datetime] = {}
         for e in events:
-            sid = e.session_id
-            if sid not in latest_per_session:
-                latest_per_session[sid] = e  # rows came in DESC, first wins
-            if sid not in earliest_at or e.received_at < earliest_at[sid]:
-                earliest_at[sid] = e.received_at
+            key = e.master_session_id or e.session_id
+            if key not in latest_per_master:
+                latest_per_master[key] = e  # rows came in DESC, first wins
+            if key not in earliest_at or e.received_at < earliest_at[key]:
+                earliest_at[key] = e.received_at
 
-        # Find a session whose latest event is NOT a Disconnected
-        for sid, latest in latest_per_session.items():
+        # Find a master whose latest event is NOT a Disconnected
+        for sid, latest in latest_per_master.items():
             if latest.event_type and "disconnected" in latest.event_type.lower():
                 continue
 

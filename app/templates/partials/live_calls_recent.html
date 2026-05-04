@@ -77,6 +77,11 @@
                   <i class="fas fa-headset text-slate-400 mr-1"></i>{{ call.agent_name }}
                 </div>
               {% endif %}
+              {% if call.is_transferred %}
+                <div class="mt-1 text-[10px] text-slate-400" title="Transferred between {{ call.leg_count }} agents">
+                  <i class="fas fa-shuffle text-slate-300"></i> transferred ({{ call.leg_count }} legs)
+                </div>
+              {% endif %}
             </a>
           </div>
         </li>

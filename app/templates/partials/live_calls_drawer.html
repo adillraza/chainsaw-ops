@@ -103,6 +103,11 @@
                   </span>
                 {% endif %}
               </div>
+              {% if call.is_transferred %}
+                <div class="mt-1 text-[10px] text-slate-400" title="This call was transferred between {{ call.leg_count }} agents">
+                  <i class="fas fa-shuffle text-slate-300"></i> transferred ({{ call.leg_count }} legs)
+                </div>
+              {% endif %}
             </a>
           </div>
         </li>

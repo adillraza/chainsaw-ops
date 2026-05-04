@@ -67,6 +67,7 @@ def webhook():
     parsed = _parse_event(body_dict, source) if body_dict else {}
     event_type = parsed.get("event_type")
     session_id = parsed.get("session_id")
+    master_session_id = parsed.get("master_session_id")
     from_number = parsed.get("from_number")
     to_number = parsed.get("to_number")
 
@@ -77,6 +78,7 @@ def webhook():
         source=source,
         event_type=str(event_type)[:120] if event_type else None,
         session_id=str(session_id)[:120] if session_id else None,
+        master_session_id=str(master_session_id)[:120] if master_session_id else None,
         from_number=str(from_number)[:50] if from_number else None,
         to_number=str(to_number)[:50] if to_number else None,
         headers_json=json.dumps(headers_safe),
@@ -185,7 +187,9 @@ def active_calls():
 
     since = datetime.utcnow() - timedelta(minutes=10)
 
-    # Subquery: max(received_at) per session_id within the window
+    # Step 1 — pull the latest event per ``session_id`` (i.e. per CXone
+    # contactId / RC telephony_session_id). Each leg of a transferred call
+    # is its own session_id, so this still returns one row per leg.
     latest_per_session = (
         db.session.query(
             CallEvent.session_id.label("sid"),
@@ -197,7 +201,6 @@ def active_calls():
         .subquery()
     )
 
-    # Join back to get the row for each (session_id, latest_at)
     rows = (
         db.session.query(CallEvent)
         .join(
@@ -211,34 +214,71 @@ def active_calls():
         .all()
     )
 
-    # Two buckets:
-    #   * still in flight (latest event is not a Disconnected)
-    #   * just ended (latest is Disconnected, within ENDED_LINGER_SECONDS)
-    now = datetime.utcnow()
-    visible = []
-    for r in rows:
-        if _is_terminal(r.event_type):
-            secs_since_end = (now - r.received_at).total_seconds()
-            if secs_since_end <= ENDED_LINGER_SECONDS:
-                visible.append((r, "recently_ended", secs_since_end))
-        else:
-            visible.append((r, "active", 0))
+    # Step 2 — collapse legs sharing a ``master_session_id`` into one card.
+    # CXone warm transfers create a second contactId for the receiving
+    # agent's leg; both share masterContactId. Without this step the same
+    # caller would render twice in the drawer ("why is this person here
+    # twice?"). PBX events have NULL master_session_id and fall through
+    # to session_id via the COALESCE so they're unaffected.
+    visible = _collapse_to_master(rows)
 
     if request.args.get("format") == "json":
         return jsonify({
-            "count_active":   sum(1 for _, s, _ in visible if s == "active"),
-            "count_lingering": sum(1 for _, s, _ in visible if s == "recently_ended"),
-            "events": [_serialise_active(r) for r, _, _ in visible],
+            "count_active":   sum(1 for _, s, _, _ in visible if s == "active"),
+            "count_lingering": sum(1 for _, s, _, _ in visible if s == "recently_ended"),
+            "events": [_serialise_active(r) for r, _, _, _ in visible],
         })
 
     pinned_set = _pinned_session_ids_global()
     from flask import render_template
     return render_template(
         "partials/live_calls_drawer.html",
-        active=[_active_view_model(r, state, secs_end, pinned_set) for r, state, secs_end in visible],
-        active_count=sum(1 for _, s, _ in visible if s == "active"),
-        ended_count=sum(1 for _, s, _ in visible if s == "recently_ended"),
+        active=[_active_view_model(r, state, secs_end, pinned_set, leg_count=lc)
+                for r, state, secs_end, lc in visible],
+        active_count=sum(1 for _, s, _, _ in visible if s == "active"),
+        ended_count=sum(1 for _, s, _, _ in visible if s == "recently_ended"),
     )
+
+
+def _collapse_to_master(rows: list) -> list[tuple]:
+    """Group leg rows by ``COALESCE(master_session_id, session_id)``.
+
+    Returns ``[(primary_event, state, seconds_since_end, leg_count), …]``
+    where:
+      * ``primary_event`` is the most-active leg in the group:
+        - if any leg is still in flight, the most recently updated non-
+          terminal one is chosen — that's the agent currently on the call
+        - if all legs have disconnected, the most recently ended leg wins
+      * ``state`` is "active" when at least one leg is non-terminal,
+        else "recently_ended" (within ``ENDED_LINGER_SECONDS``) — masters
+        whose every leg ended longer ago than the linger window are
+        dropped from the visible list.
+      * ``leg_count`` is the number of legs in this master group; the
+        template renders a "transferred" hint when > 1.
+    """
+    from collections import defaultdict
+    from datetime import datetime
+
+    legs_by_master: dict = defaultdict(list)
+    for r in rows:
+        key = r.master_session_id or r.session_id
+        legs_by_master[key].append(r)
+
+    now = datetime.utcnow()
+    out = []
+    for legs in legs_by_master.values():
+        non_terminal = [r for r in legs if not _is_terminal(r.event_type)]
+        if non_terminal:
+            primary = max(non_terminal, key=lambda r: r.received_at)
+            out.append((primary, "active", 0, len(legs)))
+        else:
+            primary = max(legs, key=lambda r: r.received_at)
+            secs_end = (now - primary.received_at).total_seconds()
+            if secs_end <= ENDED_LINGER_SECONDS:
+                out.append((primary, "recently_ended", secs_end, len(legs)))
+    # Newest first
+    out.sort(key=lambda x: x[0].received_at, reverse=True)
+    return out
 
 
 def _is_terminal(event_type: str | None) -> bool:
@@ -260,7 +300,7 @@ def _serialise_active(evt) -> dict:
     }
 
 
-def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0, pinned_set: set | None = None) -> dict:
+def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0, pinned_set: set | None = None, leg_count: int = 1) -> dict:
     """Template-friendly view model — adds a normalised AU local phone +
     a short "ringing for X" duration string for the drawer card.
 
@@ -305,7 +345,11 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0,
         "seconds_since_end": int(seconds_since_end),
         "is_ringing":   state == "active" and status_code in ("Setup", "Proceeding", "Alerting"),
         "is_connected": state == "active" and status_code in ("Answered", "Hold"),
-        "is_pinned":    bool(pinned_set and evt.session_id in pinned_set),
+        "is_pinned":    bool(pinned_set and (evt.session_id in pinned_set or (evt.master_session_id and evt.master_session_id in pinned_set))),
+        # > 1 means this master had multiple legs (e.g. agent-to-agent
+        # warm transfer); template can show a small "transferred" hint.
+        "leg_count":    leg_count,
+        "is_transferred": leg_count > 1,
     }
 
 
@@ -398,15 +442,23 @@ def _parse_event(body: dict, source: str) -> dict:
         return {
             "event_type":  f"{direction}:{status_code}",
             "session_id":  inner.get("telephonySessionId") or inner.get("sessionId"),
+            # PBX legs already collapse via telephony_session_id, so master
+            # is left NULL — group-by COALESCE then falls through to session_id.
+            "master_session_id": None,
             "from_number": (p.get("from") or {}).get("phoneNumber"),
             "to_number":   (p.get("to") or {}).get("phoneNumber"),
         }
 
     # --- CXone (Studio Snippet posts a flat JSON we control) ---
     if "contactId" in body or "fromAddress" in body:
+        contact_id = body.get("contactId") or body.get("masterContactId")
+        master_id = body.get("masterContactId") or contact_id
         return {
             "event_type":  body.get("eventType") or "cxone.event",
-            "session_id":  body.get("contactId") or body.get("masterContactId"),
+            "session_id":  contact_id,
+            # Always populated for CXone — equals contactId for non-transfer
+            # calls, equals the originating contactId for transferred legs.
+            "master_session_id": master_id,
             "from_number": body.get("fromAddress") or body.get("ANI"),
             "to_number":   body.get("toAddress")   or body.get("DNIS"),
         }
@@ -415,36 +467,60 @@ def _parse_event(body: dict, source: str) -> dict:
     return {
         "event_type":  _pluck(body, "eventType", "event", "type"),
         "session_id":  _pluck(body, "telephonySessionId", "sessionId", "contactId", "callId"),
+        "master_session_id": _pluck(body, "masterContactId"),
         "from_number": _pluck(body, "from.phoneNumber", "fromAddress", "ani", "caller"),
         "to_number":   _pluck(body, "to.phoneNumber",   "toAddress",   "dnis", "called"),
     }
 
 
 def reparse_all_call_events():
-    """Re-extract event_type / session_id / from / to from stored body_json.
+    """Re-extract event_type / session_id / master / from / to from
+    stored ``body_json`` and update each row in place.
+
+    Handles both shapes the receiver might have stored:
+      * JSON (RC PBX webhook deliveries)
+      * form-urlencoded (CXone poller posts ``application/x-www-form-urlencoded``)
 
     Wired up as the ``reparse-call-events`` Flask CLI command (see
-    :mod:`app.cli`). Used after deploying a parser change so the inspector
-    shows the new fields on rows captured before the fix.
+    :mod:`app.cli`). Used after deploying a parser change so the
+    inspector shows the new fields on rows captured before the fix.
+    Returns ``(updated_count, total_count)``.
     """
+    from urllib.parse import parse_qs as _parse_qs
+
     rows = CallEvent.query.all()
     n = 0
     for r in rows:
-        try:
-            body = json.loads(r.body_json) if r.body_json else None
-        except Exception:
+        raw = r.body_json or ""
+        body = None
+        if raw.startswith("{"):
+            try:
+                body = json.loads(raw)
+            except Exception:
+                body = None
+        elif "=" in raw:
+            try:
+                parsed = _parse_qs(raw, keep_blank_values=True)
+                body = {k: (v[0] if v else "") for k, v in parsed.items()}
+            except Exception:
+                body = None
+        if body is None:
             continue
+
         parsed = _parse_event(body, r.source)
-        et = parsed.get("event_type")
+        et  = parsed.get("event_type")
         sid = parsed.get("session_id")
-        fn = parsed.get("from_number")
-        tn = parsed.get("to_number")
+        msid = parsed.get("master_session_id")
+        fn  = parsed.get("from_number")
+        tn  = parsed.get("to_number")
         if (
             et != r.event_type or sid != r.session_id
+            or msid != r.master_session_id
             or fn != r.from_number or tn != r.to_number
         ):
             r.event_type = (str(et)[:120] if et else None)
             r.session_id = (str(sid)[:120] if sid else None)
+            r.master_session_id = (str(msid)[:120] if msid else None)
             r.from_number = (str(fn)[:50] if fn else None)
             r.to_number = (str(tn)[:50] if tn else None)
             n += 1
@@ -497,18 +573,41 @@ def recent_calls():
         .all()
     )
 
-    # Keep only Disconnected (i.e. ended) and cap at 20.
+    # Collapse legs that share a masterContactId (CXone transfers) into
+    # a single row. PBX events have NULL master_session_id and fall back
+    # to session_id, so they're effectively passed through unchanged.
+    from collections import defaultdict
+    legs_by_master: dict = defaultdict(list)
+    for evt, first_at in rows:
+        key = evt.master_session_id or evt.session_id
+        legs_by_master[key].append((evt, first_at))
+
     pinned_session_ids = _pinned_session_ids_global()
+    collapsed = []
+    for legs in legs_by_master.values():
+        # All legs ended? Then this master is "ended". Pick the latest leg
+        # as the representative one — that's typically the receiving agent
+        # of a transfer (and has the longest agentSeconds).
+        if not all(_is_terminal(evt.event_type) for evt, _ in legs):
+            continue  # still active; belongs in /active, not /recent
+        primary_evt, primary_first = max(legs, key=lambda x: x[0].received_at)
+        # Use the earliest first_at across all legs so the displayed
+        # duration spans the whole call (transfer included), not just
+        # the last leg.
+        earliest_first = min((fa for _, fa in legs if fa), default=primary_first)
+        collapsed.append((primary_evt, earliest_first, len(legs)))
+
+    # Newest first, cap at 20
+    collapsed.sort(key=lambda x: x[0].received_at, reverse=True)
     ended = [
-        _recent_view_model(evt, first_at, pinned_session_ids)
-        for evt, first_at in rows
-        if _is_terminal(evt.event_type)
-    ][:20]
+        _recent_view_model(evt, first_at, pinned_session_ids, leg_count=lc)
+        for evt, first_at, lc in collapsed[:20]
+    ]
 
     return render_template("partials/live_calls_recent.html", recent=ended)
 
 
-def _recent_view_model(evt, first_at, pinned_session_ids: set) -> dict:
+def _recent_view_model(evt, first_at, pinned_session_ids: set, leg_count: int = 1) -> dict:
     """Build a card view model for a recently-ended session."""
     raw_phone = evt.from_number or ""
     phone = "0" + raw_phone[3:] if raw_phone.startswith("+61") else raw_phone
@@ -542,7 +641,9 @@ def _recent_view_model(evt, first_at, pinned_session_ids: set) -> dict:
         "ended_at":      evt.received_at,
         "duration_s":    duration_s,
         "agent_name":    agent_name,
-        "is_pinned":     evt.session_id in pinned_session_ids,
+        "is_pinned":     evt.session_id in pinned_session_ids or (evt.master_session_id and evt.master_session_id in pinned_session_ids),
+        "leg_count":     leg_count,
+        "is_transferred": leg_count > 1,
     }
 
 

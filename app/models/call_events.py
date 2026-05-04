@@ -19,6 +19,10 @@ class CallEvent(db.Model):
     # Best-effort parsed-out fields. NULL for events where we can't pull them.
     event_type = db.Column(db.String(120))
     session_id = db.Column(db.String(120), index=True)
+    # CXone ``masterContactId`` (the ID shared across all legs of a transferred
+    # call). For non-transfer calls it equals ``session_id``; for PBX events
+    # it's NULL because ``telephony_session_id`` already aggregates legs.
+    master_session_id = db.Column(db.String(120), index=True)
     from_number = db.Column(db.String(50), index=True)
     to_number = db.Column(db.String(50))
 
