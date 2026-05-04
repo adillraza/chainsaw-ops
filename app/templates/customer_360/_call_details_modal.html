@@ -6,15 +6,66 @@
   <div class="px-6 py-12 text-center">
     <i class="fas fa-circle-info text-3xl text-slate-300"></i>
     <p class="mt-3 text-sm text-slate-700">
-      No analysis available for this call.
+      No record found for this call.
     </p>
     <p class="mt-1 text-xs text-slate-500">
-      Recording / transcript / AI classification haven't been attached to session
-      <span class="font-mono">{{ d.session_id }}</span> yet — usually means the
-      call was handled by the PBX queue (which runs separately from the analyzer
-      pipeline) or hasn't been processed by the nightly recording fetcher.
+      Session <span class="font-mono">{{ d.session_id }}</span> isn't in our
+      analyzer output or live event log.
     </p>
   </div>
+{% elif d.has_analysis is false %}
+  {# Basic-details mode — covers today's calls (analyzer hasn't run) and
+     PBX-only sessions that never go through the recording fetcher. We
+     render whatever we have from call_event and explain what's coming. #}
+  <header class="border-b border-slate-200 px-6 py-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h3 class="text-base font-semibold text-slate-900">Call details</h3>
+        <p class="mt-1 text-xs text-slate-500">
+          {{ d.started_at | format_dt('datetime') }}
+          {% if d.duration_seconds %} · {{ d.duration_seconds }}s{% endif %}
+          {% if d.agent_name %} · agent {{ d.agent_name }}{% endif %}
+          {% if d.skill %} · skill {{ d.skill }}{% endif %}
+          {% if d.is_active %} · <span class="font-medium text-emerald-700">still in flight</span>
+          {% else %} · {{ d.last_event_type or 'ended' }}{% endif %}
+        </p>
+        <p class="mt-0.5 text-[11px] text-slate-400">
+          session <span class="font-mono">{{ d.session_id }}</span> · source <span class="font-mono">{{ d.source }}</span>
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <section class="px-6 py-4 text-sm">
+    {# Quick "what we know" stats, prominent #}
+    <div class="grid grid-cols-2 gap-3">
+      {% set tiles = [
+        ('Started', d.started_at | format_dt('time'), 'fa-clock'),
+        ('Duration', (d.duration_seconds ~ 's' if d.duration_seconds else '—'), 'fa-stopwatch'),
+        ('Agent',    d.agent_name or '—', 'fa-headset'),
+        ('Skill',    d.skill or '—',      'fa-tag'),
+        ('Direction', (d.first_event_type.split(':')[0] if d.first_event_type and ':' in d.first_event_type else '—'), 'fa-arrow-right-arrow-left'),
+        ('Result',   ('Connected' if d.saw_answered else ('Missed / abandoned' if d.is_active is false else 'In progress')), 'fa-circle-check'),
+      ] %}
+      {% for label, value, icon in tiles %}
+        <div class="rounded border border-slate-200 bg-slate-50 p-3">
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">{{ label }}</div>
+          <div class="mt-0.5 flex items-center justify-between">
+            <span class="text-sm font-medium text-slate-800">{{ value }}</span>
+            <i class="fas {{ icon }} text-slate-300"></i>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <i class="fas fa-circle-info mr-1"></i>
+      <strong>Recording, transcript and AI summary not yet available.</strong>
+      The chainsaw-call-analyzer pipeline runs after the call ends and
+      typically lands in BigQuery later today. Refresh tomorrow to see
+      the full analysis bundle here.
+    </div>
+  </section>
 {% else %}
 
   {# Header strip — at-a-glance metadata #}

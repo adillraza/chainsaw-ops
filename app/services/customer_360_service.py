@@ -94,7 +94,172 @@ class Customer360Service:
         # per card, single equality scan on neto_product_list).
         empty["product_id_by_sku"] = self._fetch_product_ids(self._collect_skus(empty["customers"]))
 
+        # --- Live-merge: pull today's call_event rows for this phone and
+        # blend them into the BQ-derived call_history snapshot, so a
+        # customer who called back since last night's Dataform refresh
+        # shows up correctly. By tomorrow morning the daily snapshot
+        # picks them up and the merge becomes a no-op for those calls.
+        empty["call_history"] = self._merge_today_calls_into_history(
+            phone, empty["call_history"]
+        )
+
         return empty
+
+    def _merge_today_calls_into_history(self, phone: str, history: dict | None) -> dict | None:
+        """Augment the BQ call_history snapshot with today's call_event rows.
+
+        ``history`` is the (possibly None) row from ``call_history_360`` that
+        was loaded above. We:
+          * dedupe today's events into one row per session
+          * bump the totals (total_calls, connected_total, etc.)
+          * prepend today's sessions to last_5_calls (newest first), capped
+          * recompute last_call_date / days_since_last_call
+
+        Tagged ``is_today: True`` per session so the template can mark them
+        with a "today" badge if it wants.
+        """
+        today = self._build_today_call_entries(phone)
+        if not today:
+            return history
+
+        h = dict(history) if history else {
+            "phone": phone,
+            "total_calls": 0,
+            "pbx_total": 0,
+            "cxone_total": 0,
+            "inbound_total": 0,
+            "outbound_total": 0,
+            "connected_total": 0,
+            "missed_total": 0,
+            "abandoned_total": 0,
+            "voicemail_total": 0,
+            "refused_total": 0,
+            "first_call_date": None,
+            "last_call_date": None,
+            "days_since_last_call": None,
+            "last_5_calls": [],
+        }
+
+        for call in today:
+            h["total_calls"] = (h.get("total_calls") or 0) + 1
+            src = (call.get("source") or "").lower()
+            if src == "pbx":
+                h["pbx_total"] = (h.get("pbx_total") or 0) + 1
+            elif src == "cxone":
+                h["cxone_total"] = (h.get("cxone_total") or 0) + 1
+            direction = call.get("direction") or ""
+            if direction == "Inbound":
+                h["inbound_total"] = (h.get("inbound_total") or 0) + 1
+            elif direction == "Outbound":
+                h["outbound_total"] = (h.get("outbound_total") or 0) + 1
+            disp = (call.get("disposition") or "").lower()
+            for key in ("connected", "missed", "abandoned", "voicemail", "refused"):
+                if disp == key:
+                    h[f"{key}_total"] = (h.get(f"{key}_total") or 0) + 1
+
+        # Sort today's newest-first and prepend; keep most recent 5 overall.
+        today_sorted = sorted(today, key=lambda c: c.get("call_time") or 0, reverse=True)
+        existing = h.get("last_5_calls") or []
+        h["last_5_calls"] = (today_sorted + existing)[:5]
+
+        # Recency
+        from datetime import date
+        today_dt = date.today()
+        if not h.get("first_call_date"):
+            h["first_call_date"] = today_dt
+        h["last_call_date"] = today_dt
+        h["days_since_last_call"] = 0
+
+        return h
+
+    def _build_today_call_entries(self, phone: str) -> list[dict]:
+        """Read today's ``call_event`` rows for ``phone`` and produce one
+        entry per session, in the same shape as the BQ ``last_5_calls``
+        struct so the template renders both kinds identically.
+
+        Phone matched in either AU local or +61 form; events from the past
+        24 hours considered "today" for the purposes of merging.
+        """
+        from urllib.parse import parse_qs
+        from datetime import datetime, timedelta
+        from sqlalchemy import or_
+
+        from app.models.call_events import CallEvent
+
+        if not phone:
+            return []
+        e164 = "+61" + phone[1:] if phone.startswith("0") and len(phone) >= 2 else phone
+
+        since = datetime.utcnow() - timedelta(hours=24)
+        events = (
+            CallEvent.query
+            .filter(CallEvent.received_at > since)
+            .filter(CallEvent.session_id.isnot(None))
+            .filter(or_(CallEvent.from_number == phone, CallEvent.from_number == e164))
+            .order_by(CallEvent.received_at.asc())  # ASC so first event = call start
+            .all()
+        )
+        if not events:
+            return []
+
+        # Group by session_id
+        sessions: dict[str, list] = {}
+        for e in events:
+            sessions.setdefault(e.session_id, []).append(e)
+
+        out: list[dict] = []
+        for sid, sess_events in sessions.items():
+            first = sess_events[0]
+            last = sess_events[-1]
+
+            # Determine disposition: connected if we ever saw Answered/Hold;
+            # voicemail if we saw it; otherwise missed/abandoned if disconnected.
+            saw_answered = any(e.event_type and ("answered" in e.event_type.lower() or "hold" in e.event_type.lower()) for e in sess_events)
+            saw_voicemail = any(e.event_type and "voicemail" in (e.event_type or "").lower() for e in sess_events)
+            terminal = last.event_type and "disconnected" in last.event_type.lower()
+
+            if saw_answered:
+                disposition = "connected"
+            elif saw_voicemail:
+                disposition = "voicemail"
+            elif terminal:
+                disposition = "missed"
+            else:
+                # Still in flight; mark as connected so the count card stays
+                # in the green column. The drawer/active-call panel handles
+                # the in-flight UX separately.
+                disposition = "connected"
+
+            duration_s = int((last.received_at - first.received_at).total_seconds())
+            direction = (first.event_type or "").split(":", 1)[0] if ":" in (first.event_type or "") else "Inbound"
+
+            # Pull agent name from latest event's body if it's there
+            agent_name = None
+            try:
+                raw = last.body_json or ""
+                if raw.startswith("{"):
+                    import json as _json
+                    body = _json.loads(raw)
+                else:
+                    parsed = parse_qs(raw, keep_blank_values=True)
+                    body = {k: (v[0] if v else "") for k, v in parsed.items()}
+                agent_name = (body.get("agentName") or "").strip() or None
+            except Exception:
+                pass
+
+            out.append({
+                "session_id":       sid,
+                "call_time":        first.received_at,
+                "direction":        direction,
+                "disposition":      disposition,
+                "duration_seconds": duration_s,
+                "source":           first.source,
+                "agent_name":       agent_name,
+                "is_today":         True,
+                "is_active":        not terminal,
+            })
+
+        return out
 
     def _collect_skus(self, customers: list[dict]) -> list[str]:
         """Walk the customer rows and gather every distinct SKU we'll display."""
@@ -344,6 +509,14 @@ class Customer360Service:
         if row is None:
             return empty
 
+        # If nothing found in BQ, try the local call_event table — covers
+        # today's calls (not yet processed by the recording fetcher) and
+        # any PBX session_ids that bypass the analyzer pipeline. We can
+        # render basic details from there while the heavy AI columns are
+        # still NULL.
+        if row is None:
+            return self._call_details_from_event_log(session_id)
+
         d = _row_to_dict(row)
         d["session_id"] = session_id
         d["found"] = True
@@ -367,6 +540,66 @@ class Customer360Service:
             d["recording_signed_url"] = self._sign_gcs_url(d["gcs_uri"], minutes=15)
 
         return d
+
+    def _call_details_from_event_log(self, session_id: str) -> dict:
+        """Fallback for the call-detail modal: summarise a session from
+        ``call_event`` when the analyzer hasn't picked it up yet.
+
+        Returns the same shape as ``get_call_details`` so the modal
+        template can branch on ``found`` and ``has_analysis`` to decide
+        what to render.
+        """
+        from urllib.parse import parse_qs
+        from app.models.call_events import CallEvent
+
+        events = (
+            CallEvent.query
+            .filter(CallEvent.session_id == session_id)
+            .order_by(CallEvent.received_at.asc())
+            .all()
+        )
+        if not events:
+            return {"session_id": session_id, "found": False}
+
+        first, last = events[0], events[-1]
+        saw_answered = any(e.event_type and "answered" in e.event_type.lower() for e in events)
+        terminal = last.event_type and "disconnected" in last.event_type.lower()
+
+        # Pull a few fields from the body_json if it's form-encoded
+        agent_name = None
+        skill = None
+        try:
+            raw = last.body_json or ""
+            if raw.startswith("{"):
+                import json as _json
+                body = _json.loads(raw)
+            else:
+                parsed = parse_qs(raw, keep_blank_values=True)
+                body = {k: (v[0] if v else "") for k, v in parsed.items()}
+            agent_name = (body.get("agentName") or "").strip() or None
+            skill = body.get("skill") or None
+        except Exception:
+            pass
+
+        duration_s = int((last.received_at - first.received_at).total_seconds())
+        return {
+            "session_id":   session_id,
+            "found":        True,
+            "has_analysis": False,            # signals "no transcript yet" branch
+            "source":       first.source,
+            "from_number":  first.from_number,
+            "to_number":    first.to_number,
+            "started_at":   first.received_at,
+            "ended_at":     last.received_at if terminal else None,
+            "duration_seconds": duration_s,
+            "agent_name":   agent_name,
+            "skill":        skill,
+            "first_event_type": first.event_type,
+            "last_event_type":  last.event_type,
+            "is_active":    not terminal,
+            "saw_answered": saw_answered,
+            "event_count":  len(events),
+        }
 
     def _sign_gcs_url(self, gcs_uri: str, minutes: int = 15) -> str | None:
         """Sign a ``gs://bucket/object`` path for short-lived public access.
