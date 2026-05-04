@@ -506,14 +506,11 @@ class Customer360Service:
             ),
         )
         row = next(iter(job.result()), None)
-        if row is None:
-            return empty
 
-        # If nothing found in BQ, try the local call_event table — covers
-        # today's calls (not yet processed by the recording fetcher) and
-        # any PBX session_ids that bypass the analyzer pipeline. We can
-        # render basic details from there while the heavy AI columns are
-        # still NULL.
+        # If nothing found in the analyzer output (recording_fetch_status),
+        # fall back to the local call_event log — covers today's calls
+        # (analyzer hasn't run yet) and any PBX session_ids that bypass
+        # the analyzer pipeline.
         if row is None:
             return self._call_details_from_event_log(session_id)
 
