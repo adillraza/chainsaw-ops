@@ -59,15 +59,22 @@
   {% block head_extra %}{% endblock %}
 </head>
 <body class="v2 h-full text-slate-800"
-      x-data="{ sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === '1' }"
-      x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebarCollapsed', v ? '1' : '0'))">
+      x-data="{
+        sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === '1',
+        liveCallsDrawerOpen: localStorage.getItem('liveCallsDrawer') !== 'closed'
+      }"
+      x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebarCollapsed', v ? '1' : '0'));
+              $watch('liveCallsDrawerOpen', v => localStorage.setItem('liveCallsDrawer', v ? 'open' : 'closed'))">
   {% if current_user.is_authenticated %}
     {# Live-calls drawer (right side) — always-visible-when-allowed. #}
     {% if can('support.calls.view') %}
       {% include "partials/live_calls_drawer_frame.html" %}
     {% endif %}
 
-    <div class="flex h-full">
+    <div class="flex h-full transition-[padding] duration-200"
+         {% if can('support.calls.view') %}
+           :class="liveCallsDrawerOpen ? 'pr-72' : 'pr-7'"
+         {% endif %}>
       {% include "partials/sidebar.html" %}
 
       <div class="flex flex-1 flex-col overflow-hidden">

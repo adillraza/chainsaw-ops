@@ -273,6 +273,13 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0)
         norm_phone = "0" + raw_phone[3:]
     else:
         norm_phone = raw_phone
+    # Same normalisation for the dialed (to) number, so the drawer can show
+    # which JJ line was rung instead of the generic source label.
+    raw_to = evt.to_number or ""
+    if raw_to.startswith("+61"):
+        to_local = "0" + raw_to[3:]
+    else:
+        to_local = raw_to
     # Pull the bare status code from "Direction:Status" composite
     status_code = (evt.event_type or "").split(":", 1)[-1] if evt.event_type else ""
     direction = (evt.event_type or "").split(":", 1)[0] if ":" in (evt.event_type or "") else None
@@ -282,6 +289,7 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0)
         "raw_phone":    raw_phone,
         "phone":        norm_phone,
         "to_number":    evt.to_number,
+        "to_local":     to_local,
         "status_code":  status_code,
         "direction":    direction,
         "source":       evt.source,

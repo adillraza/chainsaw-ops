@@ -1,29 +1,25 @@
-{# Right-side live-calls drawer.
+{# Right-side live-calls drawer — outer frame.
 
-   Mounted once in layouts/base.html for any user with support.calls.view.
+   State (`liveCallsDrawerOpen`) lives in the body's Alpine scope so the
+   main content wrapper in base.html can shift its right padding when the
+   drawer is open vs collapsed.
+
    Body content (#live-calls-drawer-body) is HTMX-polled every 3s from
-   /api/calls/active and re-rendered server-side.
+   /api/calls/active and re-rendered server-side. #}
 
-   Collapsible: a small floating tab at right-edge expands/collapses the
-   panel; state persists in localStorage. #}
-
-<div x-data="{
-       open: localStorage.getItem('liveCallsDrawer') !== 'closed'
-     }"
-     x-init="$watch('open', v => localStorage.setItem('liveCallsDrawer', v ? 'open' : 'closed'))"
-     class="fixed right-0 top-16 bottom-0 z-30 flex">
+<div class="fixed right-0 top-16 bottom-0 z-30 flex">
 
   {# Edge tab — always visible. Clicking toggles the drawer open/closed. #}
   <button type="button"
-          @click="open = !open"
+          @click="liveCallsDrawerOpen = !liveCallsDrawerOpen"
           class="self-center -ml-3 flex h-16 w-7 items-center justify-center rounded-l-md border border-r-0 border-slate-200 bg-white shadow text-slate-500 hover:text-brand-700"
-          :title="open ? 'Hide live calls' : 'Show live calls'">
-    <i class="fas text-xs" :class="open ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
+          :title="liveCallsDrawerOpen ? 'Hide live calls' : 'Show live calls'">
+    <i class="fas text-xs" :class="liveCallsDrawerOpen ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
   </button>
 
   {# Drawer body. #}
   <aside class="flex h-full w-72 flex-col border-l border-slate-200 bg-white shadow-xl"
-         x-show="open" x-cloak
+         x-show="liveCallsDrawerOpen" x-cloak
          x-transition:enter="transition transform duration-200"
          x-transition:enter-start="translate-x-full"
          x-transition:enter-end="translate-x-0"

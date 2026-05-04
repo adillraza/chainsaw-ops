@@ -86,24 +86,23 @@
             </span>
           </div>
 
-          {# Big phone number — the headline. #}
-          <div class="mt-2 font-mono text-xl font-semibold tracking-tight text-slate-900">
+          {# Caller phone — the headline. Lighter than before; medium weight. #}
+          <div class="mt-2 font-mono text-lg font-medium tracking-tight text-slate-800">
             {{ call.phone or '—' }}
           </div>
 
-          {# Footer row — direction · source · last 4 of dialled #}
-          <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-            <span>
+          {# Footer row — direction · WHICH JJ NUMBER WAS DIALED. #}
+          <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span class="whitespace-nowrap">
               {% if call.direction == 'Inbound' %}
                 <i class="fas fa-phone-arrow-down-left text-emerald-500"></i> incoming
               {% elif call.direction == 'Outbound' %}
                 <i class="fas fa-phone-arrow-up-right text-sky-500"></i> outbound
               {% endif %}
-              · {{ call.source }}
             </span>
-            {% if call.to_number %}
-              <span class="font-mono text-slate-400 truncate" title="{{ call.to_number }}">
-                → {{ call.to_number[-4:] if call.to_number|length > 4 else call.to_number }}
+            {% if call.to_local %}
+              <span class="truncate font-mono text-[11px] text-slate-500" title="dialed {{ call.to_number }}">
+                → {{ call.to_local }}
               </span>
             {% endif %}
           </div>
