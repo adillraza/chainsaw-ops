@@ -66,13 +66,16 @@
       x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebarCollapsed', v ? '1' : '0'));
               $watch('liveCallsDrawerOpen', v => localStorage.setItem('liveCallsDrawer', v ? 'open' : 'closed'))">
   {% if current_user.is_authenticated %}
-    {# Live-calls drawer (right side) — always-visible-when-allowed. #}
-    {% if can('support.calls.view') %}
+    {# Live-calls drawer is scoped to the Customer 360 area only — agents
+       don't need it staring at them while they're working on a PO or the
+       MSL queue. Visible on /customer/* (the customer_360 blueprint). #}
+    {% set show_live_drawer = can('support.calls.view') and request.blueprint == 'customer_360' %}
+    {% if show_live_drawer %}
       {% include "partials/live_calls_drawer_frame.html" %}
     {% endif %}
 
     <div class="flex h-full transition-[padding] duration-200"
-         {% if can('support.calls.view') %}
+         {% if show_live_drawer %}
            :class="liveCallsDrawerOpen ? 'pr-72' : 'pr-7'"
          {% endif %}>
       {% include "partials/sidebar.html" %}
