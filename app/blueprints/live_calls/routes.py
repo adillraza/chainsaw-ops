@@ -151,30 +151,35 @@ def event_detail(event_id: int):
 # Active-calls feed — backs the live drawer
 # ---------------------------------------------------------------------------
 
-# Statuses that mean the call is still in flight (caller hasn't hung up,
-# agent hasn't dropped). Anything containing "Disconnected" is filtered out.
-_STILL_ACTIVE_KEYWORDS = ("Setup", "Proceeding", "Alerting", "Answered", "Hold")
+# How long a call lingers in the drawer after Disconnected before fading off.
+# Lets the agent notice short calls they otherwise would have missed (e.g. a
+# 2-second Setup→Disconnected sequence between two browser polls).
+ENDED_LINGER_SECONDS = 15
 
 
 @live_calls_bp.route("/active", methods=["GET"])
 @require_capability("support.calls.view")
 def active_calls():
-    """Return one row per in-flight call, latest event only.
+    """Return one row per in-flight (or just-ended) call, latest event only.
 
     Source: ``call_event`` table on prod SQLite (every webhook delivery from
     RC PBX). One call generates many events (Setup → Proceeding → Alerting →
     Answered → Disconnected, often duplicated per-party). We collapse to one
-    row per ``session_id`` showing the most recent event, then drop any whose
-    most-recent event is a Disconnected.
+    row per ``session_id`` showing the most recent event.
 
-    Looks back 10 minutes only — calls that never get a Disconnected event
-    (rare, but possible if RC drops a webhook delivery) shouldn't haunt the
-    drawer forever.
+    Two display states:
+      * **active** — latest event is NOT a Disconnected. Full opacity.
+      * **recently_ended** — latest event IS a Disconnected, but received
+        within the last ``ENDED_LINGER_SECONDS`` so the row stays clickable
+        for a beat after the call drops. Rendered faded.
+
+    Looks back 10 minutes for the active list — calls that never get a
+    Disconnected webhook (rare, network drop) shouldn't haunt the drawer.
 
     Renders an HTML fragment by default (HTMX-friendly, swap ``innerHTML``
     into the drawer body). Pass ``?format=json`` for the JSON variant.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     from sqlalchemy import func, and_
 
     since = datetime.utcnow() - timedelta(minutes=10)
@@ -205,19 +210,32 @@ def active_calls():
         .all()
     )
 
-    # Filter to "still active" — latest event is NOT a Disconnected
-    active = [r for r in rows if not _is_terminal(r.event_type)]
+    # Two buckets:
+    #   * still in flight (latest event is not a Disconnected)
+    #   * just ended (latest is Disconnected, within ENDED_LINGER_SECONDS)
+    now = datetime.utcnow()
+    visible = []
+    for r in rows:
+        if _is_terminal(r.event_type):
+            secs_since_end = (now - r.received_at).total_seconds()
+            if secs_since_end <= ENDED_LINGER_SECONDS:
+                visible.append((r, "recently_ended", secs_since_end))
+        else:
+            visible.append((r, "active", 0))
 
     if request.args.get("format") == "json":
         return jsonify({
-            "count": len(active),
-            "active": [_serialise_active(r) for r in active],
+            "count_active":   sum(1 for _, s, _ in visible if s == "active"),
+            "count_lingering": sum(1 for _, s, _ in visible if s == "recently_ended"),
+            "events": [_serialise_active(r) for r, _, _ in visible],
         })
 
     from flask import render_template
     return render_template(
         "partials/live_calls_drawer.html",
-        active=[_active_view_model(r) for r in active],
+        active=[_active_view_model(r, state, secs_end) for r, state, secs_end in visible],
+        active_count=sum(1 for _, s, _ in visible if s == "active"),
+        ended_count=sum(1 for _, s, _ in visible if s == "recently_ended"),
     )
 
 
@@ -240,9 +258,13 @@ def _serialise_active(evt) -> dict:
     }
 
 
-def _active_view_model(evt) -> dict:
+def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0) -> dict:
     """Template-friendly view model — adds a normalised AU local phone +
     a short "ringing for X" duration string for the drawer card.
+
+    ``state`` is either ``"active"`` (call still in flight) or
+    ``"recently_ended"`` (latest event is a Disconnected within the linger
+    window). The template uses this to render a faded card for ended calls.
     """
     from datetime import datetime
     raw_phone = evt.from_number or ""
@@ -265,9 +287,13 @@ def _active_view_model(evt) -> dict:
         "source":       evt.source,
         "received_at":  evt.received_at,
         "seconds_old":  secs,
-        # The "still ringing" states get visual emphasis in the template
-        "is_ringing":   status_code in ("Setup", "Proceeding", "Alerting"),
-        "is_connected": status_code in ("Answered", "Hold"),
+        # State flags drive template styling
+        "state":        state,
+        "is_active":    state == "active",
+        "is_recently_ended": state == "recently_ended",
+        "seconds_since_end": int(seconds_since_end),
+        "is_ringing":   state == "active" and status_code in ("Setup", "Proceeding", "Alerting"),
+        "is_connected": state == "active" and status_code in ("Answered", "Hold"),
     }
 
 
