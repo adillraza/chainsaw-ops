@@ -332,12 +332,30 @@
           {% if h.last_5_calls %}
             <ul class="divide-y divide-slate-100 px-4 py-2 text-sm">
               {% for call in h.last_5_calls %}
-                <li class="flex items-center justify-between py-2">
-                  <div>
-                    <span class="text-slate-800">{{ call.call_time | format_dt('datetime') }}</span>
-                    <span class="ml-2 text-xs text-slate-500">{{ call.direction }} · {{ call.disposition }} · {{ call.source }}</span>
-                  </div>
-                  <span class="text-xs text-slate-500">{{ call.duration_seconds or 0 }}s</span>
+                {# Clickable row — fetches details into the modal via HTMX
+                   and dispatches an Alpine event that toggles the modal open. #}
+                <li class="-mx-2">
+                  <button type="button"
+                          class="flex w-full items-center justify-between rounded px-2 py-2 text-left hover:bg-brand-50"
+                          {% if call.session_id %}
+                            hx-get="{{ url_for('customer_360.call_details', session_id=call.session_id) }}"
+                            hx-target="#call-modal-body"
+                            hx-swap="innerHTML"
+                            hx-indicator="#call-modal-spinner"
+                            @click="$dispatch('open-call-modal')"
+                          {% else %}
+                            disabled
+                          {% endif %}
+                          title="Click to see AI summary, transcript and recording">
+                    <div>
+                      <span class="text-slate-800">{{ call.call_time | format_dt('datetime') }}</span>
+                      <span class="ml-2 text-xs text-slate-500">{{ call.direction }} · {{ call.disposition }} · {{ call.source }}</span>
+                    </div>
+                    <span class="flex items-center gap-2 text-xs text-slate-500">
+                      {{ call.duration_seconds or 0 }}s
+                      {% if call.session_id %}<i class="fas fa-chevron-right text-[10px] text-slate-400"></i>{% endif %}
+                    </span>
+                  </button>
                 </li>
               {% endfor %}
             </ul>
@@ -412,6 +430,42 @@
         </div>
       {% endif %}
 
+    </div>
+  </div>
+
+  {# ----------------------------------------------------------------- #}
+  {# Call details modal — body filled via HTMX swap on click           #}
+  {# ----------------------------------------------------------------- #}
+  <div x-data="{ open: false }"
+       @open-call-modal.window="open = true"
+       @keydown.escape.window="open = false"
+       x-show="open" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center p-4"
+       x-transition.opacity>
+    {# Backdrop — click outside the dialog to close #}
+    <div class="absolute inset-0 bg-slate-900/50" @click="open = false"></div>
+
+    {# Dialog #}
+    <div class="relative z-10 w-full max-w-3xl rounded-lg bg-white shadow-xl"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100">
+      <button type="button"
+              class="absolute right-3 top-3 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              @click="open = false" aria-label="Close">
+        <i class="fas fa-xmark"></i>
+      </button>
+
+      {# Loading spinner shown via .htmx-request -> opacity rule on .htmx-indicator #}
+      <div id="call-modal-spinner" class="htmx-indicator absolute right-12 top-3 text-xs text-slate-400">
+        <i class="fas fa-circle-notch fa-spin"></i> loading…
+      </div>
+
+      <div id="call-modal-body" class="max-h-[85vh] overflow-y-auto">
+        <div class="px-6 py-12 text-center text-sm text-slate-400">
+          Click a call in the history to load its details.
+        </div>
+      </div>
     </div>
   </div>
 

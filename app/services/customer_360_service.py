@@ -140,6 +140,133 @@ class Customer360Service:
         )
         return [_row_to_dict(r) for r in job.result()]
 
+    # ------------------------------------------------------------------
+    # Per-call detail: AI summary + transcript + classifications + audio
+    # ------------------------------------------------------------------
+
+    def get_call_details(self, session_id: str) -> dict:
+        """Pull the full bundle for one historical call (for the modal).
+
+        Sources:
+          * recording_fetch_status — transcript, summary, sentiment, topics,
+            intents, gcs_uri (audio file)
+          * call_classifications  — structured AI fields (call_type, sale_result,
+            problems_detected, etc.)
+          * callsrep_rep_contacts_completed_v2 — call metadata (start/duration/agent)
+
+        ``session_id`` matches CXone calls (numeric contactId stored as STRING in
+        our last_5_calls). PBX calls use a different session id format
+        (``s-...``) and won't match — for those we return an empty payload and
+        the modal renders a "no analysis available" state.
+        """
+        empty = {
+            "session_id": session_id,
+            "found": False,
+            "recording_signed_url": None,
+        }
+        if not session_id or self.client is None:
+            return empty
+
+        sql = """
+        SELECT
+          r.contactId,
+          r.summary,
+          r.transcription,
+          r.sentiment,
+          r.topics,
+          r.intents,
+          r.gcs_uri,
+          r.recording_filename,
+          r.fetch_datetime,
+          r.source AS recording_source,
+          c.call_type,
+          c.sale_result,
+          c.product_family,
+          c.product_category_detail,
+          c.no_sale_reasons,
+          c.problems_detected,
+          c.escalation_actions,
+          c.delivery_tracking,
+          c.confidence_scores,
+          c.agent_name,
+          m.startDate AS cxone_start_date,
+          m.agentSeconds AS cxone_duration_seconds,
+          m.endReason AS cxone_end_reason,
+          m.skillName,
+          m.firstName  AS agent_first_name,
+          m.lastName   AS agent_last_name
+        FROM `chainsawspares-385722.ringcentral_jnj.recording_fetch_status` r
+        LEFT JOIN `chainsawspares-385722.ringcentral_jnj.call_classifications` c
+          ON r.contactId = c.contactId
+        LEFT JOIN `chainsawspares-385722.ringcentral_jnj.callsrep_rep_contacts_completed_v2` m
+          ON SAFE_CAST(r.contactId AS NUMERIC) = m.contactId
+        WHERE r.contactId = @session_id
+        ORDER BY r.fetch_datetime DESC
+        LIMIT 1
+        """
+        job = self.client.query(
+            sql,
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ScalarQueryParameter("session_id", "STRING", session_id)]
+            ),
+        )
+        row = next(iter(job.result()), None)
+        if row is None:
+            return empty
+
+        d = _row_to_dict(row)
+        d["session_id"] = session_id
+        d["found"] = True
+
+        # Parse the JSON-string sentiment / topics / intents columns into real
+        # structures so the template can render them without re-parsing.
+        for col in ("sentiment", "topics", "intents"):
+            raw = d.get(col)
+            if isinstance(raw, str) and raw:
+                try:
+                    import json as _json
+                    d[col + "_parsed"] = _json.loads(raw)
+                except Exception:
+                    d[col + "_parsed"] = None
+            else:
+                d[col + "_parsed"] = None
+
+        # Generate a signed URL for the audio (15 min) so the <audio> tag
+        # in the modal can play directly.
+        if d.get("gcs_uri"):
+            d["recording_signed_url"] = self._sign_gcs_url(d["gcs_uri"], minutes=15)
+
+        return d
+
+    def _sign_gcs_url(self, gcs_uri: str, minutes: int = 15) -> str | None:
+        """Sign a ``gs://bucket/object`` path for short-lived public access.
+
+        Reuses the same service-account credentials BigQuery is using.
+        Returns ``None`` if the URL can't be parsed or the storage client
+        isn't reachable.
+        """
+        if not gcs_uri or not gcs_uri.startswith("gs://"):
+            return None
+        try:
+            from datetime import timedelta
+            from google.cloud import storage
+            # Pull credentials from the live BQ client so we don't re-load them.
+            creds = getattr(self.client, "_credentials", None)
+            project = getattr(self.client, "project", PROJECT)
+            stor = storage.Client(credentials=creds, project=project)
+            bucket_name, _, blob_name = gcs_uri[5:].partition("/")
+            blob = stor.bucket(bucket_name).blob(blob_name)
+            return blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(minutes=minutes),
+                method="GET",
+            )
+        except Exception as e:
+            # Surface to logs but don't blow up the modal — audio is optional.
+            import logging
+            logging.getLogger(__name__).warning("GCS sign failed for %s: %s", gcs_uri, e)
+            return None
+
 
 # Global singleton, mirroring purchase_orders_service.
 customer_360_service = Customer360Service()

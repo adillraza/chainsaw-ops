@@ -36,6 +36,18 @@ def card_json(phone: str):
     return jsonify(customer_360_service.get_card(phone))
 
 
+@customer_360_bp.route("/api/call/<path:session_id>", methods=["GET"])
+@require_capability("support.calls.view")
+def call_details(session_id: str):
+    """HTML partial — rendered inside the call-details modal via HTMX swap.
+
+    ``path`` converter (not ``string``) so PBX session ids that contain dots
+    (``s-a035ddc2def3bz...``) come through unmangled.
+    """
+    details = customer_360_service.get_call_details(session_id)
+    return render_template("customer_360/_call_details_modal.html", d=details)
+
+
 # Convenience: a search-form POST that just redirects to /customer/<phone>.
 # Lets the index search box use a plain HTML form with no JS.
 @customer_360_bp.route("/search", methods=["POST"])

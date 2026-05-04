@@ -1,0 +1,175 @@
+{# Modal contents — HTMX swaps this into #call-modal-body when an agent
+   clicks a call row in the customer 360 card. The outer modal frame
+   (backdrop + open/close handling) lives in card.html. #}
+
+{% if not d.found %}
+  <div class="px-6 py-12 text-center">
+    <i class="fas fa-circle-info text-3xl text-slate-300"></i>
+    <p class="mt-3 text-sm text-slate-700">
+      No analysis available for this call.
+    </p>
+    <p class="mt-1 text-xs text-slate-500">
+      Recording / transcript / AI classification haven't been attached to session
+      <span class="font-mono">{{ d.session_id }}</span> yet — usually means the
+      call was handled by the PBX queue (which runs separately from the analyzer
+      pipeline) or hasn't been processed by the nightly recording fetcher.
+    </p>
+  </div>
+{% else %}
+
+  {# Header strip — at-a-glance metadata #}
+  <header class="border-b border-slate-200 px-6 py-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h3 class="text-base font-semibold text-slate-900">Call details</h3>
+        <p class="mt-1 text-xs text-slate-500">
+          {% if d.cxone_start_date %}
+            {% set start = d.cxone_start_date.replace('T',' ') if d.cxone_start_date is string else d.cxone_start_date %}
+            {{ start }} ·
+          {% endif %}
+          {% if d.cxone_duration_seconds %}{{ d.cxone_duration_seconds }}s ·{% endif %}
+          {% if d.agent_first_name or d.agent_last_name %}
+            agent {{ (d.agent_first_name or '') }} {{ (d.agent_last_name or '') }} ·
+          {% endif %}
+          {% if d.skillName %}skill {{ d.skillName }} ·{% endif %}
+          {% if d.cxone_end_reason %}{{ d.cxone_end_reason }}{% endif %}
+        </p>
+        <p class="mt-0.5 text-[11px] text-slate-400">
+          contactId <span class="font-mono">{{ d.contactId }}</span>
+        </p>
+      </div>
+      {# Sentiment badge (top-level "average") #}
+      {% if d.sentiment_parsed and d.sentiment_parsed.average %}
+        {% set s = d.sentiment_parsed.average %}
+        {% set sent_color = 'emerald' if s.sentiment == 'positive' else 'rose' if s.sentiment == 'negative' else 'slate' %}
+        <span class="inline-flex flex-col items-end">
+          <span class="inline-flex items-center rounded-full bg-{{ sent_color }}-100 px-2.5 py-0.5 text-xs font-medium text-{{ sent_color }}-800 capitalize">
+            {{ s.sentiment }}
+          </span>
+          <span class="mt-1 text-[10px] uppercase tracking-wide text-slate-400">
+            score {{ '%.2f' % (s.sentiment_score or 0) }}
+          </span>
+        </span>
+      {% endif %}
+    </div>
+  </header>
+
+  {# Audio player #}
+  {% if d.recording_signed_url %}
+    <section class="border-b border-slate-200 bg-slate-50 px-6 py-3">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-circle-play text-slate-400"></i>
+        <audio controls preload="none" class="flex-1" style="max-width: 100%;">
+          <source src="{{ d.recording_signed_url }}">
+          Your browser does not support audio playback.
+        </audio>
+      </div>
+      <p class="mt-1 text-[10px] text-slate-400">
+        Signed URL — expires in 15 min. Reload the modal if playback fails.
+      </p>
+    </section>
+  {% endif %}
+
+  {# AI summary — most prominent #}
+  {% if d.summary %}
+    <section class="border-b border-slate-200 px-6 py-4">
+      <h4 class="text-[11px] uppercase tracking-wide text-slate-500">AI summary</h4>
+      <p class="mt-2 text-sm leading-relaxed text-slate-800">{{ d.summary }}</p>
+    </section>
+  {% endif %}
+
+  {# Structured AI classifications #}
+  {% if d.call_type or d.sale_result or d.product_family or d.problems_detected or d.escalation_actions %}
+    <section class="grid grid-cols-2 gap-4 border-b border-slate-200 px-6 py-4 text-sm">
+      {% if d.call_type %}
+        <div>
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">Call type</div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for ct in d.call_type %}
+              <span class="inline-flex rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-800">{{ ct }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if d.sale_result %}
+        <div>
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">Sale result</div>
+          <div class="mt-1 text-sm font-medium text-slate-800">{{ d.sale_result }}</div>
+        </div>
+      {% endif %}
+
+      {% if d.product_family %}
+        <div>
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">Product family</div>
+          <div class="mt-1 text-sm text-slate-800">{{ d.product_family }}</div>
+        </div>
+      {% endif %}
+
+      {% if d.product_category_detail %}
+        <div>
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">Product details</div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for pc in d.product_category_detail %}
+              <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ pc }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if d.delivery_tracking and d.delivery_tracking.reason_for_call %}
+        <div class="col-span-2">
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">Reason for call</div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for r in d.delivery_tracking.reason_for_call %}
+              <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ r }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if d.problems_detected %}
+        <div class="col-span-2">
+          <div class="text-[11px] uppercase tracking-wide text-rose-600">⚠ Problems detected</div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for p in d.problems_detected %}
+              <span class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">{{ p }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if d.escalation_actions %}
+        <div class="col-span-2">
+          <div class="text-[11px] uppercase tracking-wide text-amber-700">Escalation actions</div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for e in d.escalation_actions %}
+              <span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{{ e }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if d.no_sale_reasons %}
+        <div class="col-span-2">
+          <div class="text-[11px] uppercase tracking-wide text-slate-500">No-sale reasons</div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            {% for n in d.no_sale_reasons %}
+              <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ n }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {# Full transcript — collapsible / scrollable #}
+  {% if d.transcription %}
+    <section class="px-6 py-4">
+      <h4 class="text-[11px] uppercase tracking-wide text-slate-500">Full transcript</h4>
+      <div class="mt-2 max-h-[28rem] overflow-auto rounded border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+{{ d.transcription }}</div>
+    </section>
+  {% endif %}
+
+{% endif %}
