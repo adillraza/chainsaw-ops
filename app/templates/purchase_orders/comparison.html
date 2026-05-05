@@ -195,14 +195,6 @@
   // Keys MUST match the `data-col` attribute on the <th>/<td> cells
   // (which in turn match COMPARISON_COLUMNS in routes.py).
   function poColumnToggle() {
-    // Applied to first-time visitors who haven't touched the dropdown yet.
-    // After any interaction, the user's explicit choice is persisted to
-    // localStorage and DEFAULTS no longer apply on subsequent loads.
-    const DEFAULTS = {
-      final_rex_qty_ordered: true,  // Latest
-      neto_qty_shipped:      true,  // Shipped
-    };
-
     return {
       open: false,
       hidden: {},
@@ -216,18 +208,10 @@
         { key: 'latest_item_note_date',    label: 'Latest note' },
       ],
       init() {
-        const raw = localStorage.getItem('po-cmp-cols-hidden');
-        if (raw === null) {
-          // First-time visitor — apply suggested defaults. Don't write them
-          // to localStorage, so changing DEFAULTS later still flows through
-          // for users who haven't customised yet.
-          this.hidden = { ...DEFAULTS };
-        } else {
-          try {
-            this.hidden = JSON.parse(raw);
-          } catch (e) {
-            this.hidden = {};
-          }
+        try {
+          this.hidden = JSON.parse(localStorage.getItem('po-cmp-cols-hidden') || '{}');
+        } catch (e) {
+          this.hidden = {};
         }
       },
       toggle(key) {
@@ -241,11 +225,8 @@
         localStorage.setItem('po-cmp-cols-hidden', JSON.stringify(this.hidden));
       },
       reset() {
-        // Show all columns AND persist the empty state — without this,
-        // refresh would re-apply DEFAULTS because the absence of a key
-        // means "first-time visitor".
         this.hidden = {};
-        localStorage.setItem('po-cmp-cols-hidden', '{}');
+        localStorage.removeItem('po-cmp-cols-hidden');
       },
       hiddenCount() {
         return Object.keys(this.hidden).length;
