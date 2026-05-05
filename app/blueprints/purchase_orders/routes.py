@@ -453,71 +453,87 @@ def _backfill_is_kitted_item(rows):
 # Columns the user can sort by from the table headers. Maps a stable key
 # (used in URLs) to a tuple of (model column, human label, tooltip text).
 COMPARISON_COLUMNS: dict[str, dict[str, Any]] = {
+    # ``width_px`` is the fixed width for each column under table-fixed
+    # layout. Total sums to ~1700px which forces a horizontal scrollbar
+    # on viewports narrower than that — preferred over auto-sizing,
+    # which lets short-content columns (like SKU) eat space the long
+    # description column needs. Adjust here if columns are added.
     "po_id": {
         "col": CachedPurchaseOrderComparison.po_id,
         "label": "PO ID",
         "tooltip": "Purchase Order ID",
         "align": "left",
+        "width_px": 80,
     },
     "sku": {
         "col": CachedPurchaseOrderComparison.sku,
         "label": "SKU",
         "tooltip": "Stock Keeping Unit identifier",
         "align": "left",
+        "width_px": 140,
     },
     "name": {
         "col": CachedPurchaseOrderComparison.name,
         "label": "Description",
         "tooltip": "Product name and description",
         "align": "left",
+        "width_px": 340,
     },
     "change_log": {
         "col": CachedPurchaseOrderComparison.change_log,
         "label": "Change log",
         "tooltip": "Type of change or difference detected between REX and NETO",
         "align": "left",
+        "width_px": 140,
     },
     "rex_available_qty": {
         "col": CachedPurchaseOrderComparison.rex_available_qty,
         "label": "REX avail",
         "tooltip": "Quantity currently available in REX",
         "align": "right",
+        "width_px": 90,
     },
     "neto_qty_available": {
         "col": CachedPurchaseOrderComparison.neto_qty_available,
         "label": "NETO avail",
         "tooltip": "Quantity currently available in NETO",
         "align": "right",
+        "width_px": 90,
     },
     "original_rex_qty_ordered": {
         "col": CachedPurchaseOrderComparison.original_rex_qty_ordered,
         "label": "Original",
         "tooltip": "Original quantity ordered in REX",
         "align": "right",
+        "width_px": 90,
     },
     "final_rex_qty_ordered": {
         "col": CachedPurchaseOrderComparison.final_rex_qty_ordered,
         "label": "Latest",
         "tooltip": "Final / latest quantity ordered in REX",
         "align": "right",
+        "width_px": 80,
     },
     "neto_qty_shipped": {
         "col": CachedPurchaseOrderComparison.neto_qty_shipped,
         "label": "Shipped",
         "tooltip": "Quantity shipped from NETO",
         "align": "right",
+        "width_px": 80,
     },
     "rex_qty_received": {
         "col": CachedPurchaseOrderComparison.rex_qty_received,
         "label": "Received",
         "tooltip": "Quantity received in REX",
         "align": "right",
+        "width_px": 90,
     },
     "latest_item_note_date": {
         "col": CachedPurchaseOrderComparison.latest_item_note_date,
         "label": "Latest note",
         "tooltip": "Most recent item-level note or comment",
         "align": "left",
+        "width_px": 260,
     },
 }
 

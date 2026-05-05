@@ -14,7 +14,7 @@
       <a class="font-semibold text-brand-700 hover:underline"
          href="{{ url_for('purchase_orders.comparison', po_id=r.po_id) }}">{{ r.po_id }}</a>
     </td>
-    <td data-col="sku" class="whitespace-nowrap px-3 py-2 font-mono text-slate-700">
+    <td data-col="sku" class="truncate px-3 py-2 font-mono text-slate-700" title="{{ r.sku or '' }}">
       {% if r.sku and r.neto_product_id %}
         <a href="https://www.chainsawspares.com.au/_cpanel/products/view?id={{ r.neto_product_id }}"
            target="_blank" rel="noopener"
@@ -30,7 +30,9 @@
         </span>
       {% endif %}
     </td>
-    <td data-col="name" class="px-3 py-2 text-slate-600" title="{{ r.name or '' }}">{{ (r.name or '')[:60] }}{% if (r.name or '')|length > 60 %}…{% endif %}</td>
+    {# Description: column width is fixed at 340px; let the cell wrap to two
+       lines for readability. Full text always available on hover via title. #}
+    <td data-col="name" class="px-3 py-2 text-slate-600 align-top leading-snug" title="{{ r.name or '' }}">{{ r.name or '' }}</td>
     <td data-col="change_log" class="whitespace-nowrap px-3 py-2">{{ change_log_tag(r.change_log) }}</td>
     <td data-col="rex_available_qty" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_available_qty or 0) }}</td>
     <td data-col="neto_qty_available" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_available or 0) }}</td>

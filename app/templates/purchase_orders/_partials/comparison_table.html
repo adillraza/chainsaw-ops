@@ -30,9 +30,21 @@
   </a>
 {%- endmacro %}
 
+{# Compute the fixed table width: sum of every column's width_px plus the
+   140px Actions column at the end. Drives the horizontal scrollbar — the
+   wrapper div is overflow-x-auto, the table is wider than the wrapper on
+   typical laptop viewports. #}
+{% set _actions_w = 140 %}
+{% set _table_w = sort_columns.values() | map(attribute='width_px') | sum + _actions_w %}
 <div data-hx-table class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
   <div class="max-h-[calc(100vh-340px)] overflow-auto">
-    <table class="min-w-full divide-y divide-slate-200 text-sm">
+    <table class="table-fixed divide-y divide-slate-200 text-sm" style="width: {{ _table_w }}px">
+      <colgroup>
+        {% for key, col in sort_columns.items() %}
+          <col data-col="{{ key }}" style="width: {{ col.width_px }}px">
+        {% endfor %}
+        <col style="width: {{ _actions_w }}px">
+      </colgroup>
       <thead class="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
         <tr>
           {% for key, col in sort_columns.items() %}
