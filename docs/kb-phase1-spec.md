@@ -73,7 +73,7 @@ Three layers of authority:
 | Internal | SharePoint procedures, training, CS team docs | "How JJ does things" — internal SOPs and tribal knowledge |
 | Catalogue | `neto_product_list.Description` + specifics | "What the website tells customers" — same text the customer is reading on the product page |
 | Authoritative | Website brochure PDFs (e.g. VS135ES.pdf) | "The manual" — published product documentation, ground truth on specs and fitment |
-| Editorial | Website blog posts (61 long-form guides) | "How to choose / why is X happening" — buying guides and troubleshooting walkthroughs in customer-friendly language |
+| Editorial | Neto Information Pages via `GetContent` API — blog posts, FAQs, policies, About, etc. (~100-200 CMS rows) | "How to choose / why is X happening / what's the policy on Y" — buying guides, troubleshooting walkthroughs, FAQs, store policies, all in customer-friendly language |
 
 When an agent searches, retrieval should ideally pull a chunk from each
 layer for a balanced answer.
@@ -180,83 +180,138 @@ file under different slugs.
 **Total estimated for §2c**: ~33 PDFs / ~671 MB raw; after extraction
 to text, perhaps 5-15 MB and ~3-5k chunks. Embedding cost: under $0.10.
 
-### 2d. Website blog posts — `chainsawspares.com.au/blog/`
+### 2d. Neto Information Pages (blog + other CMS content) — `GetContent` API
 
-The website's blog hosts long-form product guides written by JJ —
-buying guides ("best battery chainsaw Australia"), troubleshooting
-walkthroughs ("chainsaw cuts crooked"), category overviews ("guide to
-brushcutters & grass trimmers"). Tone is customer-friendly and
-explanatory — exactly the kind of content that's most useful to a CS
-agent on a call where a customer is asking "which one should I buy?"
-or "why is my chainsaw doing X?".
+Originally planned this as a scrape of `chainsawspares.com.au/blog/`,
+but **Neto exposes a `GetContent` API endpoint** that returns every
+Information Page (blog post, FAQ, About, Shipping Policy, Help article,
+etc.) as a structured object — full body, dates, author, labels, SEO
+metadata. Same source the website renders from. No HTML parsing needed.
 
-The blog is published in Neto's Information Pages (CMS), which is **not
-synced to BigQuery**. So this is a scrape — but it's the cleanest scrape
-in the catalogue: every post page exposes a `BlogPosting` JSON-LD block
-with structured metadata.
+Reference: <https://developers.maropost.com/documentation/engineers/api-documentation/content/getcontent>
+
+This is **strictly better than the scrape**:
+- Full structured response (Description1/2/3, ShortDescription1/2/3,
+  Author, Labels, SEO, dates, ContentType, ContentURL)
+- Can filter to just blog posts via `ContentType` (or pull every CMS
+  page in one shot — bonus content for free)
+- Server-side filtering on `DateUpdatedFrom` for incremental refresh
+- Pagination via `Page`/`Limit`
+
+**Auth**: Neto API uses three custom headers against the store's own
+endpoint. The user (admin) generates an API key from Neto cpanel
+**Settings → Staff → API**:
+
+```
+POST https://www.chainsawspares.com.au/do/WS/NetoAPI
+NETOAPI_ACTION:   GetContent
+NETOAPI_USERNAME: <staff username with API permissions>
+NETOAPI_KEY:      <generated key>
+Content-Type:     application/json
+Accept:           application/json
+```
+
+Stash the username + key in GCP Secret Manager alongside the SharePoint
+ones:
+
+```bash
+printf "%s" "USERNAME"  | gcloud secrets create neto-api-username --data-file=-
+printf "%s" "API_KEY"   | gcloud secrets create neto-api-key      --data-file=-
+```
 
 **Discovery + extraction**:
 
 ```python
-import re, json
-from bs4 import BeautifulSoup
+import json, urllib.request
 
-# 1. Pull the blog index, extract every post URL.
-index = fetch("https://www.chainsawspares.com.au/blog/")
-post_urls = sorted(set(re.findall(
-    r"https://www\.chainsawspares\.com\.au/blog/[a-zA-Z0-9_-]+", index)))
-post_urls = [u for u in post_urls if not u.endswith("/blog")]   # drop the index itself
+def neto_api(action: str, body: dict) -> dict:
+    req = urllib.request.Request(
+        "https://www.chainsawspares.com.au/do/WS/NetoAPI",
+        data=json.dumps(body).encode(),
+        headers={
+            "NETOAPI_ACTION":   action,
+            "NETOAPI_USERNAME": secret("neto-api-username"),
+            "NETOAPI_KEY":      secret("neto-api-key"),
+            "Content-Type":     "application/json",
+            "Accept":           "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())
 
-# 2. For each post, pull JSON-LD for clean metadata + scrape body content.
-for url in post_urls:
-    page = fetch(url)
-    soup = BeautifulSoup(page, "html.parser")
+def list_all_content(content_type: str | None = None, since: str | None = None):
+    """Walk every Content row, paginating. ContentType=None pulls all
+    page types (blog + faq + about + …); pass a specific type to scope."""
+    page = 1
+    while True:
+        flt = {"Page": page, "Limit": 100,
+               "OutputSelector": ["ID", "ContentName", "ContentType",
+                   "ContentURL", "Description1", "Description2",
+                   "ShortDescription1", "Author", "Label1", "Label2", "Label3",
+                   "SEOMetaDescription", "SEOMetaKeywords", "SEOPageHeading",
+                   "Active", "DatePosted", "DateUpdated"]}
+        if content_type: flt["ContentType"] = content_type
+        if since:        flt["DateUpdatedFrom"] = since   # ISO 8601
+        flt["Active"] = True
 
-    ld = next((s.string for s in soup.find_all("script", type="application/ld+json")
-               if "BlogPosting" in (s.string or "")), None)
-    meta = json.loads(ld) if ld else {}
-
-    body_section = soup.find(class_="blog-content-sec") or soup.find(class_="n-responsive-content")
-    body_text = body_section.get_text("\n", strip=True) if body_section else ""
-
-    yield {
-        "url": url,
-        "headline": meta.get("headline"),
-        "description": meta.get("description"),
-        "date_published": meta.get("datePublished"),
-        "date_modified":  meta.get("dateModified"),
-        "author":         (meta.get("author") or {}).get("name"),
-        "body_text":      body_text,
-    }
+        resp = neto_api("GetContent", {"Filter": flt})
+        rows = resp.get("Content") or []
+        if not rows: return
+        yield from rows
+        if len(rows) < 100: return
+        page += 1
 ```
 
-A reconnaissance run on 2026-05-06 found:
+**Per-row chunking**:
 
-- **61 blog posts** discoverable from the index (single page, no pagination needed)
-- Posts dated 2023-2026, mix of how-to / buying-guide / category-overview content
-- JSON-LD present on every post (BlogPosting type)
-- Body content lives in `.blog-content-sec` (or `.n-responsive-content` as fallback)
+```python
+def chunk_for_content(row):
+    text_parts = [
+        f"# {row.get('ContentName', '').strip()}",
+        f"Type: {row.get('ContentType', '')}",
+        f"URL: {row.get('ContentURL', '')}",
+    ]
+    if row.get("Author"):              text_parts.append(f"Author: {row['Author']}")
+    if row.get("ShortDescription1"):   text_parts.append(strip_html(row["ShortDescription1"]))
+    if row.get("Description1"):        text_parts.append(strip_html(row["Description1"]))
+    if row.get("Description2"):        text_parts.append(strip_html(row["Description2"]))
+    if row.get("SEOMetaDescription"):  text_parts.append("SEO summary: " + row["SEOMetaDescription"])
+    return "\n\n".join(p for p in text_parts if p)
+```
+
+**ContentType values are not enumerated in the docs** (they're
+free-text strings the merchant defines). Run a discovery query once
+without the `ContentType` filter to see what the chainsawspares store
+actually uses — likely a mix of:
+- `article` / `blog` (the 61 posts we scraped)
+- `page` (About, Help, Contact, Shipping)
+- `faq` (FAQ entries)
+- … plus any custom types JJ has added
 
 | # | Source | Treatment | Why |
 |--:|---|---|---|
-| 21 | `chainsawspares.com.au/blog/*` | Scrape index → walk 61 posts. Per post: emit one chunk concatenating headline + description + body_text, with metadata (URL, date_published, author). Strip nav/sidebar/footer. | Long-form customer-friendly product guides. Highest-value writing for "which one should I buy / why is X happening" questions. |
+| 21 | Neto API: `GetContent` (all `Active` rows, every ContentType) | One chunk per row, formatted as above. Full Description1/2/3 + SEO meta. Refresh via `DateUpdatedFrom` since-last-run. | All 61 blog posts **plus** every other CMS page (FAQs, help, About, shipping policy, etc.) — ground-truth same as the website renders. |
 
-**Cadence**: user mentioned blogs are published occasionally, not often.
-Weekly refresh is fine. Use `dateModified` from JSON-LD as the change
-key — re-embed only when it ticks forward.
+**Cadence**: blogs publish occasionally. Hourly would be wasteful.
+Daily refresh keyed on `DateUpdatedFrom` is the sensible default —
+covers blog posts and any FAQ/policy edits.
 
-**Volume**: 61 posts × ~5KB body text each ≈ 300 KB total → ~150-300
-chunks. Embedding cost: well under $0.01.
+**Volume**: 61 confirmed blog posts on the index page; total CMS content
+likely 100-200 rows after FAQs and policy pages are included. Each ~3-8 KB
+of text. Total ~1 MB. Embedding cost: under $0.05.
 
-**Implementation notes**:
-- One of the URLs in the regex match is `/blog/blog` itself (an
-  artifact of the index linking to itself). Filter it out.
-- `dateModified` and `datePublished` are often identical; that's fine
-  for our purposes.
-- The body text includes any embedded image alt-text and table content,
-  which is useful for retrieval. Don't over-strip.
-- Skip drafts: any post with a `noindex` meta robots tag is unpublished
-  preview — easy to detect, rare in practice.
+**Fallback if API access stalls**: scrape the blog index page and walk
+the 61 post URLs (extracts JSON-LD + `.blog-content-sec` body). Less
+flexible — only catches `/blog/*`, misses FAQs and other CMS pages —
+but it ships without waiting for the API key.
+
+**Reconnaissance findings (2026-05-06)**:
+- 61 blog posts discoverable from the index
+- Each post page exposes a `BlogPosting` JSON-LD block (kept for the
+  fallback path)
+- `.blog-content-sec` is the body content selector for the fallback
+- Posts dated 2023-2026, mix of how-to / buying-guide / category-overview
 
 ### 2c. Sources deliberately excluded from Phase 1
 
@@ -726,6 +781,12 @@ top results actually useful? If not, the fix is usually
 - [ ] **Where does ingestion run**: laptop for first backfill is fine.
       Long-term: Cloud Run Job, or a `kb-ingest` systemd timer on the
       chainsaw-ops VPS (similar shape to `cxone-poller`).
+- [ ] **Neto API key**: admin generates one via cpanel
+      Settings → Staff → API, give the API user `read content` permission.
+      Stash username + key in Secret Manager (`neto-api-username`,
+      `neto-api-key`). If access takes longer than a day, ship Phase 1
+      with the blog-scrape fallback for source §2d and add the API path
+      in a follow-up.
 
 ---
 
