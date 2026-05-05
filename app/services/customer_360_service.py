@@ -49,6 +49,31 @@ class Customer360Service:
         # Reuse the singleton client created at app startup.
         return purchase_orders_service.client
 
+    @staticmethod
+    def _lookup_internal(phone: str) -> dict | None:
+        """Return the InternalPhoneNumber row for ``phone``, or None.
+
+        Wrapped in a try so a missing table (e.g. fresh dev DB before
+        migration runs) downgrades to "not internal" rather than 500-ing.
+        Lookup is by primary key on a 25-row table — sub-millisecond.
+        """
+        if not phone:
+            return None
+        try:
+            from app.models.internal_phone import InternalPhoneNumber
+            row = InternalPhoneNumber.query.get(phone)
+        except Exception:
+            return None
+        if not row:
+            return None
+        return {
+            "phone":     row.phone,
+            "e164":      row.e164,
+            "usage":     row.usage_type,
+            "label":     row.label or "(unlabelled)",
+            "extension": row.extension_number,
+        }
+
     def get_card(self, raw_phone: str) -> dict:
         """Return the full payload for the customer card UI.
 
@@ -63,6 +88,8 @@ class Customer360Service:
             "matched": False,
             "usernames": [],
             "is_international": False,
+            "is_internal_line": False,
+            "internal_line": None,
             "customers": [],         # list of customer_360 rows (one per matching username)
             "call_history": None,    # call_history_360 row, or None
             "call_behavior": None,   # call_behavior_360 row, or None
@@ -71,6 +98,20 @@ class Customer360Service:
         if not phone:
             empty["error"] = "Empty / unparseable phone number"
             return empty
+
+        # --- Internal-line short-circuit ---
+        # If this phone is one of JJ's own DIDs (IVR / staff direct line /
+        # main company number / fax), we never want to render it as a
+        # customer card. The matched-customer fallback would otherwise
+        # pick whichever Neto record happens to have stored this number
+        # by mistake (typically a typo or a "TEST DO NOT SEND" entry),
+        # producing wildly inflated call counts and a meaningless name.
+        internal = self._lookup_internal(phone)
+        if internal:
+            empty["is_internal_line"] = True
+            empty["internal_line"] = internal
+            return empty
+
         if self.client is None:
             empty["error"] = "BigQuery client not available"
             return empty

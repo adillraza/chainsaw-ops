@@ -5,6 +5,7 @@ Importing this package registers every model with the shared
 """
 from app.models.annotations import Annotation
 from app.models.call_events import CallEvent, PinnedCall
+from app.models.internal_phone import InternalPhoneNumber
 from app.models.purchase_orders import (
     CachedPurchaseOrderComparison,
     CachedPurchaseOrderItem,
@@ -26,6 +27,7 @@ __all__ = [
     "CallEvent",
     "PinnedCall",
     "CLOSED_REVIEW_STATUSES",
+    "InternalPhoneNumber",
     "ItemReview",
     "LoginLog",
     "OPEN_REVIEW_STATUSES",
