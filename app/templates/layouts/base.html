@@ -44,9 +44,18 @@
     /* Zebra striping — skip rows that already carry an explicit bg-* class
        at a class-name boundary (disparity red, kitted amber, detail drawer).
        We match "bg-" only at the start of the class attribute or after a
-       space, so variant classes like "hover:bg-slate-50" still get striped. */
-    tbody tr:nth-child(even):not([class^="bg-"]):not([class*=" bg-"]) {
-      background-color: rgb(248 250 252); /* slate-50 */
+       space, so variant classes like "hover:bg-slate-50" still get striped.
+
+       Two patterns to support:
+       1. Standard table: one <tbody> with many <tr> children — stripe by
+          row position via :nth-child(even).
+       2. Per-row tbody: each row wrapped in its own <tbody> so HTMX
+          outerHTML swaps can replace the main row + an inline detail
+          panel atomically (used by the PO comparison table). For these,
+          stripe by tbody position via :nth-of-type(even). */
+    tbody tr:nth-child(even):not([class^="bg-"]):not([class*=" bg-"]),
+    tbody:nth-of-type(even) > tr:not([class^="bg-"]):not([class*=" bg-"]) {
+      background-color: rgb(241 245 249); /* slate-100 — bumped from slate-50 for clearer banding */
     }
     /* More prominent hover than Tailwind's default hover:bg-slate-50.
        !important because Tailwind's .hover\:bg-*:hover has higher specificity
