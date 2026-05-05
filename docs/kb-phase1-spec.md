@@ -72,8 +72,8 @@ Three layers of authority:
 |---|---|---|
 | Internal | SharePoint procedures, training, CS team docs | "How JJ does things" — internal SOPs and tribal knowledge |
 | Catalogue | `neto_product_list.Description` + specifics | "What the website tells customers" — same text the customer is reading on the product page |
-| Authoritative | Website brochure PDFs (e.g. VS135ES.pdf) | "The manual" — published product documentation, ground truth on specs and fitment |
-| Editorial | Neto Information Pages via `GetContent` API — blog posts, FAQs, policies, About, etc. (~100-200 CMS rows) | "How to choose / why is X happening / what's the policy on Y" — buying guides, troubleshooting walkthroughs, FAQs, store policies, all in customer-friendly language |
+| Authoritative | Website brochure PDFs + **exploded-parts diagrams** (~93 PDFs, all referenced from CMS pages) | "The manual" — published product documentation including exploded views for parts identification |
+| Editorial | All Neto CMS pages via `GetContent` API — blog, brand pages, category descriptions, FAQs, policies, About, info pages (~156 substantial rows) | "How to choose / why is X happening / what's the policy on Y" — buying guides, troubleshooting walkthroughs, hand-written brand and category overviews, store policies |
 
 When an agent searches, retrieval should ideally pull a chunk from each
 layer for a balanced answer.
@@ -131,189 +131,173 @@ SEO summary
 **Total estimated**: ~6,000 product chunks, deterministically generated
 each run. Embedding cost: ~$0.04.
 
-### 2c. Website resources — brochure / manual PDFs
+### 2c. Neto Information Pages + brochure PDFs (one unified source via `GetContent`)
 
-The website's **Resources** menu links to ~48 friendly-slug pages
-(`/VS135ESmanual`, `/jpe680manual`, etc.) which each embed a brochure PDF
-under `/assets/brochures/{Brochure}.pdf`. These are the most up-to-date,
-authoritative product manuals — owner manuals, exploded parts diagrams,
-quick-start guides — published by Jono and Johno themselves.
+**Originally split into two sources** (a brochure-PDF scrape and a separate
+blog scrape). Replaced 2026-05-06 after recon on the live `GetContent`
+endpoint — it returns every CMS page Neto stores, including:
 
-**Discovery** (one-time scan, then refresh weekly):
+- Every blog post (`/blog/*`)
+- Every product-manual stub page (`/VS135ESmanual` etc.)
+- Every exploded-parts-diagram stub page (`/VS135exploded` etc.) ⭐ **new finding**
+- Brand pages ("Suits Stihl", "Suits Baumr-Ag")
+- Category descriptions ("Water Pumps", "Protective Equipment", "Chainsaw Spare Parts")
+- Policy / FAQ / About pages (`/page/*`)
+- Reference materials index (`/page/product-manuals/`, `/page/honda-parts-catalogue/`)
+- Per-product info pages (`/{slug}infopage`)
+- Notices ("Delivery Delays to Some WA and NSW Customers")
 
-```python
-# 1. Fetch homepage, regex out every Resources menu slug ending in 'manual'.
-SLUG_RE = r"https://www\.chainsawspares\.com\.au/[a-zA-Z0-9_-]+manual"
-slugs = set(re.findall(SLUG_RE, fetch("https://www.chainsawspares.com.au/")))
+The PDF brochures are referenced *inside* `Description1` of the manual
+and exploded-view pages. So we don't need a separate scrape to discover
+them — one API endpoint walks the CMS, and the same loop extracts both
+the page text AND the PDF URLs to download next.
 
-# 2. For each slug, fetch the page and extract the embedded PDF URL.
-PDF_RE = r"/assets/brochures/[^\"']+\.pdf"
-for slug in slugs:
-    page = fetch(slug)
-    m = re.search(PDF_RE, page)
-    if m:
-        pdf_url = "https://www.chainsawspares.com.au" + m.group(0)
-        ingest(pdf_url)
+**Reconnaissance findings (2026-05-06, live API run)**:
+
+| Cohort | Count | Notes |
+|---|--:|---|
+| Active CMS rows total | **1,015** | All page types combined |
+| Rows with > 500 chars body content | **156** | The "actually has substance" set |
+| Blog posts (`/blog/*`) with body | 56 | Long-form guides |
+| Brochure-stub pages (`/{slug}manual`) | 48 | Short page → links to PDF |
+| Exploded-view pages (`/{slug}exploded`) | 44 | Short page → links to parts diagram PDF |
+| `/page/*` formal pages | 8 | About, manuals index, catalogue, etc. |
+| Brand / category pages with substantial copy | ~60 | "Suits Stihl", "Water Pumps", "Layflat Hoses", etc. — surprisingly rich |
+| **Unique PDF URLs referenced anywhere** | **93** | 48 brochures + 44 exploded views + 4 alt-path manuals + 2 catalogues + misc |
+
+Compared to what we'd have got from the homepage scrape (33 PDFs + 61 blog posts), the API yields **93 PDFs + 156 substantial pages** — almost 3× the brochure coverage and entirely new layers (exploded views, brand pages, policies).
+
+#### Auth (Neto API)
+
+Credentials already exist in this workspace (`chainsaw-functions/credentials.md`).
+Move them into GCP Secret Manager:
+
+```bash
+printf "%s" "adil_auto_user"                       | gcloud secrets create neto-api-username --data-file=-
+printf "%s" "7rVwFd2PSM0CE6RVSVaej5O7vTpDYIxe"     | gcloud secrets create neto-api-key      --data-file=-
 ```
 
-A reconnaissance run on 2026-05-06 found:
+(Same key already in use by the `chainsaw-functions/neto-packaging/` Cloud
+Functions, so we're reusing infrastructure rather than minting a fresh
+key. Permission scope is broad — it currently has at least Read+Update
+on Items, and confirmed Read on Content. Watch for credentials.md being
+gitignored before pushing anywhere.)
 
-- **48 manual slug pages**
-- **33 confirmed PDFs** (the rest probably use a different embed pattern; they need a smarter regex — covered in §8 known issues)
-- **~671 MB total** (most are 1-15 MB; four are 100+ MB scanned/image-heavy: `JWP50-MANUAL.pdf` 126 MB, `JWP80-MANUAL.pdf` 135 MB, `LS001_HOIL.pdf` 118 MB, `WS001.pdf` 108 MB)
-
-| # | Source | Treatment | Why |
-|--:|---|---|---|
-| 20 | Brochure PDFs from `chainsawspares.com.au/assets/brochures/` | Same PDF extraction pipeline as SharePoint product manuals (§4.3). Each slug ↔ PDF mapping stored in chunk metadata so we can link an answer back to "see the JPE680 manual on the website". | Authoritative product manuals, kept up-to-date by JJ themselves. The most trustworthy single source for product-spec questions. |
-
-**Why this is gold**: SharePoint manuals are the team's *internal* reference
-copies — these are the *customer-facing* manuals JJ publishes. When a
-customer calls about VS135ES, the agent can pull the same document the
-customer is reading. Pure ground truth.
-
-**Implementation note**: a few of the 33 confirmed PDFs are share names
-across multiple slugs (e.g. `pgen30manual`, `pgen72manual`, `pgen92manual`
-all point to PDFs of similar names but different content; some manual
-slugs share the same PDF). Dedup by URL — don't double-ingest the same
-file under different slugs.
-
-**Total estimated for §2c**: ~33 PDFs / ~671 MB raw; after extraction
-to text, perhaps 5-15 MB and ~3-5k chunks. Embedding cost: under $0.10.
-
-### 2d. Neto Information Pages (blog + other CMS content) — `GetContent` API
-
-Originally planned this as a scrape of `chainsawspares.com.au/blog/`,
-but **Neto exposes a `GetContent` API endpoint** that returns every
-Information Page (blog post, FAQ, About, Shipping Policy, Help article,
-etc.) as a structured object — full body, dates, author, labels, SEO
-metadata. Same source the website renders from. No HTML parsing needed.
-
-Reference: <https://developers.maropost.com/documentation/engineers/api-documentation/content/getcontent>
-
-This is **strictly better than the scrape**:
-- Full structured response (Description1/2/3, ShortDescription1/2/3,
-  Author, Labels, SEO, dates, ContentType, ContentURL)
-- Can filter to just blog posts via `ContentType` (or pull every CMS
-  page in one shot — bonus content for free)
-- Server-side filtering on `DateUpdatedFrom` for incremental refresh
-- Pagination via `Page`/`Limit`
-
-**Auth**: Neto API uses three custom headers against the store's own
-endpoint. The user (admin) generates an API key from Neto cpanel
-**Settings → Staff → API**:
+#### `GetContent` request
 
 ```
 POST https://www.chainsawspares.com.au/do/WS/NetoAPI
 NETOAPI_ACTION:   GetContent
-NETOAPI_USERNAME: <staff username with API permissions>
-NETOAPI_KEY:      <generated key>
+NETOAPI_USERNAME: adil_auto_user
+NETOAPI_KEY:      <secret>
 Content-Type:     application/json
 Accept:           application/json
 ```
 
-Stash the username + key in GCP Secret Manager alongside the SharePoint
-ones:
+Body — paginate 200 rows per page, filter to active, ask for everything
+useful:
 
-```bash
-printf "%s" "USERNAME"  | gcloud secrets create neto-api-username --data-file=-
-printf "%s" "API_KEY"   | gcloud secrets create neto-api-key      --data-file=-
-```
-
-**Discovery + extraction**:
-
-```python
-import json, urllib.request
-
-def neto_api(action: str, body: dict) -> dict:
-    req = urllib.request.Request(
-        "https://www.chainsawspares.com.au/do/WS/NetoAPI",
-        data=json.dumps(body).encode(),
-        headers={
-            "NETOAPI_ACTION":   action,
-            "NETOAPI_USERNAME": secret("neto-api-username"),
-            "NETOAPI_KEY":      secret("neto-api-key"),
-            "Content-Type":     "application/json",
-            "Accept":           "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())
-
-def list_all_content(content_type: str | None = None, since: str | None = None):
-    """Walk every Content row, paginating. ContentType=None pulls all
-    page types (blog + faq + about + …); pass a specific type to scope."""
-    page = 1
-    while True:
-        flt = {"Page": page, "Limit": 100,
-               "OutputSelector": ["ID", "ContentName", "ContentType",
-                   "ContentURL", "Description1", "Description2",
-                   "ShortDescription1", "Author", "Label1", "Label2", "Label3",
-                   "SEOMetaDescription", "SEOMetaKeywords", "SEOPageHeading",
-                   "Active", "DatePosted", "DateUpdated"]}
-        if content_type: flt["ContentType"] = content_type
-        if since:        flt["DateUpdatedFrom"] = since   # ISO 8601
-        flt["Active"] = True
-
-        resp = neto_api("GetContent", {"Filter": flt})
-        rows = resp.get("Content") or []
-        if not rows: return
-        yield from rows
-        if len(rows) < 100: return
-        page += 1
-```
-
-**Per-row chunking**:
-
-```python
-def chunk_for_content(row):
-    text_parts = [
-        f"# {row.get('ContentName', '').strip()}",
-        f"Type: {row.get('ContentType', '')}",
-        f"URL: {row.get('ContentURL', '')}",
+```json
+{
+  "Filter": {
+    "Page": 1, "Limit": 200, "Active": "True",
+    "OutputSelector": [
+      "ID","ContentName","ContentURL","ContentType","ParentContentID",
+      "DatePosted","DateUpdated","Author",
+      "ShortDescription1","ShortDescription2","ShortDescription3",
+      "Description1","Description2","Description3",
+      "Label1","Label2","Label3",
+      "SEOMetaDescription","SEOMetaKeywords","SEOPageHeading"
     ]
-    if row.get("Author"):              text_parts.append(f"Author: {row['Author']}")
-    if row.get("ShortDescription1"):   text_parts.append(strip_html(row["ShortDescription1"]))
-    if row.get("Description1"):        text_parts.append(strip_html(row["Description1"]))
-    if row.get("Description2"):        text_parts.append(strip_html(row["Description2"]))
-    if row.get("SEOMetaDescription"):  text_parts.append("SEO summary: " + row["SEOMetaDescription"])
-    return "\n\n".join(p for p in text_parts if p)
+  }
+}
 ```
 
-**ContentType values are not enumerated in the docs** (they're
-free-text strings the merchant defines). Run a discovery query once
-without the `ContentType` filter to see what the chainsawspares store
-actually uses — likely a mix of:
-- `article` / `blog` (the 61 posts we scraped)
-- `page` (About, Help, Contact, Shipping)
-- `faq` (FAQ entries)
-- … plus any custom types JJ has added
+Response shape: `{ "Content": [ … ], "Ack": "Success" }`. Stop paginating
+when a page returns < 200 rows. For incremental refresh, add
+`"DateUpdatedFrom": "<last-run-iso>"` to the filter.
+
+**Caveat**: every store row I checked had `ContentType` empty. JJ doesn't
+classify pages with that field, so we can't filter to "just blog" —
+we walk all rows and **classify by `ContentURL` pattern** in our pipeline:
+- `blog/*` → editorial / blog
+- `*manual` → product manual stub (extract embedded PDF URL)
+- `*exploded` → exploded view stub (extract embedded PDF URL)
+- `*infopage` → per-product info hub
+- `page/*` → formal CMS page
+- everything else with > 500 chars body → category / brand / policy
+
+#### What we ingest from each row
+
+For every row with > 500 chars of body, emit one chunk with:
+
+```
+# {ContentName}
+URL: https://www.chainsawspares.com.au/{ContentURL}
+{Author if any} · {DatePosted} (updated {DateUpdated})
+Labels: {Label1}, {Label2}, {Label3}
+
+{ShortDescription1 if any (stripped HTML)}
+
+{Description1 (stripped HTML)}
+{Description2 if any (stripped HTML)}
+{Description3 if any (stripped HTML)}
+
+SEO: {SEOMetaDescription}
+```
+
+Cap chunk text at 20 KB (one page — `/page/back-in-stock/` — has a
+500 KB body which is almost certainly meta-tag pollution in HTML).
+Chunking strategy from §4.4 applies (~500 tokens per chunk, 50-token
+overlap).
+
+#### Discovering and ingesting PDFs from the same loop
+
+```python
+PDF_RE = re.compile(r"https?://[^\"' ]*\.pdf|/assets/[^\"' ]+\.pdf", re.I)
+
+for row in walk_get_content():
+    body_html = " ".join(row.get(f) or "" for f in
+                         ("Description1","Description2","Description3"))
+    # Emit text chunk for the row itself if it has substance
+    if len(strip_html(body_html)) > 500:
+        yield row_chunk(row, body_html)
+
+    # Extract any PDF reference and queue for download
+    for m in PDF_RE.findall(body_html):
+        pdf_url = m if m.startswith("http") else f"https://www.chainsawspares.com.au{m}"
+        yield ("pdf", pdf_url, row["ContentURL"], row["ContentName"])
+```
+
+PDF download → text extraction reuses the SharePoint pipeline (§4.3):
+`pdfplumber` for digital PDFs, Vertex AI Document AI for scanned ones.
 
 | # | Source | Treatment | Why |
 |--:|---|---|---|
-| 21 | Neto API: `GetContent` (all `Active` rows, every ContentType) | One chunk per row, formatted as above. Full Description1/2/3 + SEO meta. Refresh via `DateUpdatedFrom` since-last-run. | All 61 blog posts **plus** every other CMS page (FAQs, help, About, shipping policy, etc.) — ground-truth same as the website renders. |
+| 20 | Neto `GetContent` API — substantial CMS rows (~156 pages) | Walk + paginate. Classify by URL pattern. Emit one chunk per row with body text. | Blog posts, brand pages, category descriptions, policies, About, Help, FAQs, info pages — all in one paginated walk |
+| 21 | PDFs referenced by those CMS rows (~93 unique URLs) | Dedup by URL. Download with `If-Modified-Since`. Same extraction pipeline as SharePoint product manuals. | 48 brochures + **44 exploded-parts diagrams** (new!) + 1 Honda catalogue + 1 JJ product catalogue + misc — same files the customer is reading |
 
-**Cadence**: blogs publish occasionally. Hourly would be wasteful.
-Daily refresh keyed on `DateUpdatedFrom` is the sensible default —
-covers blog posts and any FAQ/policy edits.
+**Volumes**:
+- §20: ~156 chunks at ~5 KB each ≈ 800 KB body text → 200-400 vector chunks. Embedding cost: well under $0.05.
+- §21: ~93 PDFs raw size unknown but dominated by a few 100+ MB scanned manuals; after extraction probably 10-20 MB text → 2-5k chunks. Embedding cost: under $0.20.
 
-**Volume**: 61 confirmed blog posts on the index page; total CMS content
-likely 100-200 rows after FAQs and policy pages are included. Each ~3-8 KB
-of text. Total ~1 MB. Embedding cost: under $0.05.
+**Total combined**: ~5,000 chunks, embedding cost under $0.30.
 
-**Fallback if API access stalls**: scrape the blog index page and walk
-the 61 post URLs (extracts JSON-LD + `.blog-content-sec` body). Less
-flexible — only catches `/blog/*`, misses FAQs and other CMS pages —
-but it ships without waiting for the API key.
+**Why this single source replaces what was two sources**:
+- One auth, one paginator, one extraction loop — half the code
+- Catches ~3× more PDFs than the homepage scrape (93 vs 33)
+- Catches the **exploded-parts diagrams** which are pure agent gold
+  (customer says "the bolt holding the bar in place is loose" — agent
+  pulls the diagram, points to part #14)
+- Catches all the brand and category pages we'd otherwise ignore — these
+  contain hand-written explanations of what differentiates products
+- Incremental refresh server-side via `DateUpdatedFrom`
 
-**Reconnaissance findings (2026-05-06)**:
-- 61 blog posts discoverable from the index
-- Each post page exposes a `BlogPosting` JSON-LD block (kept for the
-  fallback path)
-- `.blog-content-sec` is the body content selector for the fallback
-- Posts dated 2023-2026, mix of how-to / buying-guide / category-overview
+**Refresh cadence**: daily. Cheap, and blog/policy edits should land in
+the KB fast. Implementation: track `max(DateUpdated)` from last run in
+a small KV table, pass that as `DateUpdatedFrom` next time.
 
-### 2c. Sources deliberately excluded from Phase 1
+### 2d. Sources deliberately excluded from Phase 1
 
 | Source | Reason |
 |---|---|
@@ -781,12 +765,12 @@ top results actually useful? If not, the fix is usually
 - [ ] **Where does ingestion run**: laptop for first backfill is fine.
       Long-term: Cloud Run Job, or a `kb-ingest` systemd timer on the
       chainsaw-ops VPS (similar shape to `cxone-poller`).
-- [ ] **Neto API key**: admin generates one via cpanel
-      Settings → Staff → API, give the API user `read content` permission.
-      Stash username + key in Secret Manager (`neto-api-username`,
-      `neto-api-key`). If access takes longer than a day, ship Phase 1
-      with the blog-scrape fallback for source §2d and add the API path
-      in a follow-up.
+- [ ] **Neto API credentials in Secret Manager**: credentials already
+      exist in `chainsaw-functions/credentials.md` for the Cloud
+      Functions. Move them into `neto-api-username` /
+      `neto-api-key` secrets in this project. (Permission scope is
+      already broad enough — confirmed Read access to Content via
+      live `GetContent` recon on 2026-05-06.)
 
 ---
 
