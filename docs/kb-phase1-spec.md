@@ -73,6 +73,7 @@ Three layers of authority:
 | Internal | SharePoint procedures, training, CS team docs | "How JJ does things" — internal SOPs and tribal knowledge |
 | Catalogue | `neto_product_list.Description` + specifics | "What the website tells customers" — same text the customer is reading on the product page |
 | Authoritative | Website brochure PDFs (e.g. VS135ES.pdf) | "The manual" — published product documentation, ground truth on specs and fitment |
+| Editorial | Website blog posts (61 long-form guides) | "How to choose / why is X happening" — buying guides and troubleshooting walkthroughs in customer-friendly language |
 
 When an agent searches, retrieval should ideally pull a chunk from each
 layer for a balanced answer.
@@ -178,6 +179,84 @@ file under different slugs.
 
 **Total estimated for §2c**: ~33 PDFs / ~671 MB raw; after extraction
 to text, perhaps 5-15 MB and ~3-5k chunks. Embedding cost: under $0.10.
+
+### 2d. Website blog posts — `chainsawspares.com.au/blog/`
+
+The website's blog hosts long-form product guides written by JJ —
+buying guides ("best battery chainsaw Australia"), troubleshooting
+walkthroughs ("chainsaw cuts crooked"), category overviews ("guide to
+brushcutters & grass trimmers"). Tone is customer-friendly and
+explanatory — exactly the kind of content that's most useful to a CS
+agent on a call where a customer is asking "which one should I buy?"
+or "why is my chainsaw doing X?".
+
+The blog is published in Neto's Information Pages (CMS), which is **not
+synced to BigQuery**. So this is a scrape — but it's the cleanest scrape
+in the catalogue: every post page exposes a `BlogPosting` JSON-LD block
+with structured metadata.
+
+**Discovery + extraction**:
+
+```python
+import re, json
+from bs4 import BeautifulSoup
+
+# 1. Pull the blog index, extract every post URL.
+index = fetch("https://www.chainsawspares.com.au/blog/")
+post_urls = sorted(set(re.findall(
+    r"https://www\.chainsawspares\.com\.au/blog/[a-zA-Z0-9_-]+", index)))
+post_urls = [u for u in post_urls if not u.endswith("/blog")]   # drop the index itself
+
+# 2. For each post, pull JSON-LD for clean metadata + scrape body content.
+for url in post_urls:
+    page = fetch(url)
+    soup = BeautifulSoup(page, "html.parser")
+
+    ld = next((s.string for s in soup.find_all("script", type="application/ld+json")
+               if "BlogPosting" in (s.string or "")), None)
+    meta = json.loads(ld) if ld else {}
+
+    body_section = soup.find(class_="blog-content-sec") or soup.find(class_="n-responsive-content")
+    body_text = body_section.get_text("\n", strip=True) if body_section else ""
+
+    yield {
+        "url": url,
+        "headline": meta.get("headline"),
+        "description": meta.get("description"),
+        "date_published": meta.get("datePublished"),
+        "date_modified":  meta.get("dateModified"),
+        "author":         (meta.get("author") or {}).get("name"),
+        "body_text":      body_text,
+    }
+```
+
+A reconnaissance run on 2026-05-06 found:
+
+- **61 blog posts** discoverable from the index (single page, no pagination needed)
+- Posts dated 2023-2026, mix of how-to / buying-guide / category-overview content
+- JSON-LD present on every post (BlogPosting type)
+- Body content lives in `.blog-content-sec` (or `.n-responsive-content` as fallback)
+
+| # | Source | Treatment | Why |
+|--:|---|---|---|
+| 21 | `chainsawspares.com.au/blog/*` | Scrape index → walk 61 posts. Per post: emit one chunk concatenating headline + description + body_text, with metadata (URL, date_published, author). Strip nav/sidebar/footer. | Long-form customer-friendly product guides. Highest-value writing for "which one should I buy / why is X happening" questions. |
+
+**Cadence**: user mentioned blogs are published occasionally, not often.
+Weekly refresh is fine. Use `dateModified` from JSON-LD as the change
+key — re-embed only when it ticks forward.
+
+**Volume**: 61 posts × ~5KB body text each ≈ 300 KB total → ~150-300
+chunks. Embedding cost: well under $0.01.
+
+**Implementation notes**:
+- One of the URLs in the regex match is `/blog/blog` itself (an
+  artifact of the index linking to itself). Filter it out.
+- `dateModified` and `datePublished` are often identical; that's fine
+  for our purposes.
+- The body text includes any embedded image alt-text and table content,
+  which is useful for retrieval. Don't over-strip.
+- Skip drafts: any post with a `noindex` meta robots tag is unpublished
+  preview — easy to detect, rare in practice.
 
 ### 2c. Sources deliberately excluded from Phase 1
 
@@ -532,6 +611,8 @@ expected result:
 | *"What are the dimensions of JM7013-2BBx4?"* | `dataform.neto_product_list` row for that SKU, OR `Customer Service Team/Products/.../HRU216` doc |
 | *"VS135ES vertical shaft engine specs"* | `chainsawspares.com.au/assets/brochures/VS135ES.pdf` (the customer-facing manual) |
 | *"Bumper Spike Pro for Stihl chainsaws fitment"* | `dataform.neto_product_list` row for `PJ88024` or similar — Description field lists the compatible Stihl models |
+| *"What's the best battery chainsaw for home use in Australia?"* | `chainsawspares.com.au/blog/best-battery-chainsaw-australia` — long-form buying guide |
+| *"Why is my chainsaw cutting crooked?"* | `chainsawspares.com.au/blog/chainsaw-cuts-crooked` — troubleshooting walkthrough |
 | *"How do I create a new order in Neto?"* | `Procedures/Creating a New Order in Neto.docx` |
 | *"What's the policy on RMA returns?"* | `Customer Service Team/Policies and Procedures/Jono and Johno _Returns & RMA Policy` |
 | *"Pump troubleshooting steps"* | `Customer Service Team/Products/Pumps/Pump Troubleshooting.docx` (this is **literally the doc Bernie's call needed**) |
