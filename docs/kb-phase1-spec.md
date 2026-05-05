@@ -62,16 +62,122 @@ Library = top-level container; sub-folder is what we walk under it.
 | 16 | `/sites/JonoJohno-allstaff` | `Documents` | (text only) | ~370 | Mixed — staff comms, training |
 | 17 | `/sites/CustomerServiceToolBox` | `Documents` | (root) | 1 | Customer Service Toolbox Notes |
 
-**Total: ~3,400 files, ~3.5 GB after filtering out video/image/binary.**
+**Total for §2a: ~3,400 SharePoint files, ~3.5 GB after filtering out video/image/binary.**
 
-### 2b. Dataform / BigQuery sources
+The full Phase 1 corpus combines this with §2b (Dataform product
+catalogue, ~6,000 chunks) and §2c (website brochure PDFs, ~33 PDFs).
+Three layers of authority:
+
+| Layer | Source | What it gives the agent |
+|---|---|---|
+| Internal | SharePoint procedures, training, CS team docs | "How JJ does things" — internal SOPs and tribal knowledge |
+| Catalogue | `neto_product_list.Description` + specifics | "What the website tells customers" — same text the customer is reading on the product page |
+| Authoritative | Website brochure PDFs (e.g. VS135ES.pdf) | "The manual" — published product documentation, ground truth on specs and fitment |
+
+When an agent searches, retrieval should ideally pull a chunk from each
+layer for a balanced answer.
+
+### 2b. Dataform / BigQuery sources — `neto_product_list` (the website's catalogue)
+
+The Neto product list IS the website. Its `Description` field powers the
+"Description" tab on every product page, and a few sister fields powered
+the Warranty/Specifications tabs (often empty in practice — the website
+either suppresses the tab or renders boilerplate when the field is blank).
+
+For the KB, treat each product as one chunkable document. The text we
+ingest is the **stripped-HTML concatenation** of these fields, in this
+order, separated by section headings:
+
+```
+{SKU} · {Brand} · {Name}
+
+{ShortDescription if any}
+{stripped(Description)}
+
+Features
+{stripped(Features)} (typically empty)
+
+Warranty
+{stripped(Warranty)} (typically empty)
+
+Specifications
+{stripped(Specifications)} (typically empty)
+
+Specifics
+- {ItemSpecifics[].Name}: {ItemSpecifics[].Value}        ← parsed from JSON
+- ...
+
+Custom content
+{stripped(CustomContent)} (typically empty)
+
+Search keywords
+{SearchKeywords}                                          ← explicit alt-names
+
+SEO summary
+{SEOMetaDescription}                                       ← concise human-friendly summary
+```
 
 | # | Source | Treatment | Why |
 |--:|---|---|---|
-| 18 | `dataform.neto_product_list` | One chunk per row: `{SKU} — {Name}\n{Description}\n{Specs}` | The 6k-product catalogue itself. Search "Honda HRU216 blade" returns the SKU instantly. |
-| 19 | `dataform.neto_product_list` (specifications JSON) | One chunk per non-empty spec field | Lengths, weights, compatibilities — already structured |
+| 18 | `dataform.neto_product_list` (text fields) | One chunk per row, formatted as above. Strip HTML tags from `Description` (it's stored as HTML — `bleach.clean(strip=True)` or `html2text`). Skip rows where the joined text is < 40 chars. | The 6k-product catalogue itself. Search "Honda HRU216 blade" or "62cc post hole digger" returns the SKU instantly. |
+| 19 | `dataform.neto_product_list.ItemSpecifics` (JSON) | Already merged into chunk #18 as bullet list. Don't double-ingest. | Structured specs (Type, Material, Compatibility, etc.) |
 
-**Total: ~6,000 product chunks, deterministically generated each run.**
+**Important caveats for ingestion**:
+- Filter out junk: a few rows have `Description` lengths in the millions of characters (HTML pollution from copy-paste spam). Cap chunk text at 20 KB per product; truncate cleanly with a "[truncated]" marker.
+- Active filter: include both active and inactive products initially — agents take calls about discontinued items too. Tag chunks with `is_active: bool` so we can later boost active products in retrieval.
+- `Categories` (JSON) and `Brand` go into chunk metadata, not the chunk text. Lets us filter retrieval by category if needed.
+
+**Total estimated**: ~6,000 product chunks, deterministically generated
+each run. Embedding cost: ~$0.04.
+
+### 2c. Website resources — brochure / manual PDFs
+
+The website's **Resources** menu links to ~48 friendly-slug pages
+(`/VS135ESmanual`, `/jpe680manual`, etc.) which each embed a brochure PDF
+under `/assets/brochures/{Brochure}.pdf`. These are the most up-to-date,
+authoritative product manuals — owner manuals, exploded parts diagrams,
+quick-start guides — published by Jono and Johno themselves.
+
+**Discovery** (one-time scan, then refresh weekly):
+
+```python
+# 1. Fetch homepage, regex out every Resources menu slug ending in 'manual'.
+SLUG_RE = r"https://www\.chainsawspares\.com\.au/[a-zA-Z0-9_-]+manual"
+slugs = set(re.findall(SLUG_RE, fetch("https://www.chainsawspares.com.au/")))
+
+# 2. For each slug, fetch the page and extract the embedded PDF URL.
+PDF_RE = r"/assets/brochures/[^\"']+\.pdf"
+for slug in slugs:
+    page = fetch(slug)
+    m = re.search(PDF_RE, page)
+    if m:
+        pdf_url = "https://www.chainsawspares.com.au" + m.group(0)
+        ingest(pdf_url)
+```
+
+A reconnaissance run on 2026-05-06 found:
+
+- **48 manual slug pages**
+- **33 confirmed PDFs** (the rest probably use a different embed pattern; they need a smarter regex — covered in §8 known issues)
+- **~671 MB total** (most are 1-15 MB; four are 100+ MB scanned/image-heavy: `JWP50-MANUAL.pdf` 126 MB, `JWP80-MANUAL.pdf` 135 MB, `LS001_HOIL.pdf` 118 MB, `WS001.pdf` 108 MB)
+
+| # | Source | Treatment | Why |
+|--:|---|---|---|
+| 20 | Brochure PDFs from `chainsawspares.com.au/assets/brochures/` | Same PDF extraction pipeline as SharePoint product manuals (§4.3). Each slug ↔ PDF mapping stored in chunk metadata so we can link an answer back to "see the JPE680 manual on the website". | Authoritative product manuals, kept up-to-date by JJ themselves. The most trustworthy single source for product-spec questions. |
+
+**Why this is gold**: SharePoint manuals are the team's *internal* reference
+copies — these are the *customer-facing* manuals JJ publishes. When a
+customer calls about VS135ES, the agent can pull the same document the
+customer is reading. Pure ground truth.
+
+**Implementation note**: a few of the 33 confirmed PDFs are share names
+across multiple slugs (e.g. `pgen30manual`, `pgen72manual`, `pgen92manual`
+all point to PDFs of similar names but different content; some manual
+slugs share the same PDF). Dedup by URL — don't double-ingest the same
+file under different slugs.
+
+**Total estimated for §2c**: ~33 PDFs / ~671 MB raw; after extraction
+to text, perhaps 5-15 MB and ~3-5k chunks. Embedding cost: under $0.10.
 
 ### 2c. Sources deliberately excluded from Phase 1
 
@@ -401,7 +507,7 @@ and a clickable link back to the SharePoint file).
 
 | Component | One-time | Recurring |
 |---|---:|---:|
-| **Embedding the corpus** | ~$0.05 | ~$0.01/month for refresh |
+| **Embedding the corpus** | ~$0.10 | ~$0.02/month for refresh |
 | **BQ storage (active + index)** | — | ~$0.50/month |
 | **BQ vector queries** | — | ~$0.005 per query (small scan) |
 | **Vertex embedding (per query)** | — | ~$0.0001 per query |
@@ -424,6 +530,8 @@ expected result:
 | Query | Expected top-1 source |
 |---|---|
 | *"What are the dimensions of JM7013-2BBx4?"* | `dataform.neto_product_list` row for that SKU, OR `Customer Service Team/Products/.../HRU216` doc |
+| *"VS135ES vertical shaft engine specs"* | `chainsawspares.com.au/assets/brochures/VS135ES.pdf` (the customer-facing manual) |
+| *"Bumper Spike Pro for Stihl chainsaws fitment"* | `dataform.neto_product_list` row for `PJ88024` or similar — Description field lists the compatible Stihl models |
 | *"How do I create a new order in Neto?"* | `Procedures/Creating a New Order in Neto.docx` |
 | *"What's the policy on RMA returns?"* | `Customer Service Team/Policies and Procedures/Jono and Johno _Returns & RMA Policy` |
 | *"Pump troubleshooting steps"* | `Customer Service Team/Products/Pumps/Pump Troubleshooting.docx` (this is **literally the doc Bernie's call needed**) |
@@ -514,6 +622,8 @@ top results actually useful? If not, the fix is usually
 | Token rate limits on Vertex embeddings | Built into `embed()` — batch 250, exponential back-off on 429. |
 | Graph rate limits | 10k requests / 10 min / app — ingestion well under this. |
 | Library moves / renames | Phase 1: re-ingest is full overwrite. Phase 2: track by document_id stability. |
+| 15 of 48 brochure manual-slug pages don't expose the PDF via the simple `/assets/brochures/*.pdf` regex | Their pages embed via iframe with full URL, JS-rendered, or use a `data-*` attribute. Phase 1 extraction picks 33 of 48 — for the remainder, fetch the page with a real browser (headless Chrome via `playwright`) so JS renders, then grab the PDF reference. Or: hand-curate the missing 15 from the inventory once. Maintenance overhead either way is low (it's a one-time discovery). |
+| `neto_product_list.Description` length pathologically high on some rows (millions of chars) | Cap to 20KB at extraction time, truncate cleanly. Common causes: copy-pasted ad code, embedded `<script>`, repeated boilerplate. Better long-term: a Dataform cleanup model that strips HTML and dedupes. |
 
 ---
 
