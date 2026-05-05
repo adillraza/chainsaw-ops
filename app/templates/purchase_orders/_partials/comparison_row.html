@@ -7,11 +7,14 @@
 {% set is_kit = r.is_kitted_item == true %}
 <tbody id="cmp-row-{{ r.id }}" class="divide-y divide-slate-100">
   <tr class="hover:bg-slate-50 {% if review %}bg-rose-50/30{% elif is_kit %}bg-amber-50/40{% endif %}">
-    <td class="whitespace-nowrap px-3 py-2 font-mono">
+    {# data-col on every <td> matches the corresponding <th> in
+       comparison_table.html. The cols-hide-{key} class on the outer
+       wrapper drives the show/hide. Order MUST match the th order. #}
+    <td data-col="po_id" class="whitespace-nowrap px-3 py-2 font-mono">
       <a class="font-semibold text-brand-700 hover:underline"
          href="{{ url_for('purchase_orders.comparison', po_id=r.po_id) }}">{{ r.po_id }}</a>
     </td>
-    <td class="whitespace-nowrap px-3 py-2 font-mono text-slate-700">
+    <td data-col="sku" class="whitespace-nowrap px-3 py-2 font-mono text-slate-700">
       {% if r.sku and r.neto_product_id %}
         <a href="https://www.chainsawspares.com.au/_cpanel/products/view?id={{ r.neto_product_id }}"
            target="_blank" rel="noopener"
@@ -27,15 +30,15 @@
         </span>
       {% endif %}
     </td>
-    <td class="px-3 py-2 text-slate-600" title="{{ r.name or '' }}">{{ (r.name or '')[:60] }}{% if (r.name or '')|length > 60 %}…{% endif %}</td>
-    <td class="whitespace-nowrap px-3 py-2">{{ change_log_tag(r.change_log) }}</td>
-    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_available_qty or 0) }}</td>
-    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_available or 0) }}</td>
-    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.original_rex_qty_ordered or 0) }}</td>
-    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.final_rex_qty_ordered or 0) }}</td>
-    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_shipped or 0) }}</td>
-    <td class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_qty_received or 0) }}</td>
-    <td class="px-3 py-2 text-slate-600">
+    <td data-col="name" class="px-3 py-2 text-slate-600" title="{{ r.name or '' }}">{{ (r.name or '')[:60] }}{% if (r.name or '')|length > 60 %}…{% endif %}</td>
+    <td data-col="change_log" class="whitespace-nowrap px-3 py-2">{{ change_log_tag(r.change_log) }}</td>
+    <td data-col="rex_available_qty" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_available_qty or 0) }}</td>
+    <td data-col="neto_qty_available" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_available or 0) }}</td>
+    <td data-col="original_rex_qty_ordered" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.original_rex_qty_ordered or 0) }}</td>
+    <td data-col="final_rex_qty_ordered" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.final_rex_qty_ordered or 0) }}</td>
+    <td data-col="neto_qty_shipped" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.neto_qty_shipped or 0) }}</td>
+    <td data-col="rex_qty_received" class="whitespace-nowrap px-3 py-2 text-right tabular-nums">{{ '{:,.0f}'.format(r.rex_qty_received or 0) }}</td>
+    <td data-col="latest_item_note_date" class="px-3 py-2 text-slate-600">
       {% if has_note %}
         <div class="max-w-[260px]">
           <p class="truncate text-xs text-slate-700" title="{{ r.latest_item_note }}">{{ r.latest_item_note }}</p>

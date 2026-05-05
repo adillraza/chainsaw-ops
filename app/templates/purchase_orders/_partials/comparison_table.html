@@ -36,7 +36,11 @@
       <thead class="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
         <tr>
           {% for key, col in sort_columns.items() %}
-            <th class="px-3 py-2 select-none {% if col.align == 'right' %}text-right{% else %}text-left{% endif %}">
+            {# data-col matches the key here and on every <td> in comparison_row.html.
+               The .cols-hide-{key} class on the outer wrapper hides both header
+               and matching cells via attribute selector. See comparison.html. #}
+            <th data-col="{{ key }}"
+                class="px-3 py-2 select-none {% if col.align == 'right' %}text-right{% else %}text-left{% endif %}">
               {{ sort_link(key, col) }}
             </th>
           {% endfor %}

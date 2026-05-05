@@ -141,5 +141,118 @@
   </a>
 </div>
 
-{% include "purchase_orders/_partials/comparison_table.html" %}
+{# ----- Comparison table + column show/hide control -----
+   The Alpine wrapper sits OUTSIDE [data-hx-table] so HTMX swaps don't
+   wipe the column-visibility state. Column hide/show is pure CSS:
+   the wrapper toggles `.cols-hide-{key}` classes which match every
+   `<th data-col="{key}">` and `<td data-col="{key}">` underneath.
+   Choices persist to localStorage. #}
+<div x-data="poColumnToggle()" x-init="init()"
+     :class="visibilityClasses()"
+     class="relative">
+
+  <div class="mb-2 flex justify-end">
+    <div class="relative" @click.outside="open = false">
+      <button type="button" @click="open = !open"
+              class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm hover:bg-slate-50">
+        <i class="fas fa-table-columns text-slate-400"></i>
+        Columns
+        <span x-show="hiddenCount() > 0"
+              x-text="hiddenCount() + ' hidden'"
+              class="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"></span>
+        <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+      </button>
+      <div x-show="open" x-cloak x-transition.opacity.duration.100ms
+           class="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-slate-200 bg-white shadow-lg">
+        <div class="border-b border-slate-100 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          Show / hide columns
+        </div>
+        <ul class="max-h-72 overflow-auto py-1">
+          <template x-for="col in toggleable" :key="col.key">
+            <li>
+              <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50">
+                <input type="checkbox" :checked="!hidden[col.key]"
+                       @change="toggle(col.key)"
+                       class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+                <span x-text="col.label" class="text-slate-700"></span>
+              </label>
+            </li>
+          </template>
+        </ul>
+        <div class="border-t border-slate-100 px-3 py-2 flex justify-between text-xs">
+          <button @click="reset()" class="text-slate-500 hover:text-brand-700">Show all</button>
+          <button @click="open = false" class="text-slate-500 hover:text-slate-800">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% include "purchase_orders/_partials/comparison_table.html" %}
+</div>
+
+<script>
+  // Single source of truth for which columns the user can hide.
+  // Keys MUST match the `data-col` attribute on the <th>/<td> cells
+  // (which in turn match COMPARISON_COLUMNS in routes.py).
+  function poColumnToggle() {
+    return {
+      open: false,
+      hidden: {},
+      toggleable: [
+        { key: 'rex_available_qty',        label: 'REX avail' },
+        { key: 'neto_qty_available',       label: 'NETO avail' },
+        { key: 'original_rex_qty_ordered', label: 'Original' },
+        { key: 'final_rex_qty_ordered',    label: 'Latest' },
+        { key: 'neto_qty_shipped',         label: 'Shipped' },
+        { key: 'rex_qty_received',         label: 'Received' },
+        { key: 'latest_item_note_date',    label: 'Latest note' },
+      ],
+      init() {
+        try {
+          this.hidden = JSON.parse(localStorage.getItem('po-cmp-cols-hidden') || '{}');
+        } catch (e) {
+          this.hidden = {};
+        }
+      },
+      toggle(key) {
+        if (this.hidden[key]) {
+          delete this.hidden[key];
+        } else {
+          this.hidden[key] = true;
+        }
+        // Re-assign so Alpine reactivity fires (mutations on existing object don't always trigger).
+        this.hidden = { ...this.hidden };
+        localStorage.setItem('po-cmp-cols-hidden', JSON.stringify(this.hidden));
+      },
+      reset() {
+        this.hidden = {};
+        localStorage.removeItem('po-cmp-cols-hidden');
+      },
+      hiddenCount() {
+        return Object.keys(this.hidden).length;
+      },
+      visibilityClasses() {
+        const cls = {};
+        for (const col of this.toggleable) {
+          cls['cols-hide-' + col.key] = !!this.hidden[col.key];
+        }
+        return cls;
+      }
+    };
+  }
+</script>
+
+<style>
+  /* Hide both header and body cells for any column the user has switched off.
+     One rule per toggleable column — each scopes itself to the wrapper class. */
+  .cols-hide-rex_available_qty        [data-col="rex_available_qty"],
+  .cols-hide-neto_qty_available       [data-col="neto_qty_available"],
+  .cols-hide-original_rex_qty_ordered [data-col="original_rex_qty_ordered"],
+  .cols-hide-final_rex_qty_ordered    [data-col="final_rex_qty_ordered"],
+  .cols-hide-neto_qty_shipped         [data-col="neto_qty_shipped"],
+  .cols-hide-rex_qty_received         [data-col="rex_qty_received"],
+  .cols-hide-latest_item_note_date    [data-col="latest_item_note_date"] {
+    display: none;
+  }
+</style>
 {% endblock %}
