@@ -101,6 +101,53 @@ it into a list someone can actually attack without manual flagging.
 
 ---
 
+## Customer 360 — server-side cache for the call card
+
+**Why.** Loading `/customer/<phone>` does several BQ queries
+synchronously: phone bundle (lookup + history + behaviour), customer
+rows for matched usernames, SKU → Neto product ID enrichment, plus
+the live-merge of today's `call_event` rows. Card load takes 2-4
+seconds today. With the live drawer pinging every 3s and agents
+opening/closing customer cards mid-call, that's noticeable latency
+right when the agent doesn't want it.
+
+The data is also highly cacheable: `customer_360` and friends update
+hourly during business hours (now), and most of what we render is
+deterministic per phone for the duration of that hour.
+
+**What.** Two-layer cache in `chainsaw-ops`:
+
+1. **Per-phone payload cache** (the whole `Customer360Service.get_card`
+   result) keyed by `(phone, customer_360.refreshed_at)`. TTL = 60
+   minutes (matches the new hourly Dataform run). Stored in:
+     - SQLite as a single `customer_card_cache` table (text JSON
+       payload + the BQ refreshed_at it was built from), OR
+     - Redis if we want sub-millisecond serve. SQLite is simpler;
+       redis only if the SQLite version turns out slow.
+
+2. **Background refresher** that pre-warms the cache for "hot" phones
+   (the top N most-recent callers, plus all currently-pinned calls,
+   plus everyone in today's call_event). Runs as a systemd timer or
+   APScheduler tick, every 5 minutes.
+
+The live-merge of today's `call_event` (the part that bumps the
+"call history" panel with today's calls) is NOT cached — it always
+runs at request time off SQLite, so a customer who calls twice in
+five minutes still sees the second call appear immediately. The
+cache only covers the BQ-derived parts.
+
+**Effort.** M. Two phases:
+- Phase A — the cache itself with synchronous fill on miss. Ships in
+  ~2 days. Card loads drop to <100ms on warm cache.
+- Phase B — the background pre-warmer. Another day. Removes the
+  cold-cache spike entirely.
+
+**Open question** — do we ALSO cache the active-call-panel lookup
+(currently a SQLite query on every render)? Probably not — it's
+already fast and depends on data that changes every 3s.
+
+---
+
 ## Customer 360 — fuzzy account linking across duplicate Neto accounts
 
 **Why.** Customers often re-register under a new email/username over the
