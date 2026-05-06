@@ -1,6 +1,7 @@
 """Routes for the live-call webhook receiver and inspector."""
 from __future__ import annotations
 
+import functools
 import json
 import logging
 
@@ -364,26 +365,37 @@ def _active_view_model(evt, state: str = "active", seconds_since_end: float = 0,
     window). The template uses this to render a faded card for ended calls.
     """
     from datetime import datetime
-    raw_phone = evt.from_number or ""
-    # Normalise +61… → 0… so the drawer matches the URL the customer card uses
-    if raw_phone.startswith("+61"):
-        norm_phone = "0" + raw_phone[3:]
+
+    def _au_local(s: str | None) -> str:
+        s = s or ""
+        return "0" + s[3:] if s.startswith("+61") else s
+
+    norm_from = _au_local(evt.from_number)
+    norm_to   = _au_local(evt.to_number)
+
+    # If the "from" is a JJ-internal DID (staff DirectNumber, IVR DID),
+    # the actual customer is on the "to" side — this is an outbound
+    # staff→customer call where RC stamped the staff line as the caller.
+    # Swap so the drawer card surfaces the real customer phone.
+    swapped = _is_internal_phone(norm_from)
+    if swapped:
+        norm_phone = norm_to
+        to_local   = norm_from   # the JJ line they dialled out from
     else:
-        norm_phone = raw_phone
-    # Same normalisation for the dialed (to) number, so the drawer can show
-    # which JJ line was rung instead of the generic source label.
-    raw_to = evt.to_number or ""
-    if raw_to.startswith("+61"):
-        to_local = "0" + raw_to[3:]
-    else:
-        to_local = raw_to
+        norm_phone = norm_from
+        to_local   = norm_to
+
     # Pull the bare status code from "Direction:Status" composite
     status_code = (evt.event_type or "").split(":", 1)[-1] if evt.event_type else ""
     direction = (evt.event_type or "").split(":", 1)[0] if ":" in (evt.event_type or "") else None
+    # When swapped, present this as outbound regardless of how the source
+    # system labelled the leg — the agent's mental model is "we called them".
+    if swapped:
+        direction = "Outbound"
     secs = int((datetime.utcnow() - evt.received_at).total_seconds()) if evt.received_at else 0
     return {
         "session_id":   evt.session_id,
-        "raw_phone":    raw_phone,
+        "raw_phone":    norm_phone,
         "phone":        norm_phone,
         "customer_name": _resolve_customer_name(norm_phone),
         "to_number":    evt.to_number,
@@ -413,14 +425,44 @@ def _resolve_customer_name(phone: str) -> str | None:
     ``Customer360Service.get_name_for_phone`` on the module-level
     singleton. Soft-fails to ``None`` so a BigQuery hiccup never
     breaks the drawer render.
+
+    Returns ``None`` for JJ-internal phones — these previously
+    matched a fake customer record (e.g. 0353030263 → "Bill Parker"
+    via a phone-lookup typo) and surfaced the wrong name on every
+    contact-centre call.
     """
     if not phone:
+        return None
+    if _is_internal_phone(phone):
         return None
     try:
         from app.services.customer_360_service import customer_360_service
         return customer_360_service.get_name_for_phone(phone)
     except Exception:
         return None
+
+
+def _is_internal_phone(phone: str) -> bool:
+    """Cheap PK lookup against ``internal_phone_numbers`` SQLite table.
+
+    Cached aggressively at module level — the table is 25 rows and
+    changes maybe once a quarter (when a new staff member joins or a
+    new RC line is provisioned). Restart the service to bust the cache
+    after a refresh; that matches the existing operational pattern.
+    """
+    if not phone:
+        return False
+    return phone in _internal_phones_set()
+
+
+@functools.lru_cache(maxsize=1)
+def _internal_phones_set() -> frozenset:
+    try:
+        from app.models.internal_phone import InternalPhoneNumber
+        rows = InternalPhoneNumber.query.with_entities(InternalPhoneNumber.phone).all()
+        return frozenset(r[0] for r in rows)
+    except Exception:
+        return frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -709,10 +751,21 @@ def recent_calls():
 def _recent_view_model(evt, first_at, pinned_session_ids: set, leg_count: int = 1) -> dict:
     """Build a card view model for a recently-ended session."""
     raw_phone = evt.from_number or ""
-    phone = "0" + raw_phone[3:] if raw_phone.startswith("+61") else raw_phone
+    norm_from = "0" + raw_phone[3:] if raw_phone.startswith("+61") else raw_phone
     raw_to = evt.to_number or ""
-    to_local = "0" + raw_to[3:] if raw_to.startswith("+61") else raw_to
-    direction = (evt.event_type or "").split(":", 1)[0] if ":" in (evt.event_type or "") else None
+    norm_to = "0" + raw_to[3:] if raw_to.startswith("+61") else raw_to
+
+    # Same swap as _active_view_model: when "from" is a JJ-internal DID,
+    # the actual customer is in "to". Stops a contact-centre outbound
+    # call from displaying as "Bill Parker · 0353030263".
+    if _is_internal_phone(norm_from):
+        phone    = norm_to
+        to_local = norm_from
+        direction = "Outbound"
+    else:
+        phone    = norm_from
+        to_local = norm_to
+        direction = (evt.event_type or "").split(":", 1)[0] if ":" in (evt.event_type or "") else None
 
     duration_s = int((evt.received_at - first_at).total_seconds()) if first_at else 0
 
