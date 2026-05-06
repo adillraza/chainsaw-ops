@@ -333,79 +333,170 @@ user, give that card a special "yours" badge or auto-open the customer
 
 ## Sales-inbox pipeline — customer panel + knowledge base feed
 
-**Why.** Two reasons, very different shapes:
+**Why.** Two distinct uses for the same data:
 
-1. **Customer 360 panel** — agents on a call regularly need "have we
-   emailed this person recently and what about?" Today: zero visibility.
-2. **Knowledge base feed** — years of sales emails contain the highest-
+1. **Customer 360 panel** — agent on a call wants to know "have we
+   emailed this person recently, what about?" Today: zero visibility.
+2. **Knowledge base feed** — years of sales emails are the highest-
    quality product knowledge we have. *"Does JM7013-2BBx4 fit HRU216?
-   Yes, 21" deck only, won't fit HRU214"* — that's an answer a real
-   agent gave a real customer in a real thread, signed off as correct.
-   Multiplied by every product compatibility / fitment / spec question
-   we've ever answered: institutional memory becomes searchable.
+   Yes, 21" deck only, won't fit HRU214"* is an answer a real agent
+   gave to a real customer in a real thread. Multiplied by every
+   compatibility / fitment / spec question we've ever answered:
+   institutional memory becomes searchable.
 
-The same ingestion pipeline serves both. Build the pipe once, light up
-the panel and the KB feed independently.
+Build the pipe once, light up the panel and the KB feed independently.
 
-**What.**
+### Auth — already half-done
 
-### Pipeline (foundation, reused by both)
-- **Auth**: Microsoft Graph API + admin consent for the sales mailbox(es).
-  Service principal, OAuth 2.0 client-credentials flow.
-- **Backfill**: pull all historic threads → BQ table
-  `sales_emails` (thread_id, message_id, direction, from/to,
-  subject, body_text, attachments[], received_at). Embedding cost
-  is trivial (~$1 for years of mail at our volume).
-- **Live**: Graph subscription webhooks → Cloud Function → BQ insert,
-  near-real-time.
-- **Identity link**: match the customer side of each thread to a Neto
-  Username via email address (uses the same email-based lookup the
-  fuzzy-account-linking item proposes).
+The Azure AD app we registered for SharePoint
+(`30ee98d1-7ccc-4315-a1f4-01ce96229962`) is the same Microsoft Graph
+client we'd use for mail. Just **add `Mail.Read` application
+permission** to the existing app, admin-consent it once, and we're
+authenticated against every mailbox in the tenant. Same secret in
+GCP Secret Manager (`sharepoint-client-secret`) — could rename to
+`graph-client-secret` if we want it to feel less SharePoint-specific.
+
+### Discovery / inventory pass (Day 1)
+
+Before backfilling, list every mailbox in the org:
+
+```python
+GET https://graph.microsoft.com/v1.0/users?$select=id,mail,userPrincipalName,displayName
+```
+
+Bookmark the shared mailboxes specifically (sales@, info@, support@,
+orders@, etc.) — we'll start with these. Personal staff inboxes can be
+phase 2 once we know shared works.
+
+### Backfill volume
+
+Estimating: ~150 messages/day inbound + outbound combined across
+shared mailboxes. Five years of history = ~270k messages. Each ~5 KB
+text body → ~1.4 GB raw. Trivial for BigQuery.
+
+Cost: Graph rate-limit is ~10k requests / 10 min / app, so backfill at
+100 messages per page = 2,700 pages = ~30 mins of polling. One-time job.
+
+### Pipeline shape
+
+| Stage | Tool | Output |
+|---|---|---|
+| Backfill | Python script, paginated `GET /users/{mb}/messages` | `email_archive.messages` BQ table |
+| Incremental | `/messages/delta?$filter=receivedDateTime ge ...` keyed on lastDeltaToken | Same table, upserted |
+| Webhook (optional) | Graph subscriptions for "new mail" events | Near-real-time row insert |
+
+BQ schema:
+
+```sql
+CREATE TABLE email_archive.messages (
+  message_id        STRING NOT NULL,           -- Graph immutable ID
+  conversation_id   STRING,                    -- thread grouping
+  mailbox           STRING,                    -- e.g. 'sales@chainsawspares.com.au'
+  direction         STRING,                    -- 'inbound' / 'outbound'
+  subject           STRING,
+  from_address      STRING,                    -- normalised lowercase
+  from_name         STRING,
+  to_addresses      ARRAY<STRING>,
+  cc_addresses      ARRAY<STRING>,
+  received_at       TIMESTAMP,
+  sent_at           TIMESTAMP,
+  body_preview      STRING,                    -- first ~250 chars for UI
+  body_text         STRING,                    -- full plaintext for KB
+  body_html         STRING,                    -- preserved for modal render
+  has_attachments   BOOL,
+  attachment_count  INT64,
+  web_link          STRING,                    -- ⭐ Graph-provided OWA URL
+  ingested_at       TIMESTAMP NOT NULL
+)
+PARTITION BY DATE(received_at)
+CLUSTER BY conversation_id, from_address;
+```
 
 ### Use 1 — Customer 360 panel
-- New "Emails" section on the card, between Call History and
-  Behaviour insights.
-- Thread list, newest first, with AI one-line summary per thread:
-  *"3 threads in 2025: 'replacement blade availability',
-  'shipping delay query', 'after-sale fitment question'."*
-- Click a thread → modal showing the messages (similar to the
-  call-details modal pattern). Inline image rendering.
-- Especially powerful for **callers without a Neto record but with
-  email history** (the Cole pattern).
+
+New "Email history" section on the card, parallel structure to Call
+History. For a customer with `email = scott.bremner31@hotmail.com`:
+
+```sql
+SELECT subject, direction, received_at, web_link, body_preview, conversation_id
+FROM email_archive.messages
+WHERE LOWER(from_address) = @email
+   OR @email IN UNNEST(to_addresses)
+ORDER BY received_at DESC LIMIT 50
+```
+
+Display: thread list grouped by `conversation_id`, latest reply first,
+each entry shows subject + date + direction icon + the agent (if outbound).
+
+**Click → opens the email in Outlook Web in a new tab.** Microsoft Graph
+returns a `webLink` field on every message that does this for free —
+no auth needed on the click, OWA handles SSO. Looks like:
+
+```
+https://outlook.office.com/owa/?ItemID=AAMkAGI2...&exvsurl=1&viewmodel=ReadMessageItem
+```
+
+For native Outlook desktop users, the same URL opens via the Outlook
+protocol handler if they have it installed, otherwise falls back to OWA.
+Either way: one click, agent reading the actual email.
 
 ### Use 2 — Knowledge base feed (links to *Product knowledge base*)
-- Periodic Dataform job: select threads where the agent reply
-  contains a product SKU / dimension / fitment claim (regex or LLM
-  classifier).
-- Extract the agent's answer + the customer's question as a chunk:
-  *"Q: Does JM7013-2BBx4 fit HRU216? A: Yes, 21" deck only, won't fit
-  HRU214. — thread #4419, 2024-08-12, agent: Dallas"*
-- Embed and add to the vector store with `source = "sales_email"`.
-  Joins catalogue + manual chunks. Agent copilot retrieves from all
-  three sources transparently.
-- Bonus: surface a "previously answered" link on the customer card
-  when the chunk's customer matches the current caller.
 
-### Phasing
-1. **Pipeline + panel** (uses A above): backfill + live ingestion +
-   panel on the card. Ships in ~2 weeks.
-2. **Thread summarisation**: Gemini Flash one-liner per thread,
-   nightly batch. Cheap, agent-quality wording.
-3. **KB extraction**: classifier + chunk extraction → vector store
-   feed. Lights up agent copilot with prior-answer matches.
-4. **(Stretch) Auto-draft replies** — given a new inbound email,
-   pre-draft a response using the customer's order history + KB.
-   One-click "send" on agent review.
+Periodic Dataform job filters threads where the agent reply contains
+a product SKU / dimension / fitment claim (regex first, LLM classifier
+later). Extract Q&A as a KB chunk:
 
-**Effort.** L overall. Each phase is M and shippable independently.
+```
+Q: Does JM7013-2BBx4 fit HRU216?
+A: Yes, 21" deck only, won't fit HRU214.
+— thread 4419, 2024-08-12, agent Dallas
+```
 
-**Open questions.**
-- Which mailboxes? Just `sales@`, or also support / orders / personal
-  agent inboxes? Probably start with one.
-- Attachment OCR (PDFs, photos of broken parts) — defer to phase 2 of
-  the *Product knowledge base* item.
-- Retention: do we hold full bodies forever, or summarise + drop after
-  N years? Depends on Microsoft retention + our preference.
+Embed + add to vector store with `source = "sales_email"`. Joins the
+SharePoint procedures, Neto product descriptions, and brochure PDFs in
+the same RAG retrieval pool.
+
+### Phasing — concrete timeline
+
+1. **Phase 1 (1 week): pipeline + read-only customer panel.**
+   - Day 1-2: add `Mail.Read` permission, mailbox inventory, schema
+   - Day 3-4: backfill script for one shared mailbox (sales@)
+   - Day 5: incremental delta-query refresh, hourly cron
+   - Day 6: customer-360 query + panel UI + click-to-Outlook
+2. **Phase 2 (M): expand to all shared mailboxes + delivery-status emails**
+   - Add support@, info@, orders@. Filter out auto-emails (delivery
+     receipts, postmaster, etc.) at ingestion time.
+3. **Phase 3 (M): thread summarisation**
+   - Gemini Flash nightly: one-line summary per conversation_id.
+     Display "*3 threads: replacement blade availability, shipping
+     delay, after-sale fitment*" at panel header.
+4. **Phase 4 (L): KB extraction**
+   - Classifier picks product-relevant threads. Embed Q&A as chunks.
+     Lights up agent copilot with prior-answer matches.
+5. **Stretch: auto-draft replies** — given a new inbound, pre-draft a
+   response using customer's order history + KB. One-click send after
+   agent review.
+
+**Effort.** L overall, but **Phase 1 is M and ships in 1 week**.
+Phase 1 alone gives agents email visibility on the customer card,
+which addresses the original ask.
+
+### Open questions
+
+- **Which mailboxes first?** sales@ likely. Confirm with the team
+  which shared mailbox sees the most customer correspondence.
+- **Body retention** — keep full body forever, or summarise + drop
+  after 2 years? Bodies are ~1 GB/year; retention is cheap. Default
+  to keeping forever unless there's a privacy reason.
+- **Personal staff inboxes** — out of phase 1. Each staff member's
+  individual inbox would be useful but raises consent + scope
+  questions. Defer.
+- **Attachments** — defer phase 1 to text only. Phase 4 OCRs PDFs +
+  images via Document AI when we add KB extraction.
+- **PII / privacy** — emails contain personal info beyond what the
+  customer card normally shows. Cap visibility behind the
+  `support.calls.view` capability (already in place). No new gating
+  needed for phase 1.
 
 ---
 
