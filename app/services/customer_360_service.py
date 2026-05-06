@@ -145,6 +145,13 @@ class Customer360Service:
             phone, empty["call_history"]
         )
 
+        # --- Email history — pulled by customer email from
+        # email_archive.messages (sales@ mailbox backfill). One panel
+        # per customer email; the primary record's email wins. Multi-
+        # account merging is a follow-up via fuzzy-account-linking.
+        primary_email = next((c.get("email") for c in empty["customers"] if c.get("email")), None)
+        empty["email_history"] = self._fetch_email_history(primary_email) if primary_email else None
+
         return empty
 
     def _merge_today_calls_into_history(self, phone: str, history: dict | None) -> dict | None:
@@ -548,6 +555,78 @@ class Customer360Service:
             ),
         )
         return [_row_to_dict(r) for r in job.result()]
+
+    # ------------------------------------------------------------------
+    # Email history — pulled from email_archive.messages
+    # ------------------------------------------------------------------
+
+    def _fetch_email_history(self, customer_email: str) -> dict | None:
+        """Return per-customer email aggregates + the most recent 50
+        messages, or None if the email_archive table is empty / missing.
+
+        One round trip: a single SELECT with two CTEs (totals + list).
+        Cheap because the table is partitioned by received_at and
+        clustered by from_address (one of the two we filter by).
+        """
+        if not customer_email or self.client is None:
+            return None
+        sql = """
+        WITH matched AS (
+          SELECT *
+          FROM `chainsawspares-385722.email_archive.messages`
+          WHERE LOWER(from_address) = LOWER(@email)
+             OR LOWER(@email) IN (SELECT LOWER(t) FROM UNNEST(to_addresses) AS t)
+        )
+        SELECT
+          (SELECT AS STRUCT
+             COUNT(*) AS total,
+             COUNTIF(direction = 'inbound')  AS received,
+             COUNTIF(direction = 'outbound') AS sent,
+             COUNTIF(is_automated)           AS automated,
+             COUNTIF(has_attachments)        AS with_attachments,
+             MAX(received_at) AS last_at,
+             DATE_DIFF(CURRENT_DATE('Australia/Melbourne'),
+                       DATE(MAX(received_at)), DAY) AS days_since_last
+           FROM matched) AS aggs,
+          ARRAY(
+            SELECT AS STRUCT
+              message_id, conversation_id, direction, subject,
+              from_address, from_name,
+              received_at, is_automated, has_attachments,
+              parent_folder_name, web_link,
+              SUBSTR(body_preview, 1, 200) AS body_preview
+            FROM matched
+            ORDER BY received_at DESC
+            LIMIT 50
+          ) AS messages
+        """
+        try:
+            job = self.client.query(
+                sql,
+                job_config=bigquery.QueryJobConfig(query_parameters=[
+                    bigquery.ScalarQueryParameter("email", "STRING", customer_email)
+                ]),
+            )
+            row = next(iter(job.result()), None)
+        except Exception:
+            return None
+        if not row:
+            return None
+        aggs = _row_to_dict(row.aggs) or {}
+        msgs = [_row_to_dict(m) for m in (row.messages or [])]
+        if not aggs.get("total"):
+            return None
+        return {
+            "email":            customer_email,
+            "total":            aggs.get("total") or 0,
+            "received_total":   aggs.get("received") or 0,
+            "sent_total":       aggs.get("sent") or 0,
+            "automated_total":  aggs.get("automated") or 0,
+            "with_attachments": aggs.get("with_attachments") or 0,
+            "last_at":          aggs.get("last_at"),
+            "days_since_last":  aggs.get("days_since_last"),
+            "messages":         msgs,
+        }
 
     # ------------------------------------------------------------------
     # Per-call detail: AI summary + transcript + classifications + audio

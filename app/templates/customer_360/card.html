@@ -496,6 +496,83 @@
         </div>
       {% endif %}
 
+      {# Email history -------------------------------------------- #}
+      {% if c.email_history %}
+        {% set e = c.email_history %}
+        <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <h3 class="text-sm font-semibold text-slate-900">Email history</h3>
+            <span class="text-xs text-slate-500">
+              {{ e.total or 0 }} lifetime
+              {% if e.days_since_last is not none %} · last {{ e.days_since_last }}d ago{% endif %}
+            </span>
+          </div>
+
+          <div class="grid grid-cols-4 gap-2 px-4 py-3 text-center">
+            {% for label, value, color in [
+              ('Received',  e.received_total,  'emerald'),
+              ('Sent',      e.sent_total,      'sky'),
+              ('Automated', e.automated_total, 'amber'),
+              ('Attached',  e.with_attachments,'slate'),
+            ] %}
+              <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                <div class="text-lg font-semibold text-{{ color }}-700">{{ value or 0 }}</div>
+                <div class="text-[11px] uppercase tracking-wide text-slate-500">{{ label }}</div>
+              </div>
+            {% endfor %}
+          </div>
+
+          {% if e.messages %}
+            <div class="border-t border-slate-100 px-4 pt-2 pb-1 flex items-center justify-between">
+              <span class="text-[11px] uppercase tracking-wide text-slate-500">
+                Showing {{ e.messages|length }}{% if e.total > e.messages|length %} of {{ e.total }}{% endif %} · newest first
+              </span>
+              {% if e.messages|length > 5 %}
+                <span class="text-[10px] text-slate-400"><i class="fas fa-arrows-up-down"></i> scroll</span>
+              {% endif %}
+            </div>
+            <ul class="max-h-80 overflow-y-auto divide-y divide-slate-100 px-4 py-1 text-sm">
+              {% for m in e.messages %}
+                <li class="-mx-2">
+                  {# Click → opens in Outlook Web (or desktop Outlook via
+                     protocol handler if installed). web_link is a Graph-
+                     pre-signed URL; SSO handles auth on click. #}
+                  <a href="{{ m.web_link or '#' }}" target="_blank" rel="noopener"
+                     class="flex w-full items-start justify-between gap-2 rounded px-2 py-2 hover:bg-brand-50 {% if not m.web_link %}pointer-events-none{% endif %}"
+                     title="Open in Outlook ↗">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2">
+                        {% if m.direction == 'inbound' %}
+                          <i class="fas fa-arrow-down text-emerald-500 text-[10px]" title="Received"></i>
+                        {% else %}
+                          <i class="fas fa-arrow-up text-sky-500 text-[10px]" title="Sent"></i>
+                        {% endif %}
+                        <span class="truncate text-slate-800">{{ m.subject or '(no subject)' }}</span>
+                        {% if m.is_automated %}
+                          <span class="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0 text-[9px] font-medium text-amber-700">auto</span>
+                        {% endif %}
+                        {% if m.has_attachments %}
+                          <i class="fas fa-paperclip text-[10px] text-slate-400" title="Has attachments"></i>
+                        {% endif %}
+                      </div>
+                      <div class="text-[11px] text-slate-500">
+                        {{ m.received_at | format_dt('datetime') }}
+                        {% if m.parent_folder_name %} · {{ m.parent_folder_name }}{% endif %}
+                      </div>
+                    </div>
+                    {% if m.web_link %}
+                      <i class="fas fa-arrow-up-right-from-square text-[10px] text-slate-400 mt-1"></i>
+                    {% endif %}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="px-4 py-3 text-sm text-slate-500">No emails on file.</div>
+          {% endif %}
+        </div>
+      {% endif %}
+
       {# Call behaviour (AI) ---------------------------------------- #}
       {% if c.call_behavior %}
         {% set b = c.call_behavior %}
