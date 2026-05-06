@@ -146,11 +146,24 @@ class Customer360Service:
         )
 
         # --- Email history — pulled by customer email from
-        # email_archive.messages (sales@ mailbox backfill). One panel
-        # per customer email; the primary record's email wins. Multi-
-        # account merging is a follow-up via fuzzy-account-linking.
-        primary_email = next((c.get("email") for c in empty["customers"] if c.get("email")), None)
-        empty["email_history"] = self._fetch_email_history(primary_email) if primary_email else None
+        # email_archive.messages (sales@ mailbox backfill).
+        #
+        # Gather EVERY distinct email address across every matched
+        # customer record (multi-match: same phone → multiple Neto
+        # records, often with different emails). Plus each record's
+        # secondary_email when set. Querying the union catches
+        # correspondence that lives under any of them — losing the
+        # secondary email used to silently drop ~650 wholesale-
+        # customer threads.
+        emails: list[str] = []
+        seen: set[str] = set()
+        for cu in empty["customers"]:
+            for fld in ("email", "secondary_email"):
+                addr = (cu.get(fld) or "").strip().lower()
+                if addr and addr not in seen:
+                    seen.add(addr)
+                    emails.append(addr)
+        empty["email_history"] = self._fetch_email_history(emails) if emails else None
 
         return empty
 
@@ -560,22 +573,34 @@ class Customer360Service:
     # Email history — pulled from email_archive.messages
     # ------------------------------------------------------------------
 
-    def _fetch_email_history(self, customer_email: str) -> dict | None:
+    def _fetch_email_history(self, customer_emails) -> dict | None:
         """Return per-customer email aggregates + the most recent 50
         messages, or None if the email_archive table is empty / missing.
+
+        ``customer_emails`` is a list of every email address the customer
+        is known by — primary + secondary on each matched Neto record,
+        unioned across all multi-match records. The query unions all
+        match arms via IN UNNEST(@emails).
 
         One round trip: a single SELECT with two CTEs (totals + list).
         Cheap because the table is partitioned by received_at and
         clustered by from_address (one of the two we filter by).
         """
-        if not customer_email or self.client is None:
+        # Accept either a single string (legacy) or a list.
+        if isinstance(customer_emails, str):
+            customer_emails = [customer_emails]
+        emails = [e.strip().lower() for e in (customer_emails or []) if e and e.strip()]
+        if not emails or self.client is None:
             return None
         sql = """
         WITH matched AS (
           SELECT *
           FROM `chainsawspares-385722.email_archive.messages`
-          WHERE LOWER(from_address) = LOWER(@email)
-             OR LOWER(@email) IN (SELECT LOWER(t) FROM UNNEST(to_addresses) AS t)
+          WHERE LOWER(from_address) IN UNNEST(@emails)
+             OR EXISTS (
+                  SELECT 1 FROM UNNEST(to_addresses) AS t
+                  WHERE LOWER(t) IN UNNEST(@emails)
+             )
         )
         SELECT
           (SELECT AS STRUCT
@@ -604,7 +629,7 @@ class Customer360Service:
             job = self.client.query(
                 sql,
                 job_config=bigquery.QueryJobConfig(query_parameters=[
-                    bigquery.ScalarQueryParameter("email", "STRING", customer_email)
+                    bigquery.ArrayQueryParameter("emails", "STRING", emails)
                 ]),
             )
             row = next(iter(job.result()), None)
@@ -622,7 +647,11 @@ class Customer360Service:
         # checked, there's no email correspondence" rather than just
         # silently omitting the section.
         return {
-            "email":            customer_email,
+            # ``email`` kept for backward-compat with the template's empty-
+            # state copy; it's the first address we checked. The full set
+            # we queried is in ``emails_checked``.
+            "email":            emails[0],
+            "emails_checked":   emails,
             "total":            aggs.get("total") or 0,
             "received_total":   aggs.get("received") or 0,
             "sent_total":       aggs.get("sent") or 0,
