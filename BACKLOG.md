@@ -233,6 +233,101 @@ already fast and depends on data that changes every 3s.
 
 ---
 
+## Customer 360 — Merge duplicate Neto customer records
+
+**Why.** Most customer phones in Neto match 2-8 records — same person
+re-registered as guest, slightly different email/spelling, etc. The
+multi-match panel exposes this clearly now (clickable list to open
+each in Neto cpanel) but **agents can't actually merge them**.
+Ongoing effect: every report out of Neto double-counts these
+customers, the Customer 360 picks one record arbitrarily (highest
+LTV), and accumulated lifetime totals are split across the duplicates.
+
+**The blocker.** Neto API (Maropost) **has no merge endpoint**. All
+13 API categories enumerated 2026-05-06 — Customer endpoints are
+just Add/Get/Update + customer logs. No DeleteCustomer either. The
+cPanel UI has merge but it's UI-only.
+
+**Three strategies, ordered by my preference:**
+
+### Option B (recommended) — Local merge-intent tracking + deep-link to cPanel
+
+Agent ticks the records to merge into the primary in our UI. Two
+things happen on submit:
+1. A row inserted into a new `customer_merge_intent` SQLite table
+   (primary_username, secondary_username, marked_by_user_id,
+   marked_at, status, completed_at, reason).
+2. New tab opens to Neto cPanel's merge page pre-loaded with those
+   records (pending: figure out the cpanel URL pattern; ask Adil
+   to paste it from a real merge session).
+
+Customer 360 reads the merge_intent table on every card load and
+folds secondary records into the primary view immediately —
+combining orders, RMAs, calls, emails — without waiting for Neto
+to actually be merged.
+
+Why this is the best of three:
+- Agent gets immediate consolidated view in our UI
+- Neto cleanup still happens (deep-link does the work in cpanel)
+- Audit trail of who marked what for merge in our DB
+- If Neto merge is delayed/forgotten, our system still shows the
+  right thing
+- Builds toward the "fuzzy account linking" item below — same
+  schema can later be auto-populated by a fuzzy-match algorithm
+
+### Option A — Deep-link only
+
+Same UI but no local tracking. Agent ticks records, button just
+opens cpanel. No audit trail in our system, no immediate
+consolidated view.
+
+Lighter to build. Loses the immediate UX win. Skip in favour of B.
+
+### Option C — Pure local soft-merge
+
+Just track in our DB, don't bother with Neto cleanup. Customer 360
+shows merged view, Neto stays dirty. Other tools reading Neto
+(reports, shipping pickers, etc.) still see duplicates.
+
+Reject — doesn't solve the data-quality problem long-term.
+
+**What.** Phased build of Option B:
+
+1. **Schema + migration** — `customer_merge_intent` table, ~30 min.
+2. **Service-layer fold-in** — `Customer360Service.get_card` joins
+   the intent table, treats marked secondary records as part of
+   the primary's data set. Combine orders / RMAs / call_history /
+   email_history. ~1 day, including making sure the lifetime
+   numbers don't double-count.
+3. **Modal UI** — opens from the existing "Merge (planned)" pill on
+   the multi-match panel. Pre-selects the highest-LTV record as
+   primary, checkbox grid for which others to merge in. Reason
+   text field (optional). On submit: insert intent rows, open
+   Neto cpanel deep-link in a new tab. ~1 day.
+4. **Status tracking** — small "view past merges" admin page so we
+   can see what's pending vs completed. Phase 2.
+5. **Auto-detect-completion** — periodic check: if Neto's
+   customer_360 view shows the secondary username has 0 orders
+   (because merge transferred them), mark the intent as
+   `completed`. ~half a day, phase 2.
+
+**Effort.** Phase 1+2+3 = ~2.5 days. The full thing including 4+5
+is M (~1 week).
+
+**Open questions.**
+- The Neto cPanel merge URL pattern. I need to see it from a real
+  merge session in cpanel — please paste the URL bar contents the
+  next time you do one.
+- What permission gates this? `support.customer_merge` capability
+  with same membership as `support.calls.view`, probably.
+- Should we ALSO run the merge as a `chainsaw-functions` Cloud
+  Function (using the existing Neto API key) to call cPanel
+  programmatically via headless browser / HTTP scraping? Out of
+  scope for phase 1; revisit if "deep-link to cpanel" turns out to
+  be a worse UX than expected.
+
+---
+
 ## Customer 360 — fuzzy account linking across duplicate Neto accounts
 
 **Why.** Customers often re-register under a new email/username over the
