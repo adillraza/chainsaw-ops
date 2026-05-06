@@ -88,6 +88,35 @@ def format_dt(value, fmt: str = "datetime") -> str:
     return dt.strftime(fmt)
 
 
+def format_duration(seconds) -> str:
+    """Format a call duration as ``Xs`` / ``Xm Ys`` / ``Xh Ym``.
+
+    Examples (matching how the eye reads a call log at a glance):
+      * 0       → "0s"
+      * 45      → "45s"
+      * 90      → "1m 30s"
+      * 3600    → "1h"
+      * 3725    → "1h 2m"
+    Returns em-dash for empty / non-numeric input.
+    """
+    if seconds is None or seconds == "":
+        return EM_DASH
+    try:
+        s = int(seconds)
+    except (TypeError, ValueError):
+        return EM_DASH
+    if s < 0:
+        return EM_DASH
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        m, sec = divmod(s, 60)
+        return f"{m}m {sec}s" if sec else f"{m}m"
+    h, rem = divmod(s, 3600)
+    m = rem // 60
+    return f"{h}h {m}m" if m else f"{h}h"
+
+
 # ---------------------------------------------------------------------------
 # Neto control-panel deep links
 # ---------------------------------------------------------------------------
@@ -124,4 +153,5 @@ def neto_url(kind: str, id_value) -> str | None:
 def register(app) -> None:
     """Wire the filters into a Flask app's Jinja environment."""
     app.add_template_filter(format_dt, name="format_dt")
+    app.add_template_filter(format_duration, name="format_duration")
     app.jinja_env.globals["neto_url"] = neto_url

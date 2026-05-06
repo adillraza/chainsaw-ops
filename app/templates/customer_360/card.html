@@ -481,7 +481,7 @@
                       {% endif %}
                     </div>
                     <span class="flex items-center gap-2 text-xs text-slate-500">
-                      {{ call.duration_seconds or 0 }}s
+                      {{ call.duration_seconds | format_duration }}
                       {% if call.session_id %}<i class="fas fa-chevron-right text-[10px] text-slate-400"></i>{% endif %}
                     </span>
                   </button>
@@ -544,7 +544,7 @@
                 <div class="text-[11px] uppercase tracking-wide text-slate-500">Most recent analysed call</div>
                 <div class="mt-1 text-sm text-slate-700">
                   {{ b.last_call.call_date | format_dt('date') }}
-                  {% if b.last_call.duration_seconds %}· {{ b.last_call.duration_seconds }}s{% endif %}
+                  {% if b.last_call.duration_seconds %}· {{ b.last_call.duration_seconds | format_duration }}{% endif %}
                   {% if b.last_call.agent_name %}· agent {{ b.last_call.agent_name }}{% endif %}
                   {% if b.last_call.sentiment_label %}
                     · sentiment <span class="font-medium">{{ b.last_call.sentiment_label }}</span>

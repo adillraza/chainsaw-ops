@@ -40,8 +40,7 @@
                 <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   <i class="fas fa-phone-slash text-[10px] text-slate-400 mr-1"></i>
                   {% if call.duration_s and call.duration_s > 0 %}
-                    {% if call.duration_s < 60 %}{{ call.duration_s }}s
-                    {% else %}{{ (call.duration_s // 60) }}m {{ call.duration_s % 60 }}s{% endif %}
+                    {{ call.duration_s | format_duration }}
                   {% else %}
                     Ended
                   {% endif %}

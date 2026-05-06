@@ -23,7 +23,7 @@
         <h3 class="text-base font-semibold text-slate-900">Call details</h3>
         <p class="mt-1 text-xs text-slate-500">
           {{ d.started_at | format_dt('datetime') }}
-          {% if d.duration_seconds %} · {{ d.duration_seconds }}s{% endif %}
+          {% if d.duration_seconds %} · {{ d.duration_seconds | format_duration }}{% endif %}
           {% if d.agent_name %} · agent {{ d.agent_name }}{% endif %}
           {% if d.skill %} · skill {{ d.skill }}{% endif %}
           {% if d.is_active %} · <span class="font-medium text-emerald-700">still in flight</span>
@@ -41,7 +41,7 @@
     <div class="grid grid-cols-2 gap-3">
       {% set tiles = [
         ('Started', d.started_at | format_dt('time'), 'fa-clock'),
-        ('Duration', (d.duration_seconds ~ 's' if d.duration_seconds else '—'), 'fa-stopwatch'),
+        ('Duration', d.duration_seconds | format_duration, 'fa-stopwatch'),
         ('Agent',    d.agent_name or '—', 'fa-headset'),
         ('Skill',    d.skill or '—',      'fa-tag'),
         ('Direction', (d.first_event_type.split(':')[0] if d.first_event_type and ':' in d.first_event_type else '—'), 'fa-arrow-right-arrow-left'),
@@ -78,7 +78,7 @@
             {% set start = d.cxone_start_date.replace('T',' ') if d.cxone_start_date is string else d.cxone_start_date %}
             {{ start }} ·
           {% endif %}
-          {% if d.cxone_duration_seconds %}{{ d.cxone_duration_seconds }}s ·{% endif %}
+          {% if d.cxone_duration_seconds %}{{ d.cxone_duration_seconds | format_duration }} ·{% endif %}
           {% if d.agent_first_name or d.agent_last_name %}
             agent {{ (d.agent_first_name or '') }} {{ (d.agent_last_name or '') }} ·
           {% endif %}
