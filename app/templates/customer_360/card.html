@@ -193,26 +193,20 @@
           <i class="fas fa-code-merge mr-1.5"></i> Merge (planned)
         </span>
       </div>
-      <ul class="mt-3 divide-y divide-amber-200/70 rounded border border-amber-200 bg-white">
+      <ul class="mt-2 list-disc pl-5 text-amber-800">
         {% for cu in c.customers[1:] %}
           {% set cu_url = neto_url('customer', cu.Username) %}
-          <li>
-            <a href="{{ cu_url }}" target="_blank" rel="noopener"
-               class="flex items-center justify-between gap-3 px-3 py-2 text-amber-900 hover:bg-amber-50 {% if not cu_url %}pointer-events-none{% endif %}"
-               title="Open {{ cu.Username }} in Neto cpanel ↗">
-              <div class="min-w-0 flex-1">
-                <div class="font-medium truncate">
-                  {{ cu.name_first }} {{ cu.name_last }}
-                  <span class="ml-1 text-xs text-amber-700">@{{ cu.Username }}</span>
-                </div>
-                <div class="text-xs text-amber-700/80 truncate">
-                  {{ cu.email or '(no email)' }} · ${{ '%.0f' % (cu.lifetime_value or 0) }} lifetime · {{ cu.lifetime_order_count or 0 }} orders
-                </div>
-              </div>
-              {% if cu_url %}
-                <i class="fas fa-arrow-up-right-from-square text-[11px] text-amber-600"></i>
-              {% endif %}
-            </a>
+          <li class="truncate">
+            {% if cu_url %}
+              <a href="{{ cu_url }}" target="_blank" rel="noopener"
+                 class="font-medium text-amber-900 hover:underline"
+                 title="Open {{ cu.Username }} in Neto cpanel ↗">
+                {{ cu.name_first }} {{ cu.name_last }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-amber-600"></i>
+              </a>
+            {% else %}
+              <span class="font-medium text-amber-900">{{ cu.name_first }} {{ cu.name_last }}</span>
+            {% endif %}
+            - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value or 0) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
           </li>
         {% endfor %}
       </ul>
