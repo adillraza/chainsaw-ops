@@ -11,6 +11,79 @@ Each entry should include:
 
 ---
 
+## Microsoft SSO — "Sign in with Microsoft" for the Ops dashboard ⭐ early priority
+
+**Why.** Today every staff member has a separate username/password for
+the Ops dashboard. They forget it, type it wrong, and we have a real
+account-management surface to maintain. Meanwhile they're already
+signed into Outlook on the same browser with `@jonoandjohno.com.au`
+creds and MFA. Use that.
+
+User's words: "this would be so awesome for everyone." Yes.
+
+**What.** Standard OAuth 2.0 / OpenID Connect via Microsoft Identity
+Platform. Click "Sign in with Microsoft" → Microsoft confirms identity
+(silently if already signed in, MFA-challenged if not) → redirects
+back with an ID token → we map that to a chainsaw-ops `User` row → set
+Flask-Login session.
+
+We've already done the hard part — the Azure AD app registration we
+set up for SharePoint + Mail uses the same identity platform. For
+sign-in we register a second app (different purpose: delegated, not
+application-permission scope) but same tenant, same admin workflow.
+
+### Build steps
+
+| # | Step | Time |
+|--:|---|---|
+| 1 | Register a second Azure AD app `chainsaw-ops-signin` with redirect URI `https://ops.jonoandjohno.com.au/auth/microsoft/callback` and `User.Read` delegated permission | 30 min |
+| 2 | Wire MSAL (Microsoft Authentication Library for Python — battle-tested) into Flask: `/auth/microsoft/login` constructs the auth URL, `/auth/microsoft/callback` exchanges the code for tokens, validates the ID token, and calls `flask_login.login_user(user)` | ½ day |
+| 3 | User-model migration: add `microsoft_oid` (Azure object id, stable PK), `auth_provider` ('local' / 'microsoft'), make `password_hash` nullable | 1 hr |
+| 4 | Login UI: add "Sign in with Microsoft" button. Hybrid mode for the first 1-2 weeks (both auth methods work) so we can de-risk the migration | ½ day |
+| 5 | Nightly Graph sync of the JJ tenant's user list — pre-provisions chainsaw-ops `User` rows so admins can set roles BEFORE first login. Reuses the existing Graph reader app (just needs `User.Read.All` permission added) | ½ day |
+| 6 | Edge cases: not-provisioned page, disabled-account handling, default new-user role = "viewer", admin promotes from existing `/admin/users` page | ½ day |
+| 7 | Docs + admin runbook | 1-2 hr |
+
+**Total:** ~2-3 days.
+
+### Decisions to make before starting
+
+- **Default role for new SSO users**: viewer (read-only) is the safe pick. Admin promotes selectively.
+- **Hybrid period or hard cutover?** Hybrid recommended — keep username/password working for ~1-2 weeks during rollout, then disable local auth.
+- **Microsoft-group → role mapping?** Phase 2 polish. v1 just defaults to viewer; admin manages roles in our UI as today.
+
+### Why MSAL makes this small
+
+```python
+auth_url = msal_app.get_authorization_request_url(scopes=["User.Read"], redirect_uri=...)
+# user signs in at Microsoft, comes back to /callback
+result = msal_app.acquire_token_by_authorization_code(code, ...)
+claims = result["id_token_claims"]   # email, name, oid — verified
+```
+
+That's the entire authentication code. MSAL handles JWT signature
+validation, audience/issuer/expiry checks, key rotation. Less of OUR
+auth code = less attack surface.
+
+### UX after rollout
+
+Agent opens `ops.jonoandjohno.com.au`. Login page has one big "Sign in
+with Microsoft" button. Click it. **Already signed into Outlook in the
+same browser, so Microsoft just redirects back instantly — no
+credentials typed.** Land on dashboard.
+
+For users on a fresh browser: one prompt for `@jonoandjohno.com.au`
+password, MFA if your tenant requires, then in. Microsoft handles
+passwords / MFA / lockouts / resets — we just receive a verified ID
+token saying "this person is X."
+
+**Cost.** $0. Azure AD app registrations and sign-ins are free at
+this scale. Just plumbing time.
+
+**Effort.** M (~2-3 days).
+
+---
+
 ## Follow-up tracker — turn promises into a workable agent task list
 
 **Why.** Real example seen 2026-04-30, caller `0447006770` (Cole):

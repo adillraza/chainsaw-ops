@@ -663,7 +663,135 @@ If 6 of 7 above return a top-3 hit, Phase 1 is shipped.
 
 ---
 
-## 7. Rollout plan
+## 7. Update strategy — keeping the KB fresh
+
+A KB that goes stale is worse than no KB. Each source has a different
+change rate, so we use different cadences. Cheap because we ingest
+deltas only — re-embedding everything weekly would be 100× the cost.
+
+### 7.1 Per-source update cadences
+
+| # | Source | Change rate | Detection | Cadence |
+|---|---|---|---|---|
+| 1-17 | SharePoint files | Low (a few edits/week) | Graph delta query: `lastModifiedDateTime gt {token}` | **Daily 1am Mel** |
+| 18 | Neto product list | Medium (new products, descriptions edited weekly) | Dataform `DateUpdated > last_run` | **Hourly 8am-6pm Mel** |
+| 19-22 | Brochure / exploded-view PDFs | Very low (new product launches) | GetContent walk + URL hash check | **Weekly** |
+| 23-28 | Website CMS pages | Low (occasional blog post, category edit) | GetContent: `$filter=DateUpdatedFrom gt {token}` | **Hourly** |
+| 29 | Email archive | High (continuous business hours) | `/messages?$filter=receivedDateTime gt {marker}` per folder | **Hourly** (already wired up via `email_sync.py`) |
+| 30-31 | Call transcripts | High (~150 calls/day) | KB job watches for new rows in `call_classifications` | **Daily 11pm Mel** (after analyser finishes) |
+
+Hourly for things that change during business hours; daily for things
+that mostly settle overnight; weekly for things that almost never
+change.
+
+### 7.2 Shared infrastructure (one pattern, all sources)
+
+**Watermark table** — each source records where it last got to:
+
+```sql
+CREATE TABLE kb.source_watermark (
+  source_id            STRING NOT NULL,
+  last_synced_at       TIMESTAMP,
+  last_token           STRING,        -- delta token / ISO timestamp / page #
+  consecutive_failures INT64
+);
+```
+
+Each ingestion job reads its watermark, fetches changes since, writes
+a new watermark on success.
+
+**Per-chunk source tracking** — every chunk in `kb.kb_chunks` carries:
+- `source_uri` — clickable link back to original
+- `content_hash` — SHA-256 of the source content
+- `file_modified_at` — from source system
+- `embedding_model_version` — see §7.4
+
+This enables cheap "did this actually change?" decisions:
+
+```python
+new_hash = sha256(source_content)
+stored_hash = get_chunk_hash_for(source_uri)
+if new_hash == stored_hash:
+    skip                                # metadata-only update; no re-embed
+else:
+    delete_chunks_where(source_uri = X)
+    ingest_fresh()
+    update content_hash
+```
+
+**Deletion handling** — for each source, "how do we know when something
+is gone?":
+
+| Source | Deletion detection | Action |
+|---|---|---|
+| SharePoint | Graph delta returns explicit "removed" items | Delete chunks |
+| Neto product list | Today's SKU set vs. our last snapshot | Delete chunks for SKUs no longer present |
+| CMS pages / brochures | Same, by URL | Delete chunks for missing URLs |
+| Email | — | **Don't delete**; even if agent moves to Deleted Items, keep in KB for audit |
+| Call transcripts | — | **Don't delete**; classifications are append-only |
+
+### 7.3 Scheduling — where the cron lives
+
+Two options, recommended in this order:
+
+1. **systemd timers on the chainsaw-ops VPS** — simplest. One unit per
+   source-type (e.g. `kb-sync-sharepoint.timer`, `kb-sync-cms.timer`),
+   alongside the existing `cxone-poller.service`. No new GCP setup,
+   logs go to `journalctl`. Start here.
+2. **Cloud Run Jobs + Cloud Scheduler** — if any source becomes
+   flakey, expensive, or needs better isolation. Same infra
+   `chainsaw-functions` already uses. Migrate per-source if/when
+   needed.
+
+### 7.4 Three failure modes to plan for
+
+| Mode | Symptom | Mitigation |
+|---|---|---|
+| **Source goes offline** | API returns 5xx or times out | Increment `consecutive_failures`, retry with exponential backoff, alert (email + Slack) at ≥3 consecutive fails. Watermark stays put — next successful run picks up where we stopped. |
+| **Delta token expires** (Graph delta tokens valid 45 days) | API returns `410 Gone` | Fall back to full re-walk; on completion, save fresh delta token. One-shot recovery. |
+| **Embedding model changes** (Vertex deprecates current one, or we want to upgrade) | Mixed-model corpus = poor retrieval | Keep `embedding_model_version` per chunk. When model changes, run a one-time re-embed background job that walks chunks oldest-version-first. |
+
+### 7.5 Cost monitoring
+
+Each run logs:
+- Chunks added / changed / deleted
+- Total tokens embedded (track in BQ — alert if > 10× rolling average,
+  flags runaway re-embed)
+- Wall-clock duration (alert if a hourly job exceeds 30 min — likely stuck)
+
+Daily summary, posted to a Slack channel or daily ops email:
+
+> *"KB updated: SharePoint +3 / Neto products +7 / CMS unchanged /
+> 412 emails / 18 calls. Total tokens embedded: 89,230 (~$0.018)."*
+
+### 7.6 Realistic monthly run-rate at this update cadence
+
+| Bucket | Frequency | Approx. monthly cost |
+|---|---|---:|
+| Embedding token spend (deltas only) | continuous | ~$2-5 |
+| BQ storage (corpus + index) | — | ~$0.50 |
+| BQ vector search queries (50/day) | — | ~$1 |
+| Compute (systemd timers free; Cloud Run Jobs ~$3) | per-run | ~$0-3 |
+| **Total** | | **<$10/month** |
+
+The deltas-only update strategy is what keeps it cheap. A naive
+"re-embed everything weekly" would be ~$1k/month at this corpus size.
+
+### 7.7 Day-1 add-ons (extends §11 checklist)
+
+When implementing Phase 1, also:
+
+- [ ] Create `kb.source_watermark` table
+- [ ] Add `embedding_model_version` column to `kb.kb_chunks`
+- [ ] Per-source ingestion job emits watermark row on success
+- [ ] systemd timers + service files in `deploy/systemd/` (or Cloud
+      Scheduler config)
+- [ ] Daily-summary log → Slack webhook (re-use existing channel
+      pattern from chainsaw-call-analyzer if there is one)
+
+---
+
+## 8. Rollout plan
 
 ### Day 1 — bootstrap
 
@@ -729,7 +857,7 @@ top results actually useful? If not, the fix is usually
 
 ---
 
-## 8. Known issues to plan for
+## 9. Known issues to plan for
 
 | Issue | Plan |
 |---|---|
@@ -747,7 +875,7 @@ top results actually useful? If not, the fix is usually
 
 ---
 
-## 9. Open questions to resolve before Day 1
+## 10. Open questions to resolve before Day 1
 
 - [ ] **BQ region**: are we OK with `australia-southeast1`? It's the
       same region as the rest of `chainsawspares-385722` Dataform
@@ -774,7 +902,7 @@ top results actually useful? If not, the fix is usually
 
 ---
 
-## 10. Day-1 checklist
+## 11. Day-1 checklist
 
 When ready to start, run through:
 
