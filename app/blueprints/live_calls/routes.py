@@ -262,10 +262,33 @@ def _collapse_to_master(rows: list) -> list[tuple]:
     from collections import defaultdict
     from datetime import datetime, timedelta
 
-    # Pass 1: group by master_session_id (CXone transfers).
+    # Pass 1: group by ROOT master (transitively resolved).
+    #
+    # CXone's masterContactId points to the IMMEDIATE parent in a transfer
+    # chain, not the root. A 3-hop transfer (caller → IVR-leg → agent-A →
+    # agent-B) produces session ids A → B → C where C.master = B and
+    # B.master = A. Bucketing by `master or sid` only catches one hop, so
+    # C ends up in its own bucket and the drawer renders the same call
+    # twice. Resolve the chain to the root by walking master pointers
+    # using the master-of-master mapping built from all rows in the
+    # window.
+    master_of: dict[str, str] = {}
+    for r in rows:
+        m = r.master_session_id
+        if m and m != r.session_id:
+            master_of[r.session_id] = m
+
+    def resolve_root(sid: str | None, _depth: int = 0) -> str | None:
+        if not sid or _depth > 10:
+            return sid
+        parent = master_of.get(sid)
+        if not parent or parent == sid:
+            return sid
+        return resolve_root(parent, _depth + 1)
+
     legs_by_master: dict = defaultdict(list)
     for r in rows:
-        key = r.master_session_id or r.session_id
+        key = resolve_root(r.master_session_id or r.session_id)
         legs_by_master[key].append(r)
 
     now = datetime.utcnow()
@@ -671,11 +694,27 @@ def recent_calls():
     )
 
     # Pass 1 — collapse legs that share a masterContactId (CXone transfers).
+    # Resolve the transfer chain transitively — see `_collapse_to_master`
+    # for the full explanation. Same bug class otherwise: 3-hop transfers
+    # only collapse 2-of-3 legs without this.
     from collections import defaultdict
     from datetime import timedelta
+    master_of: dict[str, str] = {}
+    for evt, _ in rows:
+        m = evt.master_session_id
+        if m and m != evt.session_id:
+            master_of[evt.session_id] = m
+    def resolve_root(sid: str | None, _depth: int = 0) -> str | None:
+        if not sid or _depth > 10:
+            return sid
+        parent = master_of.get(sid)
+        if not parent or parent == sid:
+            return sid
+        return resolve_root(parent, _depth + 1)
+
     legs_by_master: dict = defaultdict(list)
     for evt, first_at in rows:
-        key = evt.master_session_id or evt.session_id
+        key = resolve_root(evt.master_session_id or evt.session_id)
         legs_by_master[key].append((evt, first_at))
 
     pinned_session_ids = _pinned_session_ids_global()
