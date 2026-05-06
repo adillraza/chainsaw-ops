@@ -101,6 +101,91 @@ it into a list someone can actually attack without manual flagging.
 
 ---
 
+## Disaster recovery — SQLite backup to GCS
+
+**Why.** Code is on GitHub so a destroyed VPS recovers fast on the
+deploy side, but **everything in SQLite is a single point of failure**.
+If the VPS at `170.64.179.76` is destroyed (DigitalOcean droplet
+deletion, disk corruption, hypervisor failure), we lose:
+
+| Table | Recoverable? | What we'd lose |
+|---|---|---|
+| `user` + `login_log` | ❌ | Every staff account, password hashes, login history |
+| `annotation` | ❌ | Every PO/item-level note staff have written. **Most painful loss** — these are hand-written observations like "supplier shipped wrong batch", "customer rejected, repackage" |
+| `item_review` | ❌ | Open warehouse review queue with reasons, statuses, comments |
+| `pinned_call` | ❌ | Currently-pinned customer calls + agent notes |
+| `cached_purchase_order_*` | ✅ | Rebuildable — kick the "Refresh Data" button (~30s) |
+| `call_event` | ⚠️ partial | Re-fills as new webhooks arrive; today's calls lost = a day of slightly-less-rich live drawer |
+| `internal_phone_numbers` | ✅ | Migration re-seeds 25 rows on first boot |
+
+So 4 of 9 tables are **irreplaceable** without backup. Annotations alone
+are years of staff knowledge — losing them would be a real blow.
+
+**What.** Three phases, each independently shippable:
+
+### Phase A — Hourly cron + GCS upload (MVP, half a day)
+
+```bash
+# /opt/chainsaw-ops/scripts/backup_sqlite.sh
+#!/bin/bash
+set -euo pipefail
+DB=/opt/chainsaw-ops/instance/users.db
+TS=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+TMP=$(mktemp /tmp/users.db.XXXXXX)
+sqlite3 "$DB" ".backup '$TMP'"            # online atomic snapshot
+gzip -9 "$TMP"
+gsutil cp "${TMP}.gz" "gs://chainsawspares-385722-chainsaw-ops-backups/sqlite/users.db.${TS}.gz"
+rm -f "${TMP}.gz"
+```
+
+- systemd timer: hourly during business hours (9am-7pm Mel) + a
+  midnight snapshot. ~12 backups/day.
+- GCS bucket with **object versioning** + lifecycle rule: keep 30
+  days, then delete.
+- Storage: ~50MB compressed × 12/day × 30 days ≈ 18 GB → ~$0.40/month
+  at standard storage rates.
+
+**RPO** (recovery point objective): up to 60 minutes of data loss
+worst case. **RTO** (recovery time objective): minutes once a fresh
+VPS is provisioned and the latest .db.gz is downloaded into
+`instance/`.
+
+### Phase B — LiteStream continuous replication (a day)
+
+Once Phase A is comfortable, layer on LiteStream — a daemon that
+streams every WAL frame to GCS in real time. Drops RPO from 60min
+to seconds. Restore process becomes `litestream restore` → exact
+state at any past point. Phase A snapshots stay as a safety net.
+
+### Phase C — Documented + tested DR runbook (half a day)
+
+`docs/disaster-recovery.md` with the exact restore steps:
+1. Provision new Ubuntu VPS (or DigitalOcean droplet from a snapshot if we keep one)
+2. Clone the repo, run `bash deploy.sh` to set up systemd + nginx
+3. Download latest backup from GCS, place at `instance/users.db`
+4. Restart `chainsaw-ops`, `cxone-poller`
+5. Re-stash secrets (the `.env` file, GCP credentials JSON)
+
+Plus: **run the drill once a quarter** against a throwaway VPS to
+confirm we can actually rebuild from cold storage in under 30 mins.
+
+**Other things in scope worth noting:**
+
+- The `.env` file (Flask secret, RC creds, etc.) is on the VPS only.
+  Phase A can also back it up encrypted (e.g. via `gcloud kms encrypt`)
+  in the same bucket.
+- The systemd unit files (`deploy/systemd/cxone-poller.service`,
+  `deploy/systemd/chainsaw-ops.service`) ARE in the repo, so they
+  recover from GitHub.
+- The GCP service-account JSON at `bigquery-credentials.json` —
+  noted in CLAUDE.md gotchas as committed (rotate once + move to
+  Secret Manager separately; not strictly DR's job).
+
+**Effort.** Phase A alone is half a day. Phase A+C ships the actual
+RPO/RTO promise we want. Phase B is a polish on top.
+
+---
+
 ## Customer 360 — server-side cache for the call card
 
 **Why.** Loading `/customer/<phone>` does several BQ queries
