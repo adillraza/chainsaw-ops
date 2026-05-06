@@ -1,10 +1,15 @@
 """Backfill sales@ mailbox (whole mailbox) into BigQuery.
 
-Walks the top-level Microsoft Graph /messages/delta endpoint so we
-catch every folder including the agent-curated ones (Customer
-Correspondence ONLY, NETO invoices etc, eBay direct emails, etc.) —
-not just Inbox + Sent Items, which are nearly empty in this account
-because new mail gets filed away daily.
+Walks each non-skip folder's /messages endpoint with $top=999 +
+nextLink pagination. NOT the /messages/delta endpoint — that one has
+an undocumented ~1000-item cap on initial sync that silently
+truncated big folders (Customer Correspondence ONLY at 999 vs the
+real 46k). Plain /messages paginates unbounded.
+
+We catch every agent-curated folder (Customer Correspondence ONLY,
+NETO invoices etc, eBay direct emails, etc.) — not just Inbox + Sent
+Items, which are nearly empty in this account because new mail gets
+filed away daily.
 
 Filters at ingestion:
 * Drop messages in Drafts / Outbox / Junk Email / Deleted Items
@@ -248,25 +253,35 @@ def reset_state(bq):
 # ---------------------------------------------------------------------------
 
 def walk_folder(bq, folder_id, folder_name, folder_map, fresh_token, limit_remaining):
-    """Walk one folder's delta endpoint to completion, save deltaLink. Returns
-    (msgs_seen, msgs_inserted)."""
-    folder_key = folder_id   # use Graph folder id as the sync_state key
-    delta_url = load_resume_token(bq, folder_key)
-    if delta_url:
-        print(f"  resuming '{folder_name}' from saved deltaLink", file=sys.stderr)
-    else:
-        delta_url = (f"https://graph.microsoft.com/v1.0/users/{quote(MAILBOX)}"
-                     f"/mailFolders/{folder_id}/messages/delta?$select={FIELDS}&$top=999")
+    """Walk one folder's /messages endpoint with $top=999 + nextLink
+    pagination. Returns (msgs_seen, msgs_inserted).
+
+    Resume strategy for the hourly sync: we save the max
+    receivedDateTime seen as the per-folder marker. Next run filters
+    receivedDateTime gt that value. The sync_state.delta_link column
+    is reused to store this ISO-8601 timestamp (we never use the
+    /messages/delta endpoint — see file docstring).
+    """
+    folder_key = folder_id
+
+    # Resume from saved last-received timestamp (used by email_sync.py)
+    last_marker = load_resume_token(bq, folder_key)
+
+    base = (f"https://graph.microsoft.com/v1.0/users/{quote(MAILBOX)}"
+            f"/mailFolders/{folder_id}/messages?$select={FIELDS}&$top=999"
+            f"&$orderby=receivedDateTime%20asc")
+    if last_marker:
+        base += f"&$filter=receivedDateTime%20gt%20{quote(last_marker)}"
+        print(f"  resuming '{folder_name}' from {last_marker}", file=sys.stderr)
+    url = base
 
     ingested_at = datetime.now(timezone.utc)
     page_n = seen = inserted = 0
-    last_delta = None
-    while delta_url:
-        data = graph_get(delta_url, fresh_token())
+    max_received = last_marker
+    while url:
+        data = graph_get(url, fresh_token())
         msgs = data.get("value", [])
         next_url = data.get("@odata.nextLink")
-        if data.get("@odata.deltaLink"):
-            last_delta = data["@odata.deltaLink"]
 
         rows = []
         for m in msgs:
@@ -274,24 +289,26 @@ def walk_folder(bq, folder_id, folder_name, folder_map, fresh_token, limit_remai
                 continue
             seen += 1
             rows.append(to_row(m, MAILBOX, folder_map, ingested_at))
+            rec = m.get("receivedDateTime")
+            if rec and (max_received is None or rec > max_received):
+                max_received = rec
 
         for i in range(0, len(rows), 500):
             inserted += insert_batch(bq, rows[i:i+500])
 
         page_n += 1
-        if page_n % 5 == 0:
-            print(f"    '{folder_name}' page {page_n}: seen {seen:,}, inserted {inserted:,}", file=sys.stderr)
+        if page_n % 5 == 0 or page_n == 1:
+            print(f"    '{folder_name}' page {page_n}: +{len(msgs)} (folder total {inserted:,})", file=sys.stderr)
 
         if limit_remaining is not None and inserted >= limit_remaining:
             print(f"    hit --limit cap inside '{folder_name}'", file=sys.stderr)
             break
 
-        delta_url = next_url or last_delta
-        if not next_url and last_delta:
-            break
+        url = next_url
 
-    if last_delta:
-        save_delta(bq, folder_key, last_delta, inserted)
+    # Save the high-water mark so the hourly sync resumes from here
+    if max_received:
+        save_delta(bq, folder_key, max_received, inserted)
     return seen, inserted
 
 
