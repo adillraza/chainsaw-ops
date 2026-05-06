@@ -609,13 +609,18 @@ class Customer360Service:
             )
             row = next(iter(job.result()), None)
         except Exception:
+            # BQ failure (e.g. table missing during dev) — surface as
+            # "no panel" rather than fake zeros, so we don't claim we
+            # checked when we couldn't.
             return None
         if not row:
             return None
         aggs = _row_to_dict(row.aggs) or {}
         msgs = [_row_to_dict(m) for m in (row.messages or [])]
-        if not aggs.get("total"):
-            return None
+        # Always return the dict — even with zero messages — so the
+        # template renders an empty panel that tells the agent "we
+        # checked, there's no email correspondence" rather than just
+        # silently omitting the section.
         return {
             "email":            customer_email,
             "total":            aggs.get("total") or 0,
