@@ -30,7 +30,7 @@ Usage:
 """
 from __future__ import annotations
 
-import argparse, json, re, subprocess, sys, time
+import argparse, json, os, re, shutil, subprocess, sys, time
 from datetime import datetime, timezone
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -41,6 +41,16 @@ from google.cloud import bigquery
 PROJECT  = "chainsawspares-385722"
 DATASET  = "email_archive"
 MAILBOX  = "sales@jonoandjohno.com.au"
+
+# gcloud binary is only used as a fallback on dev machines where the Secret
+# Manager Python client may not be installed. On the VPS we use the Python
+# client (auto-auths via GOOGLE_APPLICATION_CREDENTIALS) so gcloud is not
+# required there.
+GCLOUD = (
+    os.environ.get("GCLOUD_BIN")
+    or shutil.which("gcloud")
+    or "/Users/adil/google-cloud-sdk/bin/gcloud"
+)
 
 FIELDS = ",".join([
     "id", "conversationId", "internetMessageId",
@@ -79,11 +89,32 @@ AUTO_PATTERNS = [
 # Auth
 # ---------------------------------------------------------------------------
 
+_secret_cache: dict[str, str] = {}
+
+# env var override — useful where Secret Manager access is unavailable.
+# Format: sharepoint-client-id → SHAREPOINT_CLIENT_ID
+def _env_for(name):
+    return os.environ.get(name.upper().replace("-", "_"))
+
 def secret(name):
-    return subprocess.check_output(
-        ["/Users/adil/google-cloud-sdk/bin/gcloud", "secrets", "versions", "access", "latest",
-         "--secret", name, "--project", PROJECT],
-        stderr=subprocess.DEVNULL).decode().strip()
+    if name in _secret_cache:
+        return _secret_cache[name]
+    val = _env_for(name)
+    if val:
+        _secret_cache[name] = val
+        return val
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        path = f"projects/{PROJECT}/secrets/{name}/versions/latest"
+        val = client.access_secret_version(name=path).payload.data.decode().strip()
+    except Exception:
+        val = subprocess.check_output(
+            [GCLOUD, "secrets", "versions", "access", "latest",
+             "--secret", name, "--project", PROJECT],
+            stderr=subprocess.DEVNULL).decode().strip()
+    _secret_cache[name] = val
+    return val
 
 def get_token():
     body = (f"grant_type=client_credentials&client_id={secret('sharepoint-client-id')}"
@@ -98,13 +129,20 @@ def get_token():
 # Graph helpers
 # ---------------------------------------------------------------------------
 
-def graph_get(url, token):
-    """GET with retry on 429 + transient 5xx. Returns parsed JSON or raises."""
+def graph_get(url, token, extra_headers=None):
+    """GET with retry on 429 + transient 5xx. Returns parsed JSON or raises.
+
+    ``extra_headers`` lets callers add e.g. ``ConsistencyLevel: eventual``
+    needed by Graph $search endpoints.
+    """
     for attempt in range(5):
-        req = Request(url, headers={
+        headers = {
             "Authorization": f"Bearer {token}",
             "Prefer": "outlook.body-content-type=\"text\"",
-        })
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        req = Request(url, headers=headers)
         try:
             with urlopen(req, timeout=120) as r:
                 return json.loads(r.read())
@@ -205,7 +243,13 @@ def to_row(msg, mailbox, folder_id_to_name, ingested_at):
 
 def insert_batch(bq, rows):
     if not rows: return 0
-    errors = bq.insert_rows_json(f"{PROJECT}.{DATASET}.messages", rows)
+    # row_ids = message_id gives BQ streaming-buffer dedup within a ~60min
+    # window — protects against the cron-vs-live-topup race where the
+    # hourly walk picks up a message live_topup already inserted.
+    row_ids = [r.get("message_id") for r in rows]
+    errors = bq.insert_rows_json(
+        f"{PROJECT}.{DATASET}.messages", rows, row_ids=row_ids,
+    )
     if errors:
         # Log first few errors then continue — typical cause is a single
         # message with a malformed timestamp; better to log and move on

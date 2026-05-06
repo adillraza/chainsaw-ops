@@ -1,0 +1,15 @@
+[Unit]
+Description=Sync sales@ mailbox into BigQuery (delta from last receivedDateTime)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/chainsaw-ops
+EnvironmentFile=/opt/chainsaw-ops/.env
+Environment=PATH=/opt/chainsaw-ops/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/email_sync.py
+TimeoutStartSec=30min
+StandardOutput=journal
+StandardError=journal

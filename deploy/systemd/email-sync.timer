@@ -1,0 +1,13 @@
+[Unit]
+Description=Hourly delta sync of sales@ mailbox into BigQuery (08:00–18:00 Melbourne)
+
+[Timer]
+# Hourly during Melbourne business hours. Outside that, sales@ is quiet
+# enough that overnight gaps are filled in the 08:00 run.
+OnCalendar=*-*-* 08..18:00:00 Australia/Melbourne
+Persistent=true
+AccuracySec=30s
+Unit=email-sync.service
+
+[Install]
+WantedBy=timers.target

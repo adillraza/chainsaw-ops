@@ -28,9 +28,9 @@ email_pull_recent.py — that's what the customer 360 panel calls when
 an agent loads a card and wants the freshest possible view.
 """
 import sys
+from pathlib import Path
 
-# Reuse everything from the backfill script — same logic, just no --reset.
-sys.path.insert(0, "/Users/adil/jonoandjohno/chainsaw-ops/scripts")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from email_backfill import run
 
 if __name__ == "__main__":

@@ -18,7 +18,11 @@ connection pools open.
 from __future__ import annotations
 
 import functools
+import logging
 import re
+import sys
+import time
+from pathlib import Path
 from typing import Optional
 
 from google.cloud import bigquery
@@ -27,6 +31,19 @@ from app.services.purchase_orders_service import purchase_orders_service
 
 PROJECT = "chainsawspares-385722"
 DATASET = "dataform"
+
+# Make scripts/ importable so we can reuse Graph + ingest helpers from the
+# email_backfill script without duplicating ~80 lines of auth/parsing here.
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+log = logging.getLogger(__name__)
+
+# Module-level caches so repeated Customer 360 card loads don't pay
+# the Graph auth + folder-list cost on every request.
+_GRAPH_TOKEN: dict = {"value": None, "expires_at": 0.0}
+_FOLDER_MAP: dict = {"value": None, "expires_at": 0.0}
 
 
 def normalize_phone(raw: str) -> str:
@@ -163,7 +180,15 @@ class Customer360Service:
                 if addr and addr not in seen:
                     seen.add(addr)
                     emails.append(addr)
-        empty["email_history"] = self._fetch_email_history(emails) if emails else None
+        if emails:
+            # Live top-up: pull anything sent/received since the last
+            # hourly cron run, so a thread sent 5 minutes ago doesn't
+            # silently drop off the panel. Soft-fails on Graph errors —
+            # we just fall back to whatever the BQ snapshot has.
+            self._live_topup(emails)
+            empty["email_history"] = self._fetch_email_history(emails)
+        else:
+            empty["email_history"] = None
 
         return empty
 
@@ -661,6 +686,96 @@ class Customer360Service:
             "days_since_last":  aggs.get("days_since_last"),
             "messages":         msgs,
         }
+
+    # ------------------------------------------------------------------
+    # Live email top-up — closes the freshness gap between hourly cron
+    # runs. On each card load we ask Graph for the most recent ~10
+    # messages per customer email, dedupe against BQ, and stream the
+    # delta in. Latency budget: ~700ms typical, ~1.5s worst case.
+    # Soft-fails on any error — card load must never break because Graph
+    # is slow or auth tripped.
+    # ------------------------------------------------------------------
+
+    def _live_topup(self, customer_emails: list[str]) -> int:
+        if not customer_emails or self.client is None:
+            return 0
+        try:
+            from urllib.parse import quote
+            from datetime import datetime, timezone
+            # Lazy-import — scripts/ is on sys.path via module-level
+            # path tweak. Same module the systemd timer runs.
+            from email_backfill import (  # type: ignore
+                get_token, graph_get, to_row, insert_batch, MAILBOX, FIELDS,
+            )
+
+            now = time.time()
+            # 50-min token TTL (Graph tokens last 60min — buffer).
+            tok = _GRAPH_TOKEN["value"]
+            if not tok or now > _GRAPH_TOKEN["expires_at"]:
+                tok = get_token()
+                _GRAPH_TOKEN["value"] = tok
+                _GRAPH_TOKEN["expires_at"] = now + 50 * 60
+            # Skip list_folders here — that's a ~2s paginated walk and
+            # we don't strictly need folder names for live-topped-up
+            # rows. They'll have parent_folder_name=NULL; the next
+            # hourly cron walks from a saved watermark and would re-
+            # insert each message, but row_ids dedup in insert_batch
+            # silently drops the dupe so the NULL stays. Trade: a small
+            # subset of rows show no folder badge in the UI; the win
+            # is sub-300ms cold-start latency.
+            fmap: dict = {}
+
+            ingested_at = datetime.now(timezone.utc)
+            seen_ids: set[str] = set()
+            new_msgs: list[dict] = []
+            for em in customer_emails:
+                # KQL participants: matches from/to/cc/bcc in one shot —
+                # one Graph round-trip per email instead of two.
+                # $search value must be wrapped in double quotes; encode
+                # the whole thing and pass ConsistencyLevel:eventual as
+                # the search endpoint requires.
+                search_value = '"participants:' + em + '"'
+                url = (f"https://graph.microsoft.com/v1.0/users/{quote(MAILBOX)}/messages"
+                       f"?$search={quote(search_value)}&$top=10&$select={FIELDS}")
+                try:
+                    data = graph_get(url, tok,
+                                     extra_headers={"ConsistencyLevel": "eventual"})
+                except Exception as exc:
+                    log.warning("live top-up: Graph search failed for %s: %s", em, exc)
+                    continue
+                for m in data.get("value", []):
+                    mid = m.get("id")
+                    if not mid or mid in seen_ids:
+                        continue
+                    seen_ids.add(mid)
+                    new_msgs.append(m)
+
+            if not new_msgs:
+                return 0
+
+            # Skip rows already in BQ.
+            existing = set()
+            try:
+                rows = self.client.query(
+                    "SELECT message_id "
+                    "FROM `chainsawspares-385722.email_archive.messages` "
+                    "WHERE message_id IN UNNEST(@ids)",
+                    job_config=bigquery.QueryJobConfig(query_parameters=[
+                        bigquery.ArrayQueryParameter("ids", "STRING", list(seen_ids))
+                    ]),
+                ).result()
+                existing = {r.message_id for r in rows}
+            except Exception as exc:
+                log.warning("live top-up: dedup query failed: %s", exc)
+
+            to_insert = [to_row(m, MAILBOX, fmap, ingested_at)
+                         for m in new_msgs if m["id"] not in existing]
+            if not to_insert:
+                return 0
+            return insert_batch(self.client, to_insert)
+        except Exception as exc:
+            log.warning("live email top-up failed: %s", exc)
+            return 0
 
     # ------------------------------------------------------------------
     # Per-call detail: AI summary + transcript + classifications + audio

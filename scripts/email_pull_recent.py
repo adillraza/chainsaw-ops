@@ -34,7 +34,8 @@ DATASET = "email_archive"
 MAILBOX = "sales@jonoandjohno.com.au"
 
 # Reuse helpers from the backfill script
-sys.path.insert(0, "/Users/adil/jonoandjohno/chainsaw-ops/scripts")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from email_backfill import (
     secret, get_token, graph_get, list_folders, to_row, insert_batch, FIELDS, SKIP_FOLDERS,
 )
