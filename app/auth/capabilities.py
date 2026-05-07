@@ -89,6 +89,13 @@ SYSTEM_ROLE_DEFAULTS: dict[str, set[str]] = {
         "reviews.warehouse.close",
         "notes.add",
     },
+    # Default role for first-time Microsoft SSO sign-ins. Read-only
+    # Customer 360 access — covers agents who'll use the live-call card
+    # but shouldn't be able to flag reviews / approve MSLs / manage
+    # users until an admin promotes them.
+    "viewer": {
+        "support.calls.view",
+    },
 }
 
 # Roles that must exist and cannot be deleted via the UI. Their capability

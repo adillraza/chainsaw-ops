@@ -25,6 +25,29 @@
     {% endif %}
   {% endwith %}
 
+  {# Microsoft sign-in is the primary path for staff. The username +
+     password form below stays as a fallback for the bootstrap admin
+     and any contractor who isn't in the JJ Entra tenant. #}
+  {% if config.MS_CLIENT_ID %}
+    <a href="{{ url_for('auth.microsoft_login') }}"
+       class="flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+      {# Microsoft 4-square logo, inline so we don't pull a new asset #}
+      <svg class="h-4 w-4" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1"  y="1"  width="10" height="10" fill="#F25022"/>
+        <rect x="12" y="1"  width="10" height="10" fill="#7FBA00"/>
+        <rect x="1"  y="12" width="10" height="10" fill="#00A4EF"/>
+        <rect x="12" y="12" width="10" height="10" fill="#FFB900"/>
+      </svg>
+      Sign in with Microsoft
+    </a>
+
+    <div class="my-5 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
+      <span class="h-px flex-1 bg-slate-200"></span>
+      <span>or use a username</span>
+      <span class="h-px flex-1 bg-slate-200"></span>
+    </div>
+  {% endif %}
+
   <form method="POST" class="space-y-4">
     <label class="block text-sm">
       <span class="text-slate-700">Username</span>

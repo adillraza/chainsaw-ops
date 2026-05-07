@@ -39,5 +39,15 @@ class Config:
         "RETAIL_EXPRESS_BASE_URL", "https://api.retailexpress.com.au"
     )
 
+    # Microsoft Entra (Azure AD) SSO. Reuses the SHAREPOINT_* creds the
+    # email backfill loads — same Azure app registration, just in
+    # delegated auth-code flow here instead of client-credentials. If
+    # any of the three are missing, the /auth/microsoft/login route
+    # flashes "not configured" and falls back to the password form, so
+    # dev databases without Entra access aren't blocked.
+    MS_CLIENT_ID     = os.environ.get("SHAREPOINT_CLIENT_ID")
+    MS_CLIENT_SECRET = os.environ.get("SHAREPOINT_CLIENT_SECRET")
+    MS_TENANT_ID     = os.environ.get("SHAREPOINT_TENANT_ID")
+
     # Feature flags
     ENABLE_V2_UI = os.environ.get("ENABLE_V2_UI", "false").lower() in {"1", "true", "yes"}

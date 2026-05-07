@@ -13,16 +13,28 @@ from app.extensions import db
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
+    # Nullable: SSO-only users have no local password.
+    password_hash = db.Column(db.String(255), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     role = db.Column(db.String(40), default="retail", nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     prefers_v2 = db.Column(db.Boolean, default=True, nullable=False, server_default=sa_true())
 
+    # Microsoft Entra (Azure AD) link. ``microsoft_oid`` is the stable
+    # object ID — survives email/UPN renames, so it's the join key for
+    # mapping returning SSO sign-ins to existing users. ``microsoft_upn``
+    # is kept for display + admin lookup; it can change.
+    microsoft_oid = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    microsoft_upn = db.Column(db.String(255), nullable=True, index=True)
+    display_name  = db.Column(db.String(120), nullable=True)
+    last_microsoft_login_at = db.Column(db.DateTime, nullable=True)
+
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:
+        if not self.password_hash:
+            return False
         return check_password_hash(self.password_hash, password)
 
     def can(self, capability: str) -> bool:
