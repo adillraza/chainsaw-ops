@@ -19,18 +19,35 @@ def register(app: Flask) -> None:
 @click.command("refresh-cache")
 @with_appcontext
 def refresh_cache() -> None:
-    """Re-fetch all PO data from BigQuery into the local SQLite cache.
+    """Re-fetch the PO and Customer-360 caches from BigQuery into SQLite.
 
-    No-ops cleanly if a sync is already in progress (same guard the UI
-    Refresh Data button uses).
+    Both caches are refreshed in sequence — PO first (the older cache the UI
+    Refresh Data button still uses), then customer_360 + phone_lookup +
+    call_history + call_behavior + neto_product (all driving the live-call
+    Customer 360 card).
+
+    A failure on either side is logged but does not block the other; we'd
+    rather have one stale cache than zero.
     """
     from app.services.cache import cache_purchase_order_data
+    from app.services.customer_cache import cache_customer_360_data
+
+    failures: list[str] = []
 
     success, message = cache_purchase_order_data()
+    click.echo(f"refresh-cache (PO): {message}",
+               err=not success)
     if not success:
-        click.echo(f"refresh-cache: {message}", err=True)
+        failures.append("PO")
+
+    success, message = cache_customer_360_data()
+    click.echo(f"refresh-cache (customer_360): {message}",
+               err=not success)
+    if not success:
+        failures.append("customer_360")
+
+    if failures:
         raise SystemExit(1)
-    click.echo(f"refresh-cache: {message}")
 
 
 @click.command("reparse-call-events")

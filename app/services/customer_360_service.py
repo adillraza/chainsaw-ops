@@ -18,6 +18,7 @@ connection pools open.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import re
 import sys
@@ -27,6 +28,14 @@ from typing import Optional
 
 from google.cloud import bigquery
 
+from app.extensions import db
+from app.models.customer_cache import (
+    CachedCallBehavior,
+    CachedCallHistory,
+    CachedCustomer360,
+    CachedNetoProduct,
+    CachedPhoneLookup,
+)
 from app.services.purchase_orders_service import purchase_orders_service
 
 PROJECT = "chainsawspares-385722"
@@ -44,6 +53,25 @@ log = logging.getLogger(__name__)
 # the Graph auth + folder-list cost on every request.
 _GRAPH_TOKEN: dict = {"value": None, "expires_at": 0.0}
 _FOLDER_MAP: dict = {"value": None, "expires_at": 0.0}
+
+# Per-cache-table readiness flags, memoised for 60s. Each table is
+# decided independently because some tables (e.g. customer_360) may
+# legitimately be empty while others are loaded.
+_CACHE_READY_FLAGS: dict[str, dict] = {}
+
+
+def _cache_table_ready(model, key_col) -> bool:
+    state = _CACHE_READY_FLAGS.setdefault(model.__tablename__,
+                                          {"value": False, "checked_at": 0.0})
+    now = time.time()
+    if state["value"] and now - state["checked_at"] < 60:
+        return True
+    try:
+        state["value"] = db.session.query(key_col).limit(1).first() is not None
+    except Exception:
+        state["value"] = False
+    state["checked_at"] = now
+    return state["value"]
 
 
 def normalize_phone(raw: str) -> str:
@@ -477,8 +505,15 @@ class Customer360Service:
         return None
 
     def _fetch_product_ids(self, skus: list[str]) -> dict[str, str]:
-        """Bulk SKU → Neto product ID lookup against ``dataform.neto_product_list``."""
-        if not skus or self.client is None:
+        """Bulk SKU → Neto product ID lookup. Cache-first, BQ fallback."""
+        if not skus:
+            return {}
+        if _cache_table_ready(CachedNetoProduct, CachedNetoProduct.sku):
+            rows = (db.session.query(CachedNetoProduct.sku, CachedNetoProduct.product_id)
+                    .filter(CachedNetoProduct.sku.in_(skus))
+                    .all())
+            return {sku: pid for sku, pid in rows if sku and pid}
+        if self.client is None:
             return {}
         sql = f"""
         SELECT SKU, ID
@@ -511,12 +546,40 @@ class Customer360Service:
     def get_name_for_phone(self, raw_phone: str) -> Optional[str]:
         """Return ``"First Last"`` for a phone, or ``None`` if no match.
 
-        Resolves phone → username via ``customer_phone_lookup`` and picks
+        Resolves phone → username via the customer-cache lookup and picks
         the highest-lifetime-value customer when multiple records share
-        the number (household / repeat-guest case).
+        the number (household / repeat-guest case). Falls back to BQ if
+        the cache is empty.
         """
         phone = normalize_phone(raw_phone)
-        if not phone or self.client is None:
+        if not phone:
+            return None
+        # Phone-lookup cached but customer_360 NOT cached is the common
+        # path now (Option A3): we know the username from phone_lookup
+        # but still need a BQ round-trip for the name. The "both cached"
+        # path stays as a fast-future-state for when we add customer_360
+        # caching back in Phase 2.
+        pl_ready = _cache_table_ready(CachedPhoneLookup, CachedPhoneLookup.phone)
+        c360_ready = _cache_table_ready(CachedCustomer360, CachedCustomer360.Username)
+        if pl_ready and c360_ready:
+            pl = db.session.query(CachedPhoneLookup).filter_by(phone=phone).first()
+            if not pl:
+                return None
+            usernames = json.loads(pl.usernames_json)
+            if not usernames:
+                return None
+            rows = (db.session.query(CachedCustomer360.payload_json)
+                    .filter(CachedCustomer360.Username.in_(usernames))
+                    .all())
+            customers = [json.loads(r.payload_json) for r in rows]
+            if not customers:
+                return None
+            customers.sort(key=lambda c: c.get("lifetime_value") or 0, reverse=True)
+            top = customers[0]
+            full = ((top.get("name_first") or "") + " "
+                    + (top.get("name_last") or "")).strip()
+            return full or None
+        if self.client is None:
             return None
         sql = f"""
         WITH matched_usernames AS (
@@ -549,7 +612,34 @@ class Customer360Service:
         return full or None
 
     def _fetch_phone_bundle(self, phone: str) -> dict:
-        # Avoid the reserved word `lookup` (BQ keyword) in column aliases.
+        # Phone bundle is gated on phone_lookup being loaded — if that's
+        # there, call_history and call_behavior are too (same refresh
+        # transaction). Single readiness probe avoids 3 round-trips.
+        if _cache_table_ready(CachedPhoneLookup, CachedPhoneLookup.phone):
+            return self._fetch_phone_bundle_from_cache(phone)
+        return self._fetch_phone_bundle_from_bq(phone)
+
+    def _fetch_phone_bundle_from_cache(self, phone: str) -> dict:
+        pl = db.session.query(CachedPhoneLookup).filter_by(phone=phone).first()
+        ch = db.session.query(CachedCallHistory).filter_by(phone=phone).first()
+        cb = db.session.query(CachedCallBehavior).filter_by(phone=phone).first()
+        lookup = None
+        if pl:
+            lookup = {
+                "phone":            pl.phone,
+                "usernames":        json.loads(pl.usernames_json),
+                "match_count":      pl.match_count,
+                "is_international": pl.is_international,
+            }
+        return {
+            "lookup":   lookup,
+            "history":  json.loads(ch.payload_json) if ch else None,
+            "behavior": json.loads(cb.payload_json) if cb else None,
+        }
+
+    def _fetch_phone_bundle_from_bq(self, phone: str) -> dict:
+        if self.client is None:
+            return {"lookup": None, "history": None, "behavior": None}
         sql = f"""
         SELECT
           (SELECT AS STRUCT *
@@ -578,6 +668,17 @@ class Customer360Service:
         }
 
     def _fetch_customers(self, usernames: list[str]) -> list[dict]:
+        if not usernames:
+            return []
+        if _cache_table_ready(CachedCustomer360, CachedCustomer360.Username):
+            rows = (db.session.query(CachedCustomer360)
+                    .filter(CachedCustomer360.Username.in_(usernames))
+                    .all())
+            customers = [json.loads(r.payload_json) for r in rows]
+            customers.sort(key=lambda c: c.get("lifetime_value") or 0, reverse=True)
+            return customers
+        if self.client is None:
+            return []
         sql = f"""
         SELECT *
         FROM `{PROJECT}.{DATASET}.customer_360`

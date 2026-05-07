@@ -5,6 +5,13 @@ Importing this package registers every model with the shared
 """
 from app.models.annotations import Annotation
 from app.models.call_events import CallEvent, PinnedCall
+from app.models.customer_cache import (
+    CachedCallBehavior,
+    CachedCallHistory,
+    CachedCustomer360,
+    CachedNetoProduct,
+    CachedPhoneLookup,
+)
 from app.models.internal_phone import InternalPhoneNumber
 from app.models.purchase_orders import (
     CachedPurchaseOrderComparison,
@@ -21,6 +28,11 @@ from app.models.user import LoginLog, User
 
 __all__ = [
     "Annotation",
+    "CachedCallBehavior",
+    "CachedCallHistory",
+    "CachedCustomer360",
+    "CachedNetoProduct",
+    "CachedPhoneLookup",
     "CachedPurchaseOrderComparison",
     "CachedPurchaseOrderItem",
     "CachedPurchaseOrderSummary",
