@@ -57,6 +57,13 @@ def _coerce(v: Any) -> Any:
         return [_coerce(x) for x in v]
     if isinstance(v, datetime):
         return v.isoformat()
+    # BigQuery NUMERIC arrives as decimal.Decimal — must coerce to float
+    # so json.dumps(default=str) doesn't turn it into a string. The
+    # template uses ``'%.0f' % primary.lifetime_value`` which only
+    # works on real numbers.
+    from decimal import Decimal
+    if isinstance(v, Decimal):
+        return float(v)
     if hasattr(v, "isoformat"):
         return v.isoformat()
     return v

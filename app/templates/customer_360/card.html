@@ -206,7 +206,7 @@
             {% else %}
               <span class="font-medium text-amber-900">{{ cu.name_first }} {{ cu.name_last }}</span>
             {% endif %}
-            - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value or 0) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
+            - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value | to_float) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
           </li>
         {% endfor %}
       </ul>
@@ -220,9 +220,9 @@
     <section class="mb-4">
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {% set stats = [
-          ('Lifetime',       '$' ~ ('%.0f' % (primary.lifetime_value or 0)), 'fa-dollar-sign'),
+          ('Lifetime',       '$' ~ ('%.0f' % (primary.lifetime_value | to_float)), 'fa-dollar-sign'),
           ('Orders',         primary.lifetime_order_count or 0,              'fa-cart-shopping'),
-          ('AOV',            '$' ~ ('%.0f' % (primary.avg_order_value or 0)),'fa-chart-line'),
+          ('AOV',            '$' ~ ('%.0f' % (primary.avg_order_value | to_float)),'fa-chart-line'),
           ('Customer since', primary.customer_since | format_dt('date'),     'fa-flag-checkered')
         ] %}
         {% for label, value, icon in stats %}
@@ -266,7 +266,7 @@
               {% else %}
                 <span class="font-mono text-sm text-brand-700">{{ primary.recent_order_id }}</span>
               {% endif %}
-              <span class="text-base font-semibold text-slate-900">${{ '%.2f' % (primary.recent_order_total or 0) }}</span>
+              <span class="text-base font-semibold text-slate-900">${{ '%.2f' % (primary.recent_order_total | to_float) }}</span>
             </div>
             {% if primary.recent_ship_name %}
               <div class="mt-1 text-xs text-slate-500">Ship to: {{ primary.recent_ship_name }} — {{ primary.recent_ship_address or '' }}</div>
@@ -280,7 +280,7 @@
                       <span class="ml-2 text-slate-800">{{ line.name or '—' }}</span>
                     </div>
                     <div class="text-right text-slate-600 whitespace-nowrap">
-                      {{ line.qty or 0 }} × ${{ '%.2f' % (line.unit_price or 0) }}
+                      {{ line.qty or 0 }} × ${{ '%.2f' % (line.unit_price | to_float) }}
                     </div>
                   </li>
                 {% endfor %}
@@ -335,7 +335,7 @@
                       {% endif %}
                     </td>
                     <td class="px-3 py-2 text-right text-slate-600">{{ o.line_count or 0 }}</td>
-                    <td class="px-3 py-2 text-right font-semibold text-slate-900">${{ '%.2f' % (o.total or 0) }}</td>
+                    <td class="px-3 py-2 text-right font-semibold text-slate-900">${{ '%.2f' % (o.total | to_float) }}</td>
                     <td class="px-3 py-2 text-xs text-slate-600">{{ o.status or '—' }}</td>
                   </tr>
                 {% endfor %}
@@ -359,7 +359,7 @@
                   <span class="ml-2 text-slate-800">{{ it.name or '—' }}</span>
                 </div>
                 <div class="text-right text-slate-600 whitespace-nowrap">
-                  {{ it.total_qty or 0 }} × ${{ '%.0f' % (it.total_spend or 0) }}
+                  {{ it.total_qty or 0 }} × ${{ '%.0f' % (it.total_spend | to_float) }}
                 </div>
               </li>
             {% endfor %}
@@ -390,7 +390,7 @@
                 {% endif %}
                 on {{ primary.last_rma_issued | format_dt('date') }}
                 {% if primary.lifetime_refunded %}
-                  · ${{ '%.2f' % primary.lifetime_refunded }} refunded lifetime
+                  · ${{ '%.2f' % (primary.lifetime_refunded | to_float) }} refunded lifetime
                 {% endif %}
               </div>
               {% if primary.last_rma_lines %}
@@ -419,13 +419,13 @@
           <p class="mt-1 text-emerald-800">
             REX customer <span class="font-mono">#{{ primary.rex_customer_id }}</span> ·
             {{ primary.rex_total_transactions or 0 }} transactions ·
-            ${{ '%.0f' % (primary.rex_lifetime_spend or 0) }} lifetime
+            ${{ '%.0f' % (primary.rex_lifetime_spend | to_float) }} lifetime
           </p>
           {% if primary.rex_recent_order and primary.rex_recent_order.rex_order_id %}
             <p class="mt-1 text-emerald-700">
               Most recent in-store order:
               {{ primary.rex_recent_order.order_number or primary.rex_recent_order.rex_order_id }}
-              · ${{ '%.2f' % (primary.rex_recent_order.order_total or 0) }}
+              · ${{ '%.2f' % (primary.rex_recent_order.order_total | to_float) }}
               · {{ primary.rex_recent_order.rex_order_status or '?' }}
               {% if primary.rex_recent_order.rex_order_created_at %}
                 · placed {{ primary.rex_recent_order.rex_order_created_at | format_dt('datetime') }}

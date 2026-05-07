@@ -88,6 +88,22 @@ def format_dt(value, fmt: str = "datetime") -> str:
     return dt.strftime(fmt)
 
 
+def to_float(value, default: float = 0.0) -> float:
+    """Coerce a value to ``float``, returning ``default`` if not coercible.
+
+    Templates rely on numeric formatting like ``'%.0f' % primary.lifetime_value``
+    which fails when the value is a string. BigQuery NUMERIC fields can
+    round-trip through json.dumps(default=str) as strings if we forget to
+    coerce them at the cache boundary. This filter is the safety net.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def format_duration(seconds) -> str:
     """Format a call duration as ``Xs`` / ``Xm Ys`` / ``Xh Ym``.
 
@@ -154,4 +170,5 @@ def register(app) -> None:
     """Wire the filters into a Flask app's Jinja environment."""
     app.add_template_filter(format_dt, name="format_dt")
     app.add_template_filter(format_duration, name="format_duration")
+    app.add_template_filter(to_float, name="to_float")
     app.jinja_env.globals["neto_url"] = neto_url
