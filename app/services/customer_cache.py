@@ -151,14 +151,30 @@ def _load_phone_lookup(client) -> int:
     sql = f"SELECT phone, usernames, match_count, is_international FROM `{PROJECT}.{DATASET}.customer_phone_lookup`"
 
     def gen():
+        # The Dataform model GROUP BY phone *should* produce unique
+        # rows, but in practice we see ~handful of dupes — likely a
+        # casing/whitespace edge case in the BillPhone/ShipPhone
+        # source columns. Last-wins dedupe in the loader rather than
+        # blocking the entire refresh on a UNIQUE constraint failure.
+        seen: set[str] = set()
+        skipped = 0
         for r in client.query(sql).result():
+            phone = r.phone
+            if not phone:
+                continue
+            if phone in seen:
+                skipped += 1
+                continue
+            seen.add(phone)
             yield {
-                "phone":            r.phone,
+                "phone":            phone,
                 "usernames_json":   json.dumps(list(r.usernames or [])),
                 "match_count":      r.match_count,
                 "is_international": r.is_international,
                 "cached_at":        datetime.utcnow(),
             }
+        if skipped:
+            print(f"  phone_lookup dedupe: skipped {skipped:,} duplicate phones")
     return _bulk_replace(CachedPhoneLookup, gen(), "phone_lookup")
 
 
@@ -244,14 +260,25 @@ def _load_call_history(client) -> int:
     sql = f"SELECT * FROM `{PROJECT}.{DATASET}.call_history_360`"
 
     def gen():
+        seen: set[str] = set()
+        skipped = 0
         for r in client.query(sql).result():
             d = _row_to_dict(r)
+            phone = d.get("phone")
+            if not phone:
+                continue
+            if phone in seen:
+                skipped += 1
+                continue
+            seen.add(phone)
             yield {
-                "phone":          d.get("phone"),
+                "phone":          phone,
                 "last_call_date": r.last_call_date,
                 "payload_json":   json.dumps(d, default=str),
                 "cached_at":      datetime.utcnow(),
             }
+        if skipped:
+            print(f"  call_history dedupe: skipped {skipped:,} duplicate phones")
     return _bulk_replace(CachedCallHistory, gen(), "call_history")
 
 
@@ -259,13 +286,24 @@ def _load_call_behavior(client) -> int:
     sql = f"SELECT * FROM `{PROJECT}.{DATASET}.call_behavior_360`"
 
     def gen():
+        seen: set[str] = set()
+        skipped = 0
         for r in client.query(sql).result():
             d = _row_to_dict(r)
+            phone = d.get("phone")
+            if not phone:
+                continue
+            if phone in seen:
+                skipped += 1
+                continue
+            seen.add(phone)
             yield {
-                "phone":        d.get("phone"),
+                "phone":        phone,
                 "payload_json": json.dumps(d, default=str),
                 "cached_at":    datetime.utcnow(),
             }
+        if skipped:
+            print(f"  call_behavior dedupe: skipped {skipped:,} duplicate phones")
     return _bulk_replace(CachedCallBehavior, gen(), "call_behavior")
 
 
