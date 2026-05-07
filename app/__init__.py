@@ -40,6 +40,15 @@ def create_app(config_object: str | None = None) -> Flask:
     app.config.from_object(config_object or Config)
     os.makedirs(app.instance_path, exist_ok=True)
 
+    # Trust the nginx-set X-Forwarded-* headers so url_for(_external=True)
+    # returns the public URL (https://ops.jonoandjohno.com.au/...) instead
+    # of the loopback Flask is bound to (http://127.0.0.1:5001). This
+    # matters for any code that builds an absolute URL — most importantly
+    # the Microsoft SSO callback, where Azure rejects requests whose
+    # redirect_uri doesn't exactly match the registered value.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
