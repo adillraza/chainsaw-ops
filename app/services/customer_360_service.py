@@ -619,13 +619,20 @@ class Customer360Service:
             return None
         sql = """
         WITH matched AS (
-          SELECT *
-          FROM `chainsawspares-385722.email_archive.messages`
-          WHERE LOWER(from_address) IN UNNEST(@emails)
-             OR EXISTS (
-                  SELECT 1 FROM UNNEST(to_addresses) AS t
-                  WHERE LOWER(t) IN UNNEST(@emails)
-             )
+          SELECT * FROM (
+            SELECT *,
+              ROW_NUMBER() OVER (
+                PARTITION BY message_id
+                ORDER BY ingested_at DESC
+              ) AS _rn
+            FROM `chainsawspares-385722.email_archive.messages`
+            WHERE LOWER(from_address) IN UNNEST(@emails)
+               OR EXISTS (
+                    SELECT 1 FROM UNNEST(to_addresses) AS t
+                    WHERE LOWER(t) IN UNNEST(@emails)
+               )
+          )
+          WHERE _rn = 1
         )
         SELECT
           (SELECT AS STRUCT
@@ -726,11 +733,9 @@ class Customer360Service:
             fmap: dict = {}
 
             ingested_at = datetime.now(timezone.utc)
-            seen_ids: set[str] = set()
-            new_msgs: list[dict] = []
-            for em in customer_emails:
-                # KQL participants: matches from/to/cc/bcc in one shot —
-                # one Graph round-trip per email instead of two.
+
+            def _search_one(em: str) -> list[dict]:
+                # KQL participants: matches from/to/cc/bcc in one shot.
                 # $search value must be wrapped in double quotes; encode
                 # the whole thing and pass ConsistencyLevel:eventual as
                 # the search endpoint requires.
@@ -738,40 +743,36 @@ class Customer360Service:
                 url = (f"https://graph.microsoft.com/v1.0/users/{quote(MAILBOX)}/messages"
                        f"?$search={quote(search_value)}&$top=10&$select={FIELDS}")
                 try:
-                    data = graph_get(url, tok,
-                                     extra_headers={"ConsistencyLevel": "eventual"})
+                    return graph_get(url, tok,
+                                     extra_headers={"ConsistencyLevel": "eventual"}
+                                     ).get("value", [])
                 except Exception as exc:
                     log.warning("live top-up: Graph search failed for %s: %s", em, exc)
-                    continue
-                for m in data.get("value", []):
-                    mid = m.get("id")
-                    if not mid or mid in seen_ids:
-                        continue
-                    seen_ids.add(mid)
-                    new_msgs.append(m)
+                    return []
+
+            # Run searches in parallel — one round-trip per email is
+            # ~500ms; serial costs N×500ms but parallel collapses to one.
+            from concurrent.futures import ThreadPoolExecutor
+            seen_ids: set[str] = set()
+            new_msgs: list[dict] = []
+            with ThreadPoolExecutor(max_workers=min(4, len(customer_emails))) as pool:
+                for batch in pool.map(_search_one, customer_emails):
+                    for m in batch:
+                        mid = m.get("id")
+                        if not mid or mid in seen_ids:
+                            continue
+                        seen_ids.add(mid)
+                        new_msgs.append(m)
 
             if not new_msgs:
                 return 0
 
-            # Skip rows already in BQ.
-            existing = set()
-            try:
-                rows = self.client.query(
-                    "SELECT message_id "
-                    "FROM `chainsawspares-385722.email_archive.messages` "
-                    "WHERE message_id IN UNNEST(@ids)",
-                    job_config=bigquery.QueryJobConfig(query_parameters=[
-                        bigquery.ArrayQueryParameter("ids", "STRING", list(seen_ids))
-                    ]),
-                ).result()
-                existing = {r.message_id for r in rows}
-            except Exception as exc:
-                log.warning("live top-up: dedup query failed: %s", exc)
-
-            to_insert = [to_row(m, MAILBOX, fmap, ingested_at)
-                         for m in new_msgs if m["id"] not in existing]
-            if not to_insert:
-                return 0
+            # No pre-filter against BQ — round-tripping a US-region table
+            # from the Sydney VPS adds 1.5s for marginal benefit. Instead
+            # we rely on insert_batch's row_ids=message_id dedup, which
+            # silently drops dupes within a 60-min streaming window. The
+            # next hourly cron walk catches anything older.
+            to_insert = [to_row(m, MAILBOX, fmap, ingested_at) for m in new_msgs]
             return insert_batch(self.client, to_insert)
         except Exception as exc:
             log.warning("live email top-up failed: %s", exc)
