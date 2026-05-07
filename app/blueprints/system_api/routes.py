@@ -3,12 +3,21 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import datetime
 
 from flask import current_app, jsonify
 from flask_login import login_required
 
 from app.blueprints.system_api import system_api_bp
 from app.extensions import db
+from app.models.customer_cache import (
+    CacheWatermark,
+    CachedCallBehavior,
+    CachedCallHistory,
+    CachedEmailMessage,
+    CachedNetoProduct,
+    CachedPhoneLookup,
+)
 from app.models.purchase_orders import (
     CachedPurchaseOrderComparison,
     CachedPurchaseOrderItem,
@@ -18,17 +27,53 @@ from app.services.cache import cache_purchase_order_data
 from app.services.sync_state import sync_state_service
 
 
+def _iso(dt: datetime | None) -> str | None:
+    return dt.isoformat() + "Z" if dt else None
+
+
+def _max_cached_at(model) -> datetime | None:
+    """Return the most recent cached_at across rows of a cache table."""
+    row = db.session.query(model.cached_at).order_by(model.cached_at.desc()).first()
+    return row[0] if row and row[0] else None
+
+
 def _cache_status_payload() -> dict:
     summary_count = CachedPurchaseOrderSummary.query.count()
     items_count = CachedPurchaseOrderItem.query.count()
     comparison_count = CachedPurchaseOrderComparison.query.count()
 
-    last_cached = None
-    latest_record = (
-        CachedPurchaseOrderSummary.query.order_by(CachedPurchaseOrderSummary.cached_at.desc()).first()
-    )
-    if latest_record and latest_record.cached_at:
-        last_cached = latest_record.cached_at.isoformat() + "Z"
+    # Per-cache freshness — newest row in each table.
+    po_at      = _max_cached_at(CachedPurchaseOrderSummary)
+    pl_at      = _max_cached_at(CachedPhoneLookup)
+    ch_at      = _max_cached_at(CachedCallHistory)
+    cb_at      = _max_cached_at(CachedCallBehavior)
+    np_at      = _max_cached_at(CachedNetoProduct)
+    em_at      = _max_cached_at(CachedEmailMessage)
+
+    # customer_360 is upserted incrementally — its cached_at on each
+    # row only reflects when THAT row last changed, not the last sync
+    # run. Use the dedicated watermark instead so a quiet hour doesn't
+    # look stale.
+    cust_wm = (db.session.query(CacheWatermark.last_synced_at)
+               .filter_by(cache_name="customer_360").first())
+    cust_at = cust_wm[0] if cust_wm else None
+
+    # Headline freshness = OLDEST of the loaded caches. That's what
+    # actually answers "is anything stale?" for an agent. Empty caches
+    # are skipped so the indicator doesn't go red just because we
+    # haven't loaded one yet.
+    candidates = {
+        "PO":            po_at,
+        "phone_lookup":  pl_at,
+        "call_history":  ch_at,
+        "call_behavior": cb_at,
+        "neto_product":  np_at,
+        "customer_360":  cust_at,
+        "email_archive": em_at,
+    }
+    loaded = {k: v for k, v in candidates.items() if v is not None}
+    oldest_at = min(loaded.values()) if loaded else None
+    oldest_name = (min(loaded, key=loaded.get)) if loaded else None
 
     snapshot = sync_state_service.snapshot()
     return {
@@ -40,8 +85,22 @@ def _cache_status_payload() -> dict:
         "items_total": snapshot["items_total"],
         "comparison_total": snapshot["comparison_total"],
         "has_cached_data": summary_count > 0,
-        "last_cached": last_cached,
-        "last_refresh_time": last_cached,
+        # last_refresh_time is the OLDEST cache (worst-case freshness),
+        # so the topbar indicator answers "is anything stale?"
+        "last_refresh_time": _iso(oldest_at),
+        "oldest_cache":      oldest_name,
+        # last_cached kept for backward-compat with anything still
+        # reading it — points at the PO cache like before.
+        "last_cached":       _iso(po_at),
+        "caches": {
+            "po":            _iso(po_at),
+            "phone_lookup":  _iso(pl_at),
+            "call_history":  _iso(ch_at),
+            "call_behavior": _iso(cb_at),
+            "neto_product":  _iso(np_at),
+            "customer_360":  _iso(cust_at),
+            "email_archive": _iso(em_at),
+        },
         "is_syncing": snapshot["is_running"],
     }
 

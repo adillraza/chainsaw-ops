@@ -9,8 +9,9 @@
          x-data="{
            status: 'loading…',
            tooltip: '',
+           dot: 'bg-slate-300',
            fmtMelbourne(ts) {
-             if (!ts) return '';
+             if (!ts) return '—';
              const d = new Date(ts);
              if (isNaN(d)) return ts;
              try {
@@ -21,23 +22,47 @@
                }).format(d).replace(',', ' ·');
              } catch (e) { return ts; }
            },
+           ageMinutes(ts) {
+             if (!ts) return null;
+             const d = new Date(ts);
+             if (isNaN(d)) return null;
+             return Math.round((Date.now() - d.getTime()) / 60000);
+           },
            refresh() {
              fetch('/api/system/cache-status').then(r => r.json()).then(d => {
-               if (!d || !d.success) { this.status = 'Cache: error'; return; }
-               if (d.is_syncing) { this.status = 'Syncing…'; this.tooltip = 'Background refresh in progress'; return; }
+               if (!d || !d.success) { this.status = 'Cache: error'; this.dot = 'bg-rose-500'; return; }
+               if (d.is_syncing) { this.status = 'Syncing…'; this.tooltip = 'Background refresh in progress'; this.dot = 'bg-amber-500'; return; }
                if (d.last_refresh_time) {
+                 const age = this.ageMinutes(d.last_refresh_time);
                  this.status = 'Cache: ' + this.fmtMelbourne(d.last_refresh_time);
-                 this.tooltip = 'Raw UTC: ' + d.last_refresh_time;
+                 // Build a per-cache breakdown for the tooltip.
+                 const lines = [];
+                 if (d.oldest_cache) lines.push('Oldest: ' + d.oldest_cache);
+                 const labels = {
+                   po:'PO', phone_lookup:'Phone lookup', call_history:'Call history',
+                   call_behavior:'Call behavior', neto_product:'Neto products',
+                   customer_360:'Customer 360', email_archive:'Email archive',
+                 };
+                 Object.entries(d.caches || {}).forEach(([k, ts]) => {
+                   lines.push('• ' + (labels[k] || k) + ': ' + this.fmtMelbourne(ts));
+                 });
+                 this.tooltip = lines.join('\n');
+                 // Green if all caches under 90 min, amber up to 3h, red beyond.
+                 this.dot = age == null ? 'bg-slate-300'
+                          : age < 90    ? 'bg-emerald-500'
+                          : age < 180   ? 'bg-amber-500'
+                          :               'bg-rose-500';
                } else {
                  this.status = 'No cache';
                  this.tooltip = '';
+                 this.dot = 'bg-slate-300';
                }
-             }).catch(() => { this.status = 'Cache: offline'; this.tooltip = ''; });
+             }).catch(() => { this.status = 'Cache: offline'; this.tooltip = ''; this.dot = 'bg-rose-500'; });
            },
          }"
          x-init="refresh(); setInterval(() => refresh(), 60000)"
          :title="tooltip">
-      <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+      <span class="h-2 w-2 rounded-full" :class="dot"></span>
       <span x-text="status"></span>
     </div>
 
