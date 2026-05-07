@@ -79,7 +79,7 @@ def _redirect_uri() -> str:
 # /auth/microsoft/login
 # ---------------------------------------------------------------------------
 
-@auth_bp.route("/microsoft/login")
+@auth_bp.route("/auth/microsoft/login")
 def microsoft_login():
     if not current_app.config.get("MS_CLIENT_ID"):
         flash("Microsoft sign-in is not configured on this server.", "error")
@@ -99,7 +99,7 @@ def microsoft_login():
 # /auth/microsoft/callback
 # ---------------------------------------------------------------------------
 
-@auth_bp.route("/microsoft/callback")
+@auth_bp.route("/auth/microsoft/callback")
 def microsoft_callback():
     flow = session.pop("ms_auth_flow", None)
     if not flow:
