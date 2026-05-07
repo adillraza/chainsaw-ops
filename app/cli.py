@@ -6,14 +6,51 @@ shortly after the Dataform workflow finishes its half-hourly run.
 """
 from __future__ import annotations
 
+import os
+import sys
+import time
+from pathlib import Path
+
 import click
 from flask import Flask
 from flask.cli import with_appcontext
+
+REFRESH_LOCK = Path("/tmp/chainsaw-ops-refresh.lock")
 
 
 def register(app: Flask) -> None:
     app.cli.add_command(refresh_cache)
     app.cli.add_command(reparse_call_events)
+
+
+def _acquire_lock() -> bool:
+    """Best-effort lockfile so two refreshes don't run concurrently.
+
+    The first ever refresh is a ~15-minute full load; the systemd timer
+    fires every 30 min, so without a guard a second invocation could
+    start before the first finishes and corrupt the half-built cache.
+    Returns True if we got the lock, False if another run is in
+    progress.
+    """
+    try:
+        # Stale lock cleanup: if the lockfile is older than 60 minutes
+        # the previous run is almost certainly dead.
+        if REFRESH_LOCK.exists():
+            age = time.time() - REFRESH_LOCK.stat().st_mtime
+            if age < 60 * 60:
+                return False
+            REFRESH_LOCK.unlink(missing_ok=True)
+        REFRESH_LOCK.write_text(f"pid={os.getpid()} t={int(time.time())}")
+        return True
+    except Exception:
+        return True  # don't block on lock-fs errors
+
+
+def _release_lock() -> None:
+    try:
+        REFRESH_LOCK.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 @click.command("refresh-cache")
@@ -29,29 +66,37 @@ def refresh_cache() -> None:
     A failure on either side is logged but does not block the other; we'd
     rather have one stale cache than zero.
     """
-    from app.services.cache import cache_purchase_order_data
-    from app.services.customer_cache import cache_customer_360_data
-    from app.services.email_cache import cache_email_archive
+    if not _acquire_lock():
+        click.echo("refresh-cache: another run is in progress (lockfile present); skipping",
+                   err=True)
+        return
 
-    failures: list[str] = []
+    try:
+        from app.services.cache import cache_purchase_order_data
+        from app.services.customer_cache import cache_customer_360_data
+        from app.services.email_cache import cache_email_archive
 
-    success, message = cache_purchase_order_data()
-    click.echo(f"refresh-cache (PO): {message}", err=not success)
-    if not success:
-        failures.append("PO")
+        failures: list[str] = []
 
-    success, message = cache_customer_360_data()
-    click.echo(f"refresh-cache (customer_360): {message}", err=not success)
-    if not success:
-        failures.append("customer_360")
+        success, message = cache_purchase_order_data()
+        click.echo(f"refresh-cache (PO): {message}", err=not success)
+        if not success:
+            failures.append("PO")
 
-    success, message = cache_email_archive()
-    click.echo(f"refresh-cache (email_archive): {message}", err=not success)
-    if not success:
-        failures.append("email_archive")
+        success, message = cache_customer_360_data()
+        click.echo(f"refresh-cache (customer_360): {message}", err=not success)
+        if not success:
+            failures.append("customer_360")
 
-    if failures:
-        raise SystemExit(1)
+        success, message = cache_email_archive()
+        click.echo(f"refresh-cache (email_archive): {message}", err=not success)
+        if not success:
+            failures.append("email_archive")
+
+        if failures:
+            raise SystemExit(1)
+    finally:
+        _release_lock()
 
 
 @click.command("reparse-call-events")
