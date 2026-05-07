@@ -182,7 +182,7 @@
       <div class="flex items-start justify-between gap-3">
         <div>
           <p class="font-medium text-amber-900">This phone matches {{ c.customers|length }} Neto customer records</p>
-          <p class="mt-1 text-amber-800">Likely the same person registered as guest multiple times. Top match (by lifetime value) shown above; others below — click a name to open in Neto.</p>
+          <p class="mt-1 text-amber-800">Likely the same person registered as guest multiple times. Top match (by lifetime value) shown above; others below.</p>
         </div>
         {# "Merge in Neto" stub button — will be wired up to either deep-link
            to Neto cpanel's merge UI or trigger the local merge-intent flow
@@ -217,13 +217,25 @@
   {# QUICK STATS — full-width strip, sits between header and grid     #}
   {# ----------------------------------------------------------------- #}
   {% if primary %}
+    {# Combine Neto (online) + REX (retail) for the headline numbers.
+       Keep the per-channel order counts surfaced separately so an agent
+       can tell at a glance whether a customer is web-only, in-store-only
+       or both. #}
+    {% set neto_lt   = primary.lifetime_value         | to_float %}
+    {% set rex_lt    = primary.rex_lifetime_spend     | to_float %}
+    {% set neto_oc   = primary.lifetime_order_count   | to_float %}
+    {% set rex_oc    = primary.rex_total_transactions | to_float %}
+    {% set combo_lt  = neto_lt + rex_lt %}
+    {% set combo_oc  = neto_oc + rex_oc %}
+    {% set combo_aov = (combo_lt / combo_oc) if combo_oc > 0 else 0 %}
     <section class="mb-4">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {% set stats = [
-          ('Lifetime',       '$' ~ ('%.0f' % (primary.lifetime_value | to_float)), 'fa-dollar-sign'),
-          ('Orders',         primary.lifetime_order_count or 0,              'fa-cart-shopping'),
-          ('AOV',            '$' ~ ('%.0f' % (primary.avg_order_value | to_float)),'fa-chart-line'),
-          ('Customer since', primary.customer_since | format_dt('date'),     'fa-flag-checkered')
+          ('Lifetime',       '$' ~ ('%.0f' % combo_lt),                       'fa-dollar-sign'),
+          ('Online (Neto)',  primary.lifetime_order_count   or 0,             'fa-globe'),
+          ('Retail (REX)',   primary.rex_total_transactions or 0,             'fa-store'),
+          ('AOV',            '$' ~ ('%.0f' % combo_aov),                      'fa-chart-line'),
+          ('Customer since', primary.customer_since | format_dt('date'),      'fa-flag-checkered')
         ] %}
         {% for label, value, icon in stats %}
           <div class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -342,28 +354,6 @@
               </tbody>
             </table>
           </div>
-        </div>
-      {% endif %}
-
-      {# Top items ever bought -------------------------------------- #}
-      {% if primary and primary.top_items %}
-        <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div class="border-b border-slate-100 px-4 py-3">
-            <h3 class="text-sm font-semibold text-slate-900">Top items ever bought</h3>
-          </div>
-          <ul class="divide-y divide-slate-100 px-4 py-2 text-sm">
-            {% for it in primary.top_items %}
-              <li class="flex items-center justify-between py-1.5">
-                <div>
-                  {{ sku_link(it.sku) }}
-                  <span class="ml-2 text-slate-800">{{ it.name or '—' }}</span>
-                </div>
-                <div class="text-right text-slate-600 whitespace-nowrap">
-                  {{ it.total_qty or 0 }} × ${{ '%.0f' % (it.total_spend | to_float) }}
-                </div>
-              </li>
-            {% endfor %}
-          </ul>
         </div>
       {% endif %}
 
