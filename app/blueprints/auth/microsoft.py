@@ -68,10 +68,15 @@ def _msal_app():
 def _redirect_uri() -> str:
     """The fully-qualified callback URL Microsoft redirects back to.
 
-    Built off the deployed host so dev (``http://localhost:5001/…``) and
-    prod (``https://ops.jonoandjohno.com.au/…``) Just Work without an
-    env var. Must match a Redirect URI registered on the Azure app.
+    Must match a Redirect URI registered on the Azure app exactly.
+    Prefer the explicit ``MS_REDIRECT_URI`` config value (set in .env)
+    — it removes any ambiguity from Flask's URL generation behind a
+    reverse proxy. Fall back to ``url_for(_external=True)`` for dev
+    machines that don't bother setting the env var.
     """
+    explicit = current_app.config.get("MS_REDIRECT_URI")
+    if explicit:
+        return explicit
     return url_for("auth.microsoft_callback", _external=True)
 
 

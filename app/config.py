@@ -48,6 +48,12 @@ class Config:
     MS_CLIENT_ID     = os.environ.get("SHAREPOINT_CLIENT_ID")
     MS_CLIENT_SECRET = os.environ.get("SHAREPOINT_CLIENT_SECRET")
     MS_TENANT_ID     = os.environ.get("SHAREPOINT_TENANT_ID")
+    # Optional explicit redirect URI override. Set this in prod .env
+    # (``MS_REDIRECT_URI=https://ops.jonoandjohno.com.au/auth/microsoft/callback``)
+    # so the redirect URI sent to Azure matches what's registered there
+    # regardless of how Flask is sitting behind nginx. Leave unset on
+    # local dev and the route falls back to url_for(_external=True).
+    MS_REDIRECT_URI  = os.environ.get("MS_REDIRECT_URI")
 
     # Feature flags
     ENABLE_V2_UI = os.environ.get("ENABLE_V2_UI", "false").lower() in {"1", "true", "yes"}
