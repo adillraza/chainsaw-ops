@@ -470,6 +470,7 @@ class Customer360Service:
             bundle = self._fetch_phone_bundle(phone)
             usernames = (bundle.get("lookup") or {}).get("usernames") or []
             if not usernames:
+                log.info("prewarm phone=%s no-match (not in phone_lookup)", phone)
                 return {"prewarmed": True, "phone": phone, "matched": False}
             customers = self._fetch_customers(usernames)
             seen: set[str] = set()
