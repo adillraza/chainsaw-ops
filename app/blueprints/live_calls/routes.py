@@ -54,6 +54,15 @@ def webhook():
     if request.method == "GET":
         return jsonify({"ok": True, "message": "live-calls webhook receiver"}), 200
 
+    # Test mode — caller asserts this is a synthetic verification ping
+    # (e.g. ``curl -H 'X-Test-Event: 1' …`` from a deploy script). We
+    # ack 200 so they know the route is reachable, but we DON'T write
+    # to call_event and DON'T fire the prewarm. This stops verification
+    # traffic from leaking into customer call histories.
+    if request.headers.get("X-Test-Event"):
+        log.info("X-Test-Event ack (no DB write, no prewarm)")
+        return jsonify({"ok": True, "test": True}), 200
+
     # RC subscription validation handshake
     validation_token = request.headers.get("Validation-Token")
     if validation_token:
@@ -109,15 +118,21 @@ def webhook():
         evt.id, evt.source, evt.event_type, evt.from_number,
     )
 
-    # Pre-warm customer 360 data for the inbound caller in a daemon
-    # thread. By the time the agent clicks the card (typically 5-30s
-    # later), the Graph live email top-up is already done and the
-    # card load is sub-100ms warm. Idempotent within 60s/phone so
-    # webhook bursts during a single call collapse to one warm.
-    if from_number:
+    # Pre-warm customer 360 data for *both* numbers on the call in a
+    # daemon thread. For inbound calls the customer is in from_number;
+    # for outbound calls they're in to_number. Pre-warming both is
+    # safe — Customer360Service.prewarm() drops JJ-internal phones via
+    # the InternalPhoneNumber registry and short-circuits unknown
+    # numbers cheaply, so the wrong-side prewarm costs ~1ms. Per-phone
+    # 60s dedup collapses webhook bursts during a single call into one
+    # warm per side.
+    app_obj = current_app._get_current_object()
+    for phone in (from_number, to_number):
+        if not phone:
+            continue
         threading.Thread(
             target=_prewarm_worker,
-            args=(current_app._get_current_object(), from_number),
+            args=(app_obj, phone),
             daemon=True,
         ).start()
 
