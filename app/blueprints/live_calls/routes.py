@@ -4,6 +4,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import threading
 
 from flask import Response, current_app, jsonify, request
 from flask_login import current_user, login_required
@@ -14,6 +15,21 @@ from app.extensions import db
 from app.models.call_events import CallEvent, PinnedCall
 
 log = logging.getLogger(__name__)
+
+
+def _prewarm_worker(app, phone: str) -> None:
+    """Background pre-warm of customer 360 data for an inbound call.
+
+    Runs in a daemon thread so the webhook itself returns 200 in
+    <50ms — RC retries on non-2xx and we don't want to delay it on
+    Graph round-trips.
+    """
+    try:
+        with app.app_context():
+            from app.services.customer_360_service import customer_360_service
+            customer_360_service.prewarm(phone)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("prewarm thread failed for %s: %s", phone, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +108,18 @@ def webhook():
         "captured call_event id=%s source=%s type=%s from=%s",
         evt.id, evt.source, evt.event_type, evt.from_number,
     )
+
+    # Pre-warm customer 360 data for the inbound caller in a daemon
+    # thread. By the time the agent clicks the card (typically 5-30s
+    # later), the Graph live email top-up is already done and the
+    # card load is sub-100ms warm. Idempotent within 60s/phone so
+    # webhook bursts during a single call collapse to one warm.
+    if from_number:
+        threading.Thread(
+            target=_prewarm_worker,
+            args=(current_app._get_current_object(), from_number),
+            daemon=True,
+        ).start()
 
     # Return 200 ASAP. RC retries on non-2xx and we don't want to delay.
     return jsonify({"ok": True, "id": evt.id}), 200

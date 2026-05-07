@@ -99,6 +99,7 @@ def bootstrap_database(app: Flask) -> None:
     """
     from app.services.startup import (
         create_admin_user,
+        prewarm_graph_token,
         sync_reviews_from_bigquery_safe,
     )
 
@@ -108,3 +109,7 @@ def bootstrap_database(app: Flask) -> None:
         create_admin_user()
         ensure_system_roles()
         sync_reviews_from_bigquery_safe()
+        # Background thread — doesn't block boot, fills the Graph token
+        # cache so the first inbound webhook's prewarm doesn't pay the
+        # ~150ms auth round-trip.
+        prewarm_graph_token()

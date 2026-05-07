@@ -61,6 +61,13 @@ _FOLDER_MAP: dict = {"value": None, "expires_at": 0.0}
 # legitimately be empty while others are loaded.
 _CACHE_READY_FLAGS: dict[str, dict] = {}
 
+# Per-phone pre-warm dedup. The CXone/RC webhook fires many events per
+# call (ring, answer, transfer, hangup) — we only want to pre-warm once
+# per phone per minute. After 60s, if a call is still live we re-warm
+# so the email panel is fresh right before the agent opens the card.
+_PREWARM_RECENT: dict[str, float] = {}
+_PREWARM_TTL = 60.0
+
 
 def _lifetime_value_key(customer: dict) -> float:
     """Sort key for ranking customers by lifetime value.
@@ -430,6 +437,55 @@ class Customer360Service:
     # ------------------------------------------------------------------
     # Active call lookup — for the "Call in progress" panel
     # ------------------------------------------------------------------
+
+    def prewarm(self, raw_phone: str) -> dict:
+        """Pre-fetch the data the customer card will need, in advance of
+        an agent clicking it.
+
+        Called from the live-call webhook the moment a call_event lands
+        so we can warm the slowest part of the card-load path — the
+        Microsoft Graph live email top-up — while the call is still
+        ringing. By the time the agent opens the card, _live_topup is
+        a no-op (or very nearly so).
+
+        Idempotent within ``_PREWARM_TTL`` seconds per phone: webhook
+        bursts (ring + answer + transfer in quick succession) collapse
+        into a single warm call. Returns a small status dict for
+        debugging only.
+        """
+        phone = normalize_phone(raw_phone)
+        if not phone:
+            return {"prewarmed": False, "reason": "empty phone"}
+        # Skip JJ-internal lines — they never resolve to a customer.
+        if self._lookup_internal(phone):
+            return {"prewarmed": False, "reason": "internal phone"}
+
+        now = time.time()
+        last = _PREWARM_RECENT.get(phone, 0)
+        if now - last < _PREWARM_TTL:
+            return {"prewarmed": False, "reason": "deduped"}
+        _PREWARM_RECENT[phone] = now
+
+        try:
+            bundle = self._fetch_phone_bundle(phone)
+            usernames = (bundle.get("lookup") or {}).get("usernames") or []
+            if not usernames:
+                return {"prewarmed": True, "phone": phone, "matched": False}
+            customers = self._fetch_customers(usernames)
+            seen: set[str] = set()
+            emails: list[str] = []
+            for cu in customers:
+                for fld in ("email", "secondary_email"):
+                    addr = (cu.get(fld) or "").strip().lower()
+                    if addr and addr not in seen:
+                        seen.add(addr)
+                        emails.append(addr)
+            if emails:
+                self._live_topup(emails)
+            return {"prewarmed": True, "phone": phone, "emails": len(emails)}
+        except Exception as exc:
+            log.warning("prewarm failed for %s: %s", phone, exc)
+            return {"prewarmed": False, "reason": str(exc)}
 
     def get_active_call_for_phone(self, raw_phone: str) -> dict | None:
         """If this phone has a currently in-flight call_event, return its
