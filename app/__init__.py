@@ -7,12 +7,22 @@ systemd unit) keep working unchanged.
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
 from flask import Flask
 
 load_dotenv()
+
+# Bring the root logger up to INFO so ``log.info(...)`` calls in our
+# blueprints (webhook capture, prewarm fires, cache refresh progress)
+# show up in journalctl -u chainsaw-ops. Default WARNING was hiding
+# everything except errors. Werkzeug stays at WARNING to avoid logging
+# every static asset hit.
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 from app.extensions import db, login_manager, migrate  # noqa: E402
 

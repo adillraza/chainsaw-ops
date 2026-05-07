@@ -482,6 +482,8 @@ class Customer360Service:
                         emails.append(addr)
             if emails:
                 self._live_topup(emails)
+            log.info("prewarm phone=%s usernames=%d emails=%d",
+                     phone, len(usernames), len(emails))
             return {"prewarmed": True, "phone": phone, "emails": len(emails)}
         except Exception as exc:
             log.warning("prewarm failed for %s: %s", phone, exc)
