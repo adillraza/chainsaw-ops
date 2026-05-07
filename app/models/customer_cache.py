@@ -72,3 +72,19 @@ class CachedNetoProduct(db.Model):
     product_id = db.Column(db.String(50))
     name       = db.Column(db.String(500))
     cached_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class CacheWatermark(db.Model):
+    """Per-table sync watermarks for incremental cache refresh.
+
+    Each row tracks the most-recent ``last_modified_at`` value loaded into
+    one cache table. The customer_360 incremental loader uses this to
+    pull only rows changed since the previous run.
+    """
+    __tablename__ = "cache_watermark"
+
+    cache_name      = db.Column(db.String(50), primary_key=True)
+    last_synced_at  = db.Column(db.DateTime, nullable=False)
+    rows_last_run   = db.Column(db.Integer)  # count from the most recent sync
+    updated_at      = db.Column(db.DateTime, default=datetime.utcnow,
+                                onupdate=datetime.utcnow)

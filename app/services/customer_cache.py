@@ -20,6 +20,7 @@ from flask import current_app
 
 from app.extensions import db
 from app.models.customer_cache import (
+    CacheWatermark,
     CachedCallBehavior,
     CachedCallHistory,
     CachedCustomer360,
@@ -84,6 +85,64 @@ def _bulk_replace(model, rows: Iterable[dict], label: str) -> int:
     return n
 
 
+def _bulk_upsert(model, rows: Iterable[dict], pk_col: str, label: str) -> int:
+    """Insert-or-replace rows by primary key. Used by incremental loaders.
+
+    SQLite-only — uses ``INSERT OR REPLACE`` semantics via raw SQL since
+    SQLAlchemy's ORM upsert is dialect-specific. Each batch commits in
+    one tx so partial failures don't leave the cache half-merged.
+    """
+    sess = db.session
+    n = 0
+    batch: list[dict] = []
+    t0 = time.perf_counter()
+
+    table = model.__table__
+
+    def flush(batch):
+        if not batch:
+            return 0
+        # SQLAlchemy 2.x: insert(...).prefix_with("OR REPLACE") for SQLite
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        stmt = sqlite_insert(table).values(batch)
+        update_cols = {c.name: stmt.excluded[c.name]
+                       for c in table.columns
+                       if c.name != pk_col}
+        stmt = stmt.on_conflict_do_update(index_elements=[pk_col],
+                                          set_=update_cols)
+        sess.execute(stmt)
+        sess.commit()
+        return len(batch)
+
+    for r in rows:
+        batch.append(r)
+        if len(batch) >= INSERT_BATCH:
+            n += flush(batch)
+            batch.clear()
+    if batch:
+        n += flush(batch)
+    print(f"  {label}: {n:,} rows upserted in {(time.perf_counter()-t0):.1f}s")
+    return n
+
+
+def _get_watermark(cache_name: str):
+    """Return saved last_synced_at TIMESTAMP, or None if first run."""
+    row = db.session.query(CacheWatermark).filter_by(cache_name=cache_name).first()
+    return row.last_synced_at if row else None
+
+
+def _set_watermark(cache_name: str, ts: datetime, rows: int) -> None:
+    sess = db.session
+    row = sess.query(CacheWatermark).filter_by(cache_name=cache_name).first()
+    if row:
+        row.last_synced_at = ts
+        row.rows_last_run = rows
+    else:
+        sess.add(CacheWatermark(cache_name=cache_name,
+                                last_synced_at=ts, rows_last_run=rows))
+    sess.commit()
+
+
 # ---------------------------------------------------------------------------
 # Per-table loaders — each yields (model, dict) tuples
 # ---------------------------------------------------------------------------
@@ -104,16 +163,54 @@ def _load_phone_lookup(client) -> int:
 
 
 def _load_customer_360(client) -> int:
-    sql = f"SELECT * FROM `{PROJECT}.{DATASET}.customer_360`"
+    """Incremental loader for customer_360.
+
+    First run (no watermark) does a full reload — ~10 min, ~600MB.
+    Subsequent runs pull only rows where ``GREATEST(last_order_date,
+    last_rma_date, customer_since)`` is more recent than the saved
+    watermark. Typical hourly delta: a handful of rows.
+
+    Tradeoff: rows where all three dates are NULL (truly inactive,
+    never-ordered customers) only ever come in on the first full
+    reload. They don't change so this is fine. Rare profile-only edits
+    on an inactive customer would be missed until the next nightly
+    full reload (see ``cache_customer_360_data`` for that hook).
+
+    BQ scan cost: a full table scan per incremental run because the
+    GREATEST(...) filter can't use partition pruning. ~600MB scanned
+    per hour ≈ pennies/day at on-demand pricing.
+    """
+    cache_name = "customer_360"
+    watermark = _get_watermark(cache_name)
+    is_full = watermark is None
+
+    if is_full:
+        print(f"  customer_360: full reload (no watermark)")
+        sql = f"SELECT * FROM `{PROJECT}.{DATASET}.customer_360`"
+        params = None
+    else:
+        print(f"  customer_360: incremental from {watermark.isoformat()}")
+        # Date columns vs TIMESTAMP watermark — cast on the fly.
+        sql = f"""
+        SELECT *
+        FROM `{PROJECT}.{DATASET}.customer_360`
+        WHERE TIMESTAMP(GREATEST(
+            IFNULL(last_order_date, DATE '1970-01-01'),
+            IFNULL(last_rma_date,   DATE '1970-01-01'),
+            IFNULL(customer_since,  DATE '1970-01-01')
+        )) > @watermark
+        """
+        from google.cloud import bigquery
+        params = [bigquery.ScalarQueryParameter("watermark", "TIMESTAMP", watermark)]
 
     def gen():
-        # The Dataform model is *intended* as one-row-per-Username, but in
-        # practice ~150 dupes leak through (likely a JOIN-fan in one of
-        # the recent_order CTEs). Last-wins dedupe locally — flag for a
-        # Dataform fix in BACKLOG.
         seen: set[str] = set()
         skipped = 0
-        for r in client.query(sql).result():
+        job_config = None
+        if params:
+            from google.cloud import bigquery
+            job_config = bigquery.QueryJobConfig(query_parameters=params)
+        for r in client.query(sql, job_config=job_config).result():
             uname = r.Username
             if not uname:
                 continue
@@ -133,7 +230,14 @@ def _load_customer_360(client) -> int:
             }
         if skipped:
             print(f"  customer_360 dedupe: skipped {skipped:,} duplicate Username rows")
-    return _bulk_replace(CachedCustomer360, gen(), "customer_360")
+
+    if is_full:
+        n = _bulk_replace(CachedCustomer360, gen(), "customer_360 (full)")
+    else:
+        n = _bulk_upsert(CachedCustomer360, gen(), "Username",
+                         "customer_360 (incremental)")
+    _set_watermark(cache_name, datetime.utcnow(), n)
+    return n
 
 
 def _load_call_history(client) -> int:
@@ -191,18 +295,21 @@ def _load_neto_product(client) -> int:
 def cache_customer_360_data() -> tuple[bool, str]:
     """Refresh the Customer-360 cache tables from BigQuery.
 
-    Phase 1 scope (Option A3): we cache the four "small" tables:
-    ``customer_phone_lookup``, ``call_history_360``, ``call_behavior_360``,
-    and ``neto_product_list``. These are the bulk of the per-card BQ
-    latency cost. ``customer_360`` itself is intentionally *not* cached —
-    it's 328k rows × ~1.8KB = ~600MB, which would push refresh time past
-    10 minutes per run. Card load uses a single BQ round-trip for that
-    table (see ``Customer360Service._fetch_customers``). Phase 2 will
-    add it back via incremental sync.
+    Five tables refresh in sequence:
 
-    Designed to run from the ``flask refresh-cache`` CLI inside an app
-    context. Returns ``(success, message)`` so the CLI can surface a
-    clean error to the systemd journal.
+    * ``customer_phone_lookup`` — full reload (small, fast)
+    * ``call_history_360``      — full reload
+    * ``call_behavior_360``     — full reload
+    * ``neto_product_list``     — full reload
+    * ``customer_360``          — **incremental** after the first run
+      (Phase 2). Watermark stored in the ``cache_watermark`` table.
+
+    The first ever run does a full reload of customer_360 (~10 min,
+    ~600MB) since there's no saved watermark. Subsequent hourly runs
+    pull only the rows whose order/RMA/customer-since date is newer
+    than the saved watermark — typically a handful of rows, ~5-15s.
+
+    Returns ``(success, message)`` for the CLI.
     """
     app = current_app._get_current_object()
     with app.app_context():
@@ -217,6 +324,7 @@ def cache_customer_360_data() -> tuple[bool, str]:
             total += _load_call_history(client)
             total += _load_call_behavior(client)
             total += _load_neto_product(client)
+            total += _load_customer_360(client)
             secs = time.perf_counter() - t0
             return True, f"customer_360 cache refreshed: {total:,} rows in {secs:.1f}s"
         except Exception as exc:

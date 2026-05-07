@@ -11,6 +11,7 @@ from app.models.customer_cache import (
     CachedCustomer360,
     CachedNetoProduct,
     CachedPhoneLookup,
+    CacheWatermark,
 )
 from app.models.internal_phone import InternalPhoneNumber
 from app.models.purchase_orders import (
@@ -28,6 +29,7 @@ from app.models.user import LoginLog, User
 
 __all__ = [
     "Annotation",
+    "CacheWatermark",
     "CachedCallBehavior",
     "CachedCallHistory",
     "CachedCustomer360",
