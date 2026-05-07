@@ -668,14 +668,26 @@
   {# ----------------------------------------------------------------- #}
   {# Call details modal — body filled via HTMX swap on click           #}
   {# ----------------------------------------------------------------- #}
-  <div x-data="{ open: false }"
+  <div x-data="{
+         open: false,
+         close() {
+           this.open = false;
+           // Pause any audio that's playing inside the modal body —
+           // closing the dialog without this keeps the recording
+           // running invisibly, which is disorienting when an agent
+           // navigates away.
+           document.querySelectorAll('#call-modal-body audio').forEach(a => {
+             try { a.pause(); a.currentTime = 0; } catch (e) {}
+           });
+         }
+       }"
        @open-call-modal.window="open = true"
-       @keydown.escape.window="open = false"
+       @keydown.escape.window="close()"
        x-show="open" x-cloak
        class="fixed inset-0 z-40 flex items-center justify-center p-4"
        x-transition.opacity>
     {# Backdrop — click outside the dialog to close #}
-    <div class="absolute inset-0 bg-slate-900/50" @click="open = false"></div>
+    <div class="absolute inset-0 bg-slate-900/50" @click="close()"></div>
 
     {# Dialog #}
     <div class="relative z-10 w-full max-w-3xl rounded-lg bg-white shadow-xl"
@@ -684,7 +696,7 @@
          x-transition:enter-end="opacity-100 scale-100">
       <button type="button"
               class="absolute right-3 top-3 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              @click="open = false" aria-label="Close">
+              @click="close()" aria-label="Close">
         <i class="fas fa-xmark"></i>
       </button>
 

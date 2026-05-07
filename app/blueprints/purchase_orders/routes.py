@@ -93,6 +93,7 @@ def _status_options() -> list[str]:
 
 @purchase_orders_bp.route("/orders")
 @login_required
+@require_capability("po.view")
 def orders():
     search = request.args.get("q", "").strip() or None
     supplier = request.args.get("supplier") or None
@@ -115,6 +116,7 @@ def orders():
 
 @purchase_orders_bp.route("/orders/<po_id>")
 @login_required
+@require_capability("po.view")
 def order_detail(po_id: str):
     summary = CachedPurchaseOrderSummary.query.filter_by(po_id=str(po_id)).first()
     if not summary:
@@ -544,6 +546,7 @@ COMPARISON_ROW_CAP = 5000
 
 @purchase_orders_bp.route("/comparison")
 @login_required
+@require_capability("po.view")
 def comparison():
     search = request.args.get("q", "").strip() or None
     sku = request.args.get("sku", "").strip() or None
@@ -968,6 +971,7 @@ def review_cancel(review_id: str):
 
 @purchase_orders_bp.route("/cost-prices")
 @login_required
+@require_capability("po.view")
 def cost_prices():
     search = request.args.get("q", "").strip() or None
     po_id = request.args.get("po_id", "").strip() or None
@@ -1325,6 +1329,7 @@ CHANGE_LOG_GUIDE_STAGES: list[dict[str, Any]] = [
 
 @purchase_orders_bp.route("/changelog-guide")
 @login_required
+@require_capability("po.view")
 def changelog_guide():
     return render_template(
         "purchase_orders/changelog_guide.html",

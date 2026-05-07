@@ -56,19 +56,25 @@
 
     {{ nav_item('dashboard.dashboard', 'Dashboard', 'fa-gauge-high') }}
 
-    {% set po_items = [
-      {'label': 'REX PO Orders',     'href': url_for('purchase_orders.orders'),         'icon': 'fa-shopping-cart'},
-      {'label': 'Comparison',        'href': url_for('purchase_orders.comparison'),     'icon': 'fa-balance-scale'},
-      {'label': 'Cost Price Check',  'href': url_for('purchase_orders.cost_prices'),    'icon': 'fa-dollar-sign'},
-    ] %}
-    {% if can('reviews.retail.view') %}
-      {% set po_items = po_items + [{'label': 'Retail Reviews',    'href': url_for('purchase_orders.retail'),    'icon': 'fa-user-check'}] %}
+    {# PO Cross Check tabs are gated as a single group on po.view —
+       customer-service-only roles (e.g. cs_agent, viewer) won't see
+       these in the sidebar at all. Retail / Warehouse-Review entries
+       layer on top with their own sub-capability checks. #}
+    {% if can('po.view') %}
+      {% set po_items = [
+        {'label': 'REX PO Orders',     'href': url_for('purchase_orders.orders'),         'icon': 'fa-shopping-cart'},
+        {'label': 'Comparison',        'href': url_for('purchase_orders.comparison'),     'icon': 'fa-balance-scale'},
+        {'label': 'Cost Price Check',  'href': url_for('purchase_orders.cost_prices'),    'icon': 'fa-dollar-sign'},
+      ] %}
+      {% if can('reviews.retail.view') %}
+        {% set po_items = po_items + [{'label': 'Retail Reviews',    'href': url_for('purchase_orders.retail'),    'icon': 'fa-user-check'}] %}
+      {% endif %}
+      {% if can('reviews.warehouse.view') %}
+        {% set po_items = po_items + [{'label': 'Warehouse Reviews', 'href': url_for('purchase_orders.warehouse'), 'icon': 'fa-warehouse'}] %}
+      {% endif %}
+      {% set po_items = po_items + [{'label': 'Change Log Guide',    'href': url_for('purchase_orders.changelog_guide'), 'icon': 'fa-info-circle'}] %}
+      {{ nav_group('PO Cross Check', 'fa-clipboard-check', po_items, default_open=true) }}
     {% endif %}
-    {% if can('reviews.warehouse.view') %}
-      {% set po_items = po_items + [{'label': 'Warehouse Reviews', 'href': url_for('purchase_orders.warehouse'), 'icon': 'fa-warehouse'}] %}
-    {% endif %}
-    {% set po_items = po_items + [{'label': 'Change Log Guide',    'href': url_for('purchase_orders.changelog_guide'), 'icon': 'fa-info-circle'}] %}
-    {{ nav_group('PO Cross Check', 'fa-clipboard-check', po_items, default_open=true) }}
 
     {% if can('validation.view') %}
       {% set validation_items = [

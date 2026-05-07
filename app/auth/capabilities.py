@@ -25,6 +25,9 @@ from __future__ import annotations
 # happens below.
 
 CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
+    "PO Cross Check – Access": [
+        ("po.view",                  "See the PO Cross Check tabs (REX PO Orders, Comparison, Cost Prices, Change Log)"),
+    ],
     "PO Cross Check – Reviews": [
         ("reviews.flag",             "Flag an item on the Comparison page"),
         ("reviews.retail.view",      "See the Retail Reviews queue"),
@@ -78,6 +81,7 @@ def is_valid_capability(cap: str) -> bool:
 SYSTEM_ROLE_DEFAULTS: dict[str, set[str]] = {
     "admin": set(CAPABILITIES),
     "retail": {
+        "po.view",
         "reviews.flag",
         "reviews.retail.view",
         "reviews.retail.close",
@@ -85,6 +89,7 @@ SYSTEM_ROLE_DEFAULTS: dict[str, set[str]] = {
         "notes.add",
     },
     "warehouse": {
+        "po.view",
         "reviews.warehouse.view",
         "reviews.warehouse.close",
         "notes.add",
