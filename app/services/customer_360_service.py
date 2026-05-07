@@ -62,6 +62,22 @@ _FOLDER_MAP: dict = {"value": None, "expires_at": 0.0}
 _CACHE_READY_FLAGS: dict[str, dict] = {}
 
 
+def _lifetime_value_key(customer: dict) -> float:
+    """Sort key for ranking customers by lifetime value.
+
+    BigQuery NUMERIC fields round-trip through json.dumps(default=str) as
+    strings (e.g. ``"3500.50"``). Python can't compare ``int`` to ``str``,
+    so this coercion stops the sort from blowing up on mixed types.
+    """
+    v = customer.get("lifetime_value")
+    if v is None:
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _cache_table_ready(model, key_col) -> bool:
     state = _CACHE_READY_FLAGS.setdefault(model.__tablename__,
                                           {"value": False, "checked_at": 0.0})
@@ -576,7 +592,7 @@ class Customer360Service:
             customers = [json.loads(r.payload_json) for r in rows]
             if not customers:
                 return None
-            customers.sort(key=lambda c: c.get("lifetime_value") or 0, reverse=True)
+            customers.sort(key=_lifetime_value_key, reverse=True)
             top = customers[0]
             full = ((top.get("name_first") or "") + " "
                     + (top.get("name_last") or "")).strip()
@@ -677,7 +693,7 @@ class Customer360Service:
                     .filter(CachedCustomer360.Username.in_(usernames))
                     .all())
             customers = [json.loads(r.payload_json) for r in rows]
-            customers.sort(key=lambda c: c.get("lifetime_value") or 0, reverse=True)
+            customers.sort(key=_lifetime_value_key, reverse=True)
             return customers
         if self.client is None:
             return []
