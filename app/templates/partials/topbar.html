@@ -1,3 +1,15 @@
+{# Cache context: which subset of caches the topbar indicator + Refresh
+   button should target on this page. Pages that drive Customer 360
+   (the live-call card, the search index) pass cache_context="customer_360"
+   so agents see freshness for the data they're actually looking at.
+   Anything else falls back to the PO cache, which is the default for
+   the purchase-order tooling. #}
+{% set _ctx = cache_context|default('po') %}
+{% set _cache_keys = {
+    'po':           ['po'],
+    'customer_360': ['phone_lookup', 'call_history', 'call_behavior',
+                     'neto_product', 'customer_360', 'email_archive'],
+} %}
 <header class="flex h-16 flex-shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 shadow-sm">
   <div class="min-w-0">
     <h1 class="truncate text-base font-semibold text-slate-900">{{ page_title|default('Chainsawspares Ops') }}</h1>
@@ -6,20 +18,22 @@
 
   <div class="flex items-center gap-2">
     <div class="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
-         x-data="{
-           status: 'loading…',
-           tooltip: '',
-           dot: 'bg-slate-300',
+         x-data='{
+           ctx: {{ _ctx|tojson }},
+           keys: {{ _cache_keys[_ctx]|tojson }},
+           status: "loading…",
+           tooltip: "",
+           dot: "bg-slate-300",
            fmtMelbourne(ts) {
-             if (!ts) return '—';
+             if (!ts) return "—";
              const d = new Date(ts);
              if (isNaN(d)) return ts;
              try {
-               return new Intl.DateTimeFormat('en-AU', {
-                 timeZone: 'Australia/Melbourne',
-                 day: '2-digit', month: 'short', year: 'numeric',
-                 hour: 'numeric', minute: '2-digit', hour12: true,
-               }).format(d).replace(',', ' ·');
+               return new Intl.DateTimeFormat("en-AU", {
+                 timeZone: "Australia/Melbourne",
+                 day: "2-digit", month: "short", year: "numeric",
+                 hour: "numeric", minute: "2-digit", hour12: true,
+               }).format(d).replace(",", " ·");
              } catch (e) { return ts; }
            },
            ageMinutes(ts) {
@@ -29,37 +43,40 @@
              return Math.round((Date.now() - d.getTime()) / 60000);
            },
            refresh() {
-             fetch('/api/system/cache-status').then(r => r.json()).then(d => {
-               if (!d || !d.success) { this.status = 'Cache: error'; this.dot = 'bg-rose-500'; return; }
-               if (d.is_syncing) { this.status = 'Syncing…'; this.tooltip = 'Background refresh in progress'; this.dot = 'bg-amber-500'; return; }
-               if (d.last_refresh_time) {
-                 const age = this.ageMinutes(d.last_refresh_time);
-                 this.status = 'Cache: ' + this.fmtMelbourne(d.last_refresh_time);
-                 // Build a per-cache breakdown for the tooltip.
-                 const lines = [];
-                 if (d.oldest_cache) lines.push('Oldest: ' + d.oldest_cache);
-                 const labels = {
-                   po:'PO', phone_lookup:'Phone lookup', call_history:'Call history',
-                   call_behavior:'Call behavior', neto_product:'Neto products',
-                   customer_360:'Customer 360', email_archive:'Email archive',
-                 };
-                 Object.entries(d.caches || {}).forEach(([k, ts]) => {
-                   lines.push('• ' + (labels[k] || k) + ': ' + this.fmtMelbourne(ts));
-                 });
-                 this.tooltip = lines.join('\n');
-                 // Green if all caches under 90 min, amber up to 3h, red beyond.
-                 this.dot = age == null ? 'bg-slate-300'
-                          : age < 90    ? 'bg-emerald-500'
-                          : age < 180   ? 'bg-amber-500'
-                          :               'bg-rose-500';
-               } else {
-                 this.status = 'No cache';
-                 this.tooltip = '';
-                 this.dot = 'bg-slate-300';
+             fetch("/api/system/cache-status").then(r => r.json()).then(d => {
+               if (!d || !d.success) { this.status = "Cache: error"; this.dot = "bg-rose-500"; return; }
+               if (d.is_syncing && this.ctx === "po") { this.status = "Syncing…"; this.tooltip = "Background refresh in progress"; this.dot = "bg-amber-500"; return; }
+               // Pick only the caches relevant to this page context.
+               const caches = d.caches || {};
+               const labels = {
+                 po:"PO", phone_lookup:"Phone lookup", call_history:"Call history",
+                 call_behavior:"Call behavior", neto_product:"Neto products",
+                 customer_360:"Customer 360", email_archive:"Email archive",
+               };
+               let oldestTs = null, oldestKey = null;
+               const lines = [];
+               this.keys.forEach(k => {
+                 const ts = caches[k];
+                 if (ts && (oldestTs === null || ts < oldestTs)) { oldestTs = ts; oldestKey = k; }
+                 lines.push("• " + (labels[k] || k) + ": " + this.fmtMelbourne(ts));
+               });
+               if (!oldestTs) {
+                 this.status = "No cache";
+                 this.tooltip = lines.join("\n");
+                 this.dot = "bg-slate-300";
+                 return;
                }
-             }).catch(() => { this.status = 'Cache: offline'; this.tooltip = ''; this.dot = 'bg-rose-500'; });
+               const age = this.ageMinutes(oldestTs);
+               const headlineLabel = this.ctx === "customer_360" ? "Customer 360 cache" : "Cache";
+               this.status = headlineLabel + ": " + this.fmtMelbourne(oldestTs);
+               this.tooltip = (this.keys.length > 1 ? "Oldest: " + (labels[oldestKey] || oldestKey) + "\n" : "") + lines.join("\n");
+               this.dot = age == null ? "bg-slate-300"
+                        : age < 90    ? "bg-emerald-500"
+                        : age < 180   ? "bg-amber-500"
+                        :               "bg-rose-500";
+             }).catch(() => { this.status = "Cache: offline"; this.tooltip = ""; this.dot = "bg-rose-500"; });
            },
-         }"
+         }'
          x-init="refresh(); setInterval(() => refresh(), 60000)"
          :title="tooltip">
       <span class="h-2 w-2 rounded-full" :class="dot"></span>
@@ -68,7 +85,7 @@
 
     <button type="button"
             class="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-            hx-post="/api/system/start-refresh"
+            hx-post="/api/system/start-refresh?cache={{ _ctx }}"
             hx-swap="none">
       <i class="fas fa-rotate me-1"></i> Refresh
     </button>

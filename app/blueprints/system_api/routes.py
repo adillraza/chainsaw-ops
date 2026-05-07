@@ -142,14 +142,45 @@ def _run_cache_with_app_context(app):
         cache_purchase_order_data()
 
 
+def _run_customer_cache_with_app_context(app):
+    """Refresh the customer-360 + email-archive caches in a daemon thread.
+
+    Runs the same set of loaders that ``flask refresh-cache`` does, minus
+    the PO loader which has its own dedicated UI button.
+    """
+    from app.services.customer_cache import cache_customer_360_data
+    from app.services.email_cache import cache_email_archive
+    with app.app_context():
+        cache_customer_360_data()
+        cache_email_archive()
+
+
 @system_api_bp.route("/start-refresh", methods=["POST"])
 @login_required
 def start_background_refresh():
+    """Refresh the cache for the requested context.
+
+    Body / query param ``cache`` selects what to refresh:
+      * ``po``           — purchase-order cache (default, legacy behaviour)
+      * ``customer_360`` — customer_360 + phone_lookup + call_history +
+                           call_behavior + neto_product + email_archive
+    """
+    from flask import request
+    cache_name = (request.args.get("cache")
+                  or (request.get_json(silent=True) or {}).get("cache")
+                  or "po")
     try:
         app = current_app._get_current_object()
-        thread = threading.Thread(target=_run_cache_with_app_context, args=(app,))
+        if cache_name == "customer_360":
+            target = _run_customer_cache_with_app_context
+            label = "Customer 360"
+        else:
+            target = _run_cache_with_app_context
+            label = "Purchase Orders"
+        thread = threading.Thread(target=target, args=(app,))
         thread.daemon = True
         thread.start()
-        return jsonify({"success": True, "message": "Background refresh started"})
+        return jsonify({"success": True,
+                        "message": f"Background refresh started ({label})"})
     except Exception as e:  # pragma: no cover - defensive
         return jsonify({"success": False, "message": f"Error starting refresh: {str(e)}"}), 500

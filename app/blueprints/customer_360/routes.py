@@ -18,7 +18,9 @@ def index():
     the canonical fallback for manual lookups, and it's where ``/customer``
     sends you when no phone is supplied.
     """
-    return render_template("customer_360/index.html")
+    return render_template("customer_360/index.html",
+                           page_title="Customer 360",
+                           cache_context="customer_360")
 
 
 @customer_360_bp.route("/<phone>", methods=["GET"])
@@ -29,7 +31,9 @@ def card(phone: str):
     # Attach any in-flight call so the template can render the "Call in
     # progress" panel at the top.
     payload["active_call"] = customer_360_service.get_active_call_for_phone(phone)
-    return render_template("customer_360/card.html", c=payload)
+    return render_template("customer_360/card.html", c=payload,
+                           page_title="Customer 360",
+                           cache_context="customer_360")
 
 
 @customer_360_bp.route("/api/<phone>", methods=["GET"])
