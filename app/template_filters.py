@@ -50,6 +50,16 @@ def format_dt(value, fmt: str = "datetime") -> str:
     if not value:
         return EM_DASH
 
+    # Cache payloads round-trip datetimes through json.dumps(default=str),
+    # so when we load from SQLite we get an ISO string. Parse it back
+    # before format selection. Same trick handles BQ-direct payloads
+    # that already came back as datetime objects — they skip this branch.
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return value
+
     # SQLAlchemy DateTime columns hand back ``datetime``; pure ``date`` columns
     # return ``date``. Treat date-only inputs as midnight so we can branch on
     # whether the value carries a useful time component.
