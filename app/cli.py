@@ -31,20 +31,24 @@ def refresh_cache() -> None:
     """
     from app.services.cache import cache_purchase_order_data
     from app.services.customer_cache import cache_customer_360_data
+    from app.services.email_cache import cache_email_archive
 
     failures: list[str] = []
 
     success, message = cache_purchase_order_data()
-    click.echo(f"refresh-cache (PO): {message}",
-               err=not success)
+    click.echo(f"refresh-cache (PO): {message}", err=not success)
     if not success:
         failures.append("PO")
 
     success, message = cache_customer_360_data()
-    click.echo(f"refresh-cache (customer_360): {message}",
-               err=not success)
+    click.echo(f"refresh-cache (customer_360): {message}", err=not success)
     if not success:
         failures.append("customer_360")
+
+    success, message = cache_email_archive()
+    click.echo(f"refresh-cache (email_archive): {message}", err=not success)
+    if not success:
+        failures.append("email_archive")
 
     if failures:
         raise SystemExit(1)

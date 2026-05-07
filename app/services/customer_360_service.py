@@ -33,6 +33,8 @@ from app.models.customer_cache import (
     CachedCallBehavior,
     CachedCallHistory,
     CachedCustomer360,
+    CachedEmailMessage,
+    CachedEmailRecipient,
     CachedNetoProduct,
     CachedPhoneLookup,
 )
@@ -701,22 +703,87 @@ class Customer360Service:
 
     def _fetch_email_history(self, customer_emails) -> dict | None:
         """Return per-customer email aggregates + the most recent 50
-        messages, or None if the email_archive table is empty / missing.
+        messages, or None if no addresses given.
 
-        ``customer_emails`` is a list of every email address the customer
-        is known by — primary + secondary on each matched Neto record,
-        unioned across all multi-match records. The query unions all
-        match arms via IN UNNEST(@emails).
-
-        One round trip: a single SELECT with two CTEs (totals + list).
-        Cheap because the table is partitioned by received_at and
-        clustered by from_address (one of the two we filter by).
+        Cache-first (Phase 2b): SQLite mirror of email_archive.messages
+        gives us sub-50ms reads from the Sydney VPS. Falls back to
+        BigQuery if the cache hasn't been loaded yet (the first run,
+        or anytime the email cache is empty).
         """
-        # Accept either a single string (legacy) or a list.
         if isinstance(customer_emails, str):
             customer_emails = [customer_emails]
         emails = [e.strip().lower() for e in (customer_emails or []) if e and e.strip()]
-        if not emails or self.client is None:
+        if not emails:
+            return None
+        if _cache_table_ready(CachedEmailMessage, CachedEmailMessage.message_id):
+            return self._fetch_email_history_from_cache(emails)
+        return self._fetch_email_history_from_bq(emails)
+
+    def _fetch_email_history_from_cache(self, emails: list[str]) -> dict | None:
+        """SQLite path — match emails against from_address OR any
+        recipient address, then aggregate."""
+        # Resolve matching message_ids in two indexed scans, union the
+        # set in Python (cheap because the typical match is tens to
+        # low hundreds of message_ids).
+        from_ids = [m for (m,) in db.session.query(CachedEmailMessage.message_id)
+                    .filter(CachedEmailMessage.from_address.in_(emails)).all()]
+        rcp_ids = [m for (m,) in db.session.query(CachedEmailRecipient.message_id)
+                   .filter(CachedEmailRecipient.address.in_(emails)).all()]
+        match_ids = list({*from_ids, *rcp_ids})
+        if not match_ids:
+            rows = []
+        else:
+            rows = (db.session.query(CachedEmailMessage)
+                    .filter(CachedEmailMessage.message_id.in_(match_ids))
+                    .order_by(CachedEmailMessage.received_at.desc())
+                    .all())
+
+        total = len(rows)
+        received_total = sum(1 for r in rows if r.direction == "inbound")
+        sent_total = sum(1 for r in rows if r.direction == "outbound")
+        automated = sum(1 for r in rows if r.is_automated)
+        with_attachments = sum(1 for r in rows if r.has_attachments)
+        last_at = rows[0].received_at if rows else None
+        days_since_last = None
+        if last_at:
+            from datetime import date
+            try:
+                days_since_last = (date.today() - last_at.date()).days
+            except Exception:
+                days_since_last = None
+
+        msgs = [{
+            "message_id":         r.message_id,
+            "conversation_id":    r.conversation_id,
+            "direction":          r.direction,
+            "subject":            r.subject,
+            "from_address":       r.from_address,
+            "from_name":          r.from_name,
+            "received_at":        r.received_at.isoformat() if r.received_at else None,
+            "is_automated":       r.is_automated,
+            "has_attachments":    r.has_attachments,
+            "parent_folder_name": r.parent_folder_name,
+            "web_link":           r.web_link,
+            "body_preview":       r.body_preview,
+        } for r in rows[:50]]
+
+        return {
+            "email":            emails[0],
+            "emails_checked":   emails,
+            "total":            total,
+            "received_total":   received_total,
+            "sent_total":       sent_total,
+            "automated_total":  automated,
+            "with_attachments": with_attachments,
+            "last_at":          last_at.isoformat() if last_at else None,
+            "days_since_last":  days_since_last,
+            "messages":         msgs,
+        }
+
+    def _fetch_email_history_from_bq(self, emails: list[str]) -> dict | None:
+        """BQ fallback — kept for the period before the email cache is
+        first loaded, and as a safety net if the cache is unavailable."""
+        if self.client is None:
             return None
         sql = """
         WITH matched AS (
@@ -874,7 +941,18 @@ class Customer360Service:
             # silently drops dupes within a 60-min streaming window. The
             # next hourly cron walk catches anything older.
             to_insert = [to_row(m, MAILBOX, fmap, ingested_at) for m in new_msgs]
-            return insert_batch(self.client, to_insert)
+            n = insert_batch(self.client, to_insert)
+
+            # Mirror into local SQLite cache so the message is visible
+            # on the next card load without waiting for the next email
+            # cache refresh. Soft-fail — BQ is the source of truth.
+            try:
+                from app.services.email_cache import upsert_message
+                for row in to_insert:
+                    upsert_message(row)
+            except Exception as exc:
+                log.warning("live top-up: SQLite mirror failed: %s", exc)
+            return n
         except Exception as exc:
             log.warning("live email top-up failed: %s", exc)
             return 0

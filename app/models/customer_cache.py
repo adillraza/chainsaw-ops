@@ -88,3 +88,33 @@ class CacheWatermark(db.Model):
     rows_last_run   = db.Column(db.Integer)  # count from the most recent sync
     updated_at      = db.Column(db.DateTime, default=datetime.utcnow,
                                 onupdate=datetime.utcnow)
+
+
+class CachedEmailMessage(db.Model):
+    """Local mirror of ``email_archive.messages`` for the Customer 360
+    Email History panel — lookup by from/to address."""
+    __tablename__ = "cached_email_message"
+
+    message_id         = db.Column(db.String(255), primary_key=True)
+    conversation_id    = db.Column(db.String(255), index=True)
+    from_address       = db.Column(db.String(255), index=True)
+    from_name          = db.Column(db.String(255))
+    subject            = db.Column(db.Text)
+    received_at        = db.Column(db.DateTime, index=True)
+    direction          = db.Column(db.String(10))   # inbound / outbound
+    is_automated       = db.Column(db.Boolean)
+    has_attachments    = db.Column(db.Boolean)
+    body_preview       = db.Column(db.Text)         # truncated to 200 chars
+    parent_folder_name = db.Column(db.String(255))
+    web_link           = db.Column(db.Text)
+    cached_at          = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class CachedEmailRecipient(db.Model):
+    """Recipient rows (to/cc/bcc) flattened so panel queries can match
+    on any address with a single indexed lookup."""
+    __tablename__ = "cached_email_recipient"
+
+    id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    message_id = db.Column(db.String(255), index=True, nullable=False)
+    address    = db.Column(db.String(255), index=True, nullable=False)
