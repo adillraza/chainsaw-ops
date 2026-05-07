@@ -9,8 +9,8 @@
       No record found for this call.
     </p>
     <p class="mt-1 text-xs text-slate-500">
-      Session <span class="font-mono">{{ d.session_id }}</span> isn't in our
-      analyzer output or live event log.
+      Session <span class="font-mono">{{ d.session_id }}</span> isn't in
+      the analyzer output, the live event log, or the CXone metadata.
     </p>
   </div>
 {% elif d.has_analysis is false %}
@@ -58,13 +58,23 @@
       {% endfor %}
     </div>
 
-    <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-      <i class="fas fa-circle-info mr-1"></i>
-      <strong>Recording, transcript and AI summary not yet available.</strong>
-      The chainsaw-call-analyzer pipeline runs after the call ends and
-      typically lands in BigQuery later today. Refresh tomorrow to see
-      the full analysis bundle here.
-    </div>
+    {% if d.predates_analyzer %}
+      <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+        <i class="fas fa-circle-info mr-1"></i>
+        <strong>AI analysis not available for this call.</strong>
+        The chainsaw-call-analyzer pipeline started capturing recordings
+        and producing transcripts on 2026-02-19. Calls before that date
+        only have the basic CXone metadata shown above.
+      </div>
+    {% else %}
+      <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <i class="fas fa-circle-info mr-1"></i>
+        <strong>Recording, transcript and AI summary not yet available.</strong>
+        The chainsaw-call-analyzer pipeline runs after the call ends and
+        typically lands in BigQuery later today. Refresh tomorrow to see
+        the full analysis bundle here.
+      </div>
+    {% endif %}
   </section>
 {% else %}
 

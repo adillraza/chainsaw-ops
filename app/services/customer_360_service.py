@@ -1153,7 +1153,11 @@ class Customer360Service:
             .all()
         )
         if not events:
-            return {"session_id": session_id, "found": False}
+            # Last fallback: CXone metadata table. Has every CXone call
+            # back to 2023, including ones that predate our AI analyzer
+            # pipeline (which started 2026-02-19) and aren't in the local
+            # call_event log.
+            return self._call_details_from_cxone_metadata(session_id)
 
         first, last = events[0], events[-1]
         saw_answered = any(e.event_type and "answered" in e.event_type.lower() for e in events)
@@ -1193,6 +1197,70 @@ class Customer360Service:
             "is_active":    not terminal,
             "saw_answered": saw_answered,
             "event_count":  len(events),
+        }
+
+    def _call_details_from_cxone_metadata(self, session_id: str) -> dict:
+        """Last-resort fallback: pull basic call metadata from the
+        ``callsrep_rep_contacts_completed_v2`` table.
+
+        Covers calls older than the AI analyzer pipeline cutoff
+        (~2026-02-19) that are too old to be in the local ``call_event``
+        log either. Returns the same dict shape as
+        :meth:`_call_details_from_event_log` so the modal's
+        ``has_analysis is false`` branch renders directly.
+        """
+        if not session_id or self.client is None:
+            return {"session_id": session_id, "found": False}
+        sql = f"""
+        SELECT
+          contactId,
+          startDate,
+          agentSeconds,
+          endReason,
+          skillName,
+          firstName,
+          lastName
+        FROM `chainsawspares-385722.ringcentral_jnj.callsrep_rep_contacts_completed_v2`
+        WHERE contactId = SAFE_CAST(@session_id AS NUMERIC)
+        LIMIT 1
+        """
+        try:
+            row = next(iter(self.client.query(
+                sql,
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("session_id", "STRING", session_id)]
+                ),
+            ).result()), None)
+        except Exception:
+            return {"session_id": session_id, "found": False}
+        if row is None:
+            return {"session_id": session_id, "found": False}
+
+        agent_name = " ".join(filter(None, [
+            (row.firstName or "").strip(),
+            (row.lastName or "").strip(),
+        ])).strip() or None
+        return {
+            "session_id":        session_id,
+            "found":             True,
+            "has_analysis":      False,
+            "source":            "cxone",
+            "from_number":       None,
+            "to_number":         None,
+            "started_at":        row.startDate,
+            "ended_at":          None,
+            "duration_seconds":  row.agentSeconds,
+            "agent_name":        agent_name,
+            "skill":             row.skillName,
+            "first_event_type":  None,
+            "last_event_type":   row.endReason,
+            "is_active":         False,
+            "saw_answered":      bool(row.agentSeconds and row.agentSeconds > 0),
+            "event_count":       0,
+            # Flag so the modal can render "predates AI analyzer" copy
+            # rather than the default "analyzer hasn't run yet, refresh
+            # tomorrow" message.
+            "predates_analyzer": True,
         }
 
     def _sign_gcs_url(self, gcs_uri: str, minutes: int = 15) -> str | None:
