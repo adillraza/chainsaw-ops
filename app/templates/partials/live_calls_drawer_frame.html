@@ -67,8 +67,7 @@
 
     {# ============================================================
        Section 2: TODAY'S CALLS — every call ended since midnight Mel.
-       Sky-blue tint when active. Scroll persistence removed for now;
-       we'll bring it back once we know why it wasn't sticking.
+       Sky-blue tint when active.
        ============================================================ #}
     <section class="flex flex-col border-b border-slate-200 min-h-0"
              :class="openSection === 'recent' ? 'flex-1' : ''">
@@ -82,7 +81,9 @@
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'recent' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
-      <div x-show="openSection === 'recent'" x-cloak class="flex-1 overflow-y-auto bg-sky-50/40"
+      <div id="todays-calls-body"
+           x-show="openSection === 'recent'" x-cloak
+           class="flex-1 overflow-y-auto bg-sky-50/40"
            hx-get="{{ url_for('live_calls.recent_calls') }}"
            hx-trigger="load, every 10s, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">
@@ -91,6 +92,63 @@
         </div>
       </div>
     </section>
+
+    {# ----------------------------------------------------------------- #}
+    {# Today's Calls — scroll-position persistence                       #}
+    {# ----------------------------------------------------------------- #}
+    {# Save on scroll, restore after every HTMX swap. A few subtleties: #}
+    {# 1. Restore polls until scrollHeight is tall enough — htmx:afterSettle #}
+    {#    sometimes fires before the new rows have fully measured.       #}
+    {# 2. ``restoring`` flag stops the scroll handler from saving the    #}
+    {#    clamped value when scrollHeight is briefly small (would erase  #}
+    {#    the real saved position).                                      #}
+    {# 3. window.__tcDebug exposes counters so we can sanity-check from  #}
+    {#    devtools if it stops working again.                            #}
+    <script>
+    (function() {
+      const KEY = 'todaysCallsScrollTop';
+      const el = document.getElementById("todays-calls-body");
+      if (!el) return;
+      window.__tcDebug = { saves: 0, restoreCalls: 0, restoreApplied: 0,
+                           lastSave: 0, lastRestore: 0 };
+      let restoring = false;
+
+      el.addEventListener('scroll', function() {
+        if (restoring) return;
+        const v = el.scrollTop;
+        sessionStorage.setItem(KEY, v);
+        window.__tcDebug.saves++;
+        window.__tcDebug.lastSave = v;
+      }, { passive: true });
+
+      function restore() {
+        const v = parseInt(sessionStorage.getItem(KEY) || '0', 10);
+        window.__tcDebug.restoreCalls++;
+        if (v <= 0) return;
+        restoring = true;
+        let tries = 0;
+        (function tick() {
+          if (el.scrollHeight - el.clientHeight >= v) {
+            el.scrollTop = v;
+            window.__tcDebug.restoreApplied++;
+            window.__tcDebug.lastRestore = v;
+            requestAnimationFrame(function() { restoring = false; });
+            return;
+          }
+          if (tries++ < 30) {
+            setTimeout(tick, 50);
+          } else {
+            restoring = false;
+          }
+        })();
+      }
+
+      el.addEventListener('htmx:afterSettle', restore);
+      // Also restore after the very first HTMX load, in case the
+      // afterSettle handler attached AFTER the event fired.
+      setTimeout(restore, 200);
+    })();
+    </script>
 
     {# ============================================================
        Section 3: PIN CALLS — amber tint when active (matches the
