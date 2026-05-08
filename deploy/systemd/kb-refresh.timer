@@ -1,0 +1,16 @@
+[Unit]
+Description=Hourly KB incremental refresh — picks up product edits in Neto
+
+[Timer]
+# Hourly at :15 — 10 min after the customer-360 cache refresh fires
+# at :05/:35 so we're not stacking BQ load. Watermark-driven incremental
+# typically pulls a handful of changed rows in seconds; first run on a
+# fresh deploy is the heavy one (~5–10 min) and is intentionally
+# triggered manually so we know when it's happening.
+OnCalendar=*:15
+Persistent=true
+AccuracySec=30s
+Unit=kb-refresh.service
+
+[Install]
+WantedBy=timers.target

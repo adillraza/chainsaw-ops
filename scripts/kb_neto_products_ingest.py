@@ -47,15 +47,14 @@ SOURCE   = "neto_product"
 # better when documents are embedded with RETRIEVAL_DOCUMENT and the live
 # query uses RETRIEVAL_QUERY (kb_service.py).
 EMBED_MODEL = "text-embedding-004"
-# Vertex caps per-request total at 20k tokens. With 100 docs averaging
-# ~1.3k chars each we hit the limit when a few outliers have long
-# descriptions. 25 keeps the typical batch ~5k tokens — safe headroom.
-EMBED_BATCH = 25
-# Per-document char cap. text-embedding-004 truncates each input at 2048
-# tokens anyway; capping at ~6k chars (~1.5k tokens) saves request size
-# without losing meaningful signal — descriptions over this length are
-# almost always boilerplate / shipping copy that adds noise.
-MAX_CHARS_PER_DOC = 6000
+# Vertex caps each request at 20,000 tokens total. We batch by total
+# char count (assuming a conservative ~2.5 chars/token for product copy
+# heavy in model numbers and codes), targeting 35k chars per request
+# (≈14k tokens). Some product descriptions individually exceed the
+# per-doc 2048-token cap; we truncate those to MAX_CHARS_PER_DOC.
+MAX_CHARS_PER_DOC   = 4500
+MAX_CHARS_PER_BATCH = 35_000
+EMBED_BATCH_FALLBACK = 25      # used only if the bin-packer can't fit one doc
 MERGE_BATCH = 500
 
 
@@ -367,16 +366,39 @@ def run(reset: bool = False, limit: int | None = None) -> None:
     pending: list[dict] = []
     embedded_total = 0
 
-    for i in range(0, len(products), EMBED_BATCH):
-        batch = products[i:i + EMBED_BATCH]
-        texts = [build_chunk_text(p) for p in batch]
+    # Pre-build texts once so we can bin-pack by length.
+    items = [(p, build_chunk_text(p)) for p in products]
+
+    def iter_batches():
+        """Yield batches of (product, text) pairs whose total char count
+        stays under MAX_CHARS_PER_BATCH so Vertex's 20k-token-per-request
+        limit isn't tripped."""
+        cur: list = []
+        cur_chars = 0
+        for p, t in items:
+            tlen = len(t)
+            if cur and (cur_chars + tlen > MAX_CHARS_PER_BATCH
+                         or len(cur) >= EMBED_BATCH_FALLBACK):
+                yield cur
+                cur, cur_chars = [], 0
+            cur.append((p, t))
+            cur_chars += tlen
+        if cur:
+            yield cur
+
+    seen = 0
+    for batch in iter_batches():
+        prods, texts = zip(*batch)
         t = time.perf_counter()
-        vectors = embed_batch(embed_model, texts)
+        vectors = embed_batch(embed_model, list(texts))
         embedded_total += len(vectors)
-        print(f"  embedded {i + len(batch):>5}/{len(products):>5}  "
+        seen += len(batch)
+        chars = sum(len(t) for t in texts)
+        print(f"  embedded {seen:>5}/{len(products):>5}  "
+              f"batch={len(batch):>2}  chars={chars:>5}  "
               f"({(time.perf_counter()-t)*1000:.0f}ms)")
 
-        for p, body, vec in zip(batch, texts, vectors):
+        for p, body, vec in zip(prods, texts, vectors):
             last_mod = parse_date(p.get("DateUpdated")) or run_started_at
             pending.append({
                 "doc_id":           f"neto_product:{p['ID']}",

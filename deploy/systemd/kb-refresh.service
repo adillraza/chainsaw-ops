@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh Knowledge Base — incremental Neto products → kb.documents
+After=network-online.target chainsaw-ops-refresh.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/chainsaw-ops
+EnvironmentFile=/opt/chainsaw-ops/.env
+Environment=PATH=/opt/chainsaw-ops/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/kb_neto_products_ingest.py
+TimeoutStartSec=30min
+StandardOutput=journal
+StandardError=journal
