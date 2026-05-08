@@ -95,6 +95,16 @@
               <template x-if="m.streaming">
                 <span class="ml-1 inline-block h-3 w-1 animate-pulse bg-slate-400 align-middle"></span>
               </template>
+
+              {# Tool call status — shown while Gemini is calling a live-data
+                 tool (stock lookup, customer summary, etc.) so the agent
+                 isn't staring at a blank box for a few seconds. #}
+              <template x-if="m.tool_status">
+                <p class="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+                  <i class="fas fa-circle-notch fa-spin text-[10px]"></i>
+                  <span x-text="m.tool_status"></span>
+                </p>
+              </template>
             </div>
           </template>
         </div>
@@ -246,6 +256,20 @@ function kbChat() {
       try { evt = JSON.parse(line); } catch (e) { return; }
       if (evt.type === 'sources') {
         assistant.citations = evt.hits || [];
+      } else if (evt.type === 'tool_call') {
+        // Map function name -> agent-friendly label so the spinner
+        // text reads naturally during the wait.
+        const labels = {
+          get_stock_and_price:  'Looking up live stock + price…',
+          get_customer_summary: 'Looking up customer summary…',
+          get_customer_orders:  'Looking up recent orders…',
+        };
+        assistant.tool_status = labels[evt.name] || ('Calling ' + evt.name + '…');
+        this.scrollToBottom();
+      } else if (evt.type === 'tool_result') {
+        // Clear the spinner — next event will be either another tool_call
+        // or the streamed text.
+        assistant.tool_status = null;
       } else if (evt.type === 'token') {
         assistant.content += evt.text || '';
         this.scrollToBottom();

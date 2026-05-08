@@ -39,17 +39,23 @@ SYSTEM_PROMPT = """You are the Knowledge Base assistant for chainsawspares.com.a
 You help internal customer service agents answer customer questions during live phone calls.
 
 CORE RULES:
-1. Answer ONLY from the SOURCES provided in the latest user message. Never invent products, SKUs, prices, stock levels, or specifications.
-2. If the sources don't cover the question, say plainly: "I couldn't find that in the knowledge base. Try rephrasing or check Neto directly." Then suggest 1-2 related queries the agent could try.
-3. CITE every factual claim using [N] format, where N is the source number. Multiple sources for one claim use [1][2]. Every product mention should carry a citation.
+1. Ground every product claim in the SOURCES provided in the latest user message OR in tool results from this turn. Never invent products, SKUs, prices, stock levels, or specifications.
+2. If neither the sources nor any tool can answer the question, say plainly: "I couldn't find that in the knowledge base. Try rephrasing or check Neto directly." Then suggest 1-2 related queries.
+3. CITE every factual claim drawn from SOURCES using [N] format, where N is the source number. Multiple sources for one claim use [1][2]. Tool results don't need [N] — they're live.
 4. For compatibility / fit / spec questions, you MAY reason from the data — e.g., "both products are 0.325" pitch / 0.063" gauge, so the chain fits this bar [1][2]". Be explicit about your reasoning.
-5. Never claim live data you don't have. If asked about current stock, current price, or whether a customer has ordered before, respond: "I don't have access to live [stock/price/orders] yet — open the product in Neto for that."
+
+LIVE-DATA TOOLS (use proactively when relevant):
+- ``get_stock_and_price(sku)`` — current online + Ballarat retail stock and prices for a SKU. Call this whenever the agent asks "is it in stock", "how much", "in store", "online price". The SKU must come from the SOURCES list — don't invent one.
+- ``get_customer_summary(phone OR email)`` — name, badge, lifetime totals. Use when the agent references "this customer" or asks about who they are.
+- ``get_customer_orders(phone OR email, limit)`` — recent orders for a customer. Use when the agent asks "have they ordered X before?" or "what was the last order?".
+
+When you call a tool, integrate the result naturally — quote actual numbers ("423 in stock at Kennedy's, 5 in store at Ballarat") rather than re-stating the question. If a tool returns matched=False, say so honestly and ask for a SKU or contact detail.
 
 OUTPUT STYLE:
 - Be concise. The agent is on a phone call — aim for 1-3 sentences they can read aloud, plus optional short follow-up detail.
 - Don't use markdown headers or bold. Plain text. Line breaks are fine.
 - Quote SKUs as plain text — the UI will auto-link them.
-- Use [N] inline as you cite. Don't list all sources at the end; the UI shows them separately.
+- Use [N] inline for SOURCE citations. Tool results don't get [N].
 
 CONVERSATION CONTEXT:
 You'll receive the chat history followed by the latest user message. The latest user message has SOURCES appended after a separator. Treat anything before the separator as the question; anything after as the retrieval-time context for THIS turn only.
@@ -112,15 +118,21 @@ def _build_history(messages: list[dict]):
 
 
 def _model():
-    """Lazily init Vertex AI + return the configured GenerativeModel."""
+    """Lazily init Vertex AI + return the configured GenerativeModel.
+
+    The model is wired with the live-data tools defined in kb_tools so
+    Gemini can decide to call them mid-turn (function calling).
+    """
     global _model_cache
     cached = globals().get("_model_cache")
     if cached is not None:
         return cached
     import vertexai
-    from vertexai.generative_models import GenerativeModel
+    from vertexai.generative_models import GenerativeModel, Tool
+    from app.services import kb_tools
     vertexai.init(project=PROJECT, location=LOCATION)
-    m = GenerativeModel(MODEL, system_instruction=SYSTEM_PROMPT)
+    tools = [Tool(function_declarations=kb_tools.function_declarations())]
+    m = GenerativeModel(MODEL, system_instruction=SYSTEM_PROMPT, tools=tools)
     globals()["_model_cache"] = m
     return m
 
@@ -166,24 +178,75 @@ def stream(messages: list[dict]) -> Iterator[dict[str, Any]]:
         f"{sources_block}"
     )
 
-    # Step 3: stream Gemini.
+    # Step 3: send to Gemini, handling function calls until we reach text.
     try:
-        from vertexai.generative_models import GenerationConfig
+        from vertexai.generative_models import GenerationConfig, Part
+        from app.services import kb_tools
+
         chat = _model().start_chat(history=_build_history(messages))
         gen_cfg = GenerationConfig(
             temperature=TEMPERATURE,
             max_output_tokens=MAX_OUTPUT,
         )
-        t_first = None
-        for chunk in chat.send_message(
-            augmented_user_message, stream=True, generation_config=gen_cfg,
-        ):
-            text = getattr(chunk, "text", "") or ""
-            if not text:
+
+        # First send: NON-streaming, so we can detect function_calls
+        # cleanly. Gemini Flash is fast (~1.5s) and most turns either
+        # answer directly or call one tool — both paths converge to a
+        # final text response which we then re-send streaming.
+        message_to_send: Any = augmented_user_message
+        max_tool_loops = 4
+        for loop in range(max_tool_loops + 1):
+            response = chat.send_message(message_to_send, generation_config=gen_cfg)
+            cand = response.candidates[0] if response.candidates else None
+            parts = (cand.content.parts if cand and cand.content else []) or []
+
+            # Collect any function calls in this response
+            fcalls = []
+            text_pieces = []
+            for p in parts:
+                if hasattr(p, "function_call") and p.function_call and p.function_call.name:
+                    fcalls.append(p.function_call)
+                else:
+                    txt = getattr(p, "text", None)
+                    if txt:
+                        text_pieces.append(txt)
+
+            if fcalls:
+                if loop >= max_tool_loops:
+                    log.warning("kb_chat: tool loop cap hit (%d) — bailing", loop)
+                    break
+                # Dispatch every call, send all results back in one
+                # message so the model sees them together.
+                fn_responses = []
+                for fc in fcalls:
+                    yield {"type": "tool_call", "name": fc.name,
+                           "args": dict(fc.args) if fc.args else {}}
+                    try:
+                        fn = kb_tools.TOOL_DISPATCH.get(fc.name)
+                        if not fn:
+                            result = {"error": f"unknown tool {fc.name}"}
+                        else:
+                            result = fn(**dict(fc.args)) if fc.args else fn()
+                    except Exception as exc:
+                        log.warning("kb_chat: tool %s threw: %s", fc.name, exc)
+                        result = {"error": str(exc)}
+                    yield {"type": "tool_result", "name": fc.name, "result": result}
+                    fn_responses.append(Part.from_function_response(
+                        name=fc.name,
+                        response={"result": result},
+                    ))
+                message_to_send = fn_responses
                 continue
-            if t_first is None:
-                t_first = time.perf_counter()
-            yield {"type": "token", "text": text}
+
+            # No function call — we have a text response. Stream THAT
+            # back to the user character-by-character for the typewriter
+            # feel even though the underlying call was non-streaming.
+            full_text = "".join(text_pieces)
+            t_first = time.perf_counter()
+            # Chunk into ~30-char tokens so the UI feels live.
+            for i in range(0, len(full_text), 30):
+                yield {"type": "token", "text": full_text[i:i+30]}
+            break
     except Exception as exc:
         log.warning("kb_chat: generation failed: %s", exc)
         yield {"type": "error", "message": f"generation failed: {exc}"}
