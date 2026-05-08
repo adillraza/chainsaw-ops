@@ -50,6 +50,7 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     ],
     "Customer Service": [
         ("support.calls.view",       "See the live-calls dashboard and customer 360 cards"),
+        ("kb.view",                  "Use the Knowledge Base — search products, manuals, brochures"),
     ],
 }
 
@@ -100,6 +101,7 @@ SYSTEM_ROLE_DEFAULTS: dict[str, set[str]] = {
     # users until an admin promotes them.
     "viewer": {
         "support.calls.view",
+        "kb.view",
     },
 }
 

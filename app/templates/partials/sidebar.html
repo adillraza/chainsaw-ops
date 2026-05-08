@@ -83,10 +83,14 @@
       {{ nav_group('Validation', 'fa-circle-check', validation_items, default_open=true) }}
     {% endif %}
 
-    {% if can('support.calls.view') %}
-      {% set support_items = [
-        {'label': 'Customer 360',  'href': url_for('customer_360.index'), 'icon': 'fa-id-card'},
-      ] %}
+    {% if can('support.calls.view') or can('kb.view') %}
+      {% set support_items = [] %}
+      {% if can('support.calls.view') %}
+        {% set support_items = support_items + [{'label': 'Customer 360',   'href': url_for('customer_360.index'),    'icon': 'fa-id-card'}] %}
+      {% endif %}
+      {% if can('kb.view') %}
+        {% set support_items = support_items + [{'label': 'Knowledge Base', 'href': url_for('knowledge_base.index'),   'icon': 'fa-book-open'}] %}
+      {% endif %}
       {{ nav_group('Customer Service', 'fa-headset', support_items, default_open=true) }}
     {% endif %}
 

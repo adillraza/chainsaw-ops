@@ -94,6 +94,7 @@ def create_app(config_object: str | None = None) -> Flask:
     from app.blueprints.validation import validation_bp
     from app.blueprints.live_calls import live_calls_bp
     from app.blueprints.customer_360 import customer_360_bp
+    from app.blueprints.knowledge_base import knowledge_base_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -105,6 +106,7 @@ def create_app(config_object: str | None = None) -> Flask:
     app.register_blueprint(validation_bp)
     app.register_blueprint(live_calls_bp)
     app.register_blueprint(customer_360_bp)
+    app.register_blueprint(knowledge_base_bp)
 
     return app
 
