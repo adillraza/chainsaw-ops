@@ -698,17 +698,23 @@ def reparse_all_call_events():
 @live_calls_bp.route("/recent", methods=["GET"])
 @require_capability("support.calls.view")
 def recent_calls():
-    """Return the last 20 *ended* call sessions (one row per session_id).
+    """Return every *ended* call session from today (Australia/Melbourne).
 
-    Distinct from /active (which only shows in-flight). Recent shows calls
-    whose latest event is a Disconnected — the agent's "I just hung up,
-    let me look up the customer" buffer.
+    Distinct from /active (which only shows in-flight). The list resets
+    at the next Mel midnight — agents see every call from the start of
+    business through right-now without an artificial 20-call cap.
     """
     from datetime import datetime, timedelta
     from sqlalchemy import func, and_
     from flask import render_template
+    import pytz
 
-    since = datetime.utcnow() - timedelta(hours=12)
+    # Start of today in Australia/Melbourne, converted to naive UTC so
+    # it lines up with how SQLite call_event.received_at is stored.
+    _MEL = pytz.timezone("Australia/Melbourne")
+    _now_mel = datetime.now(_MEL)
+    _midnight_mel = _now_mel.replace(hour=0, minute=0, second=0, microsecond=0)
+    since = _midnight_mel.astimezone(pytz.utc).replace(tzinfo=None)
 
     # Latest event per session
     latest = (
@@ -820,11 +826,13 @@ def recent_calls():
         leg_count = sum(g["leg_count"] for g in cluster)
         collapsed.append((chosen["primary"], earliest, leg_count))
 
-    # Newest first, cap at 20
+    # Newest first. No cap — we want every call from today on screen so
+    # an agent can scroll back to a 9am call at 5pm without it falling
+    # off the list.
     collapsed.sort(key=lambda x: x[0].received_at, reverse=True)
     ended = [
         _recent_view_model(evt, first_at, pinned_session_ids, leg_count=lc)
-        for evt, first_at, lc in collapsed[:20]
+        for evt, first_at, lc in collapsed
     ]
 
     return render_template("partials/live_calls_recent.html", recent=ended)

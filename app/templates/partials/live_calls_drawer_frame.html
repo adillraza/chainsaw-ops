@@ -2,7 +2,7 @@
 
    Sections (fixed order, only ONE expanded at a time):
      1. Live Calls    — currently in-flight, polled every 3s
-     2. Recent Calls  — last 20 ended sessions, polled every 10s
+     2. Today's Calls — every ended call since midnight Mel, polled every 10s
      3. Pin Calls     — agent-pinned calls, polled when pin-changed event fires
 
    Each section's body is HTMX-fetched from its own endpoint.
@@ -39,21 +39,22 @@
          @pin-changed.window="$dispatch('refresh-pin-calls')">
 
     {# ============================================================
-       Section 1: LIVE CALLS
+       Section 1: LIVE CALLS — emerald tint when active (matches the
+       green status dot the agent's already used to seeing on this row).
        ============================================================ #}
     <section class="flex flex-col border-b border-slate-200 min-h-0"
              :class="openSection === 'live' ? 'flex-1' : ''">
       <button type="button"
               @click="openSection = 'live'"
               class="flex h-12 flex-shrink-0 items-center justify-between px-4 text-left transition hover:bg-slate-50"
-              :class="openSection === 'live' ? 'bg-white' : 'bg-slate-50'">
+              :class="openSection === 'live' ? 'bg-emerald-50' : 'bg-slate-50'">
         <span class="flex items-center gap-2">
           <i class="fas fa-circle text-[8px] text-emerald-500"></i>
           <span class="text-sm font-semibold text-slate-900">Live Calls</span>
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'live' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
-      <div x-show="openSection === 'live'" x-cloak class="flex-1 overflow-y-auto"
+      <div x-show="openSection === 'live'" x-cloak class="flex-1 overflow-y-auto bg-emerald-50/40"
            id="live-section-body"
            hx-get="{{ url_for('live_calls.active_calls') }}"
            hx-trigger="load, every 3s, refresh-pin-calls from:body delay:200ms"
@@ -65,51 +66,23 @@
     </section>
 
     {# ============================================================
-       Section 2: RECENT CALLS
+       Section 2: TODAY'S CALLS — every call ended since midnight Mel.
+       Sky-blue tint when active. Scroll persistence removed for now;
+       we'll bring it back once we know why it wasn't sticking.
        ============================================================ #}
     <section class="flex flex-col border-b border-slate-200 min-h-0"
              :class="openSection === 'recent' ? 'flex-1' : ''">
       <button type="button"
               @click="openSection = 'recent'"
               class="flex h-12 flex-shrink-0 items-center justify-between px-4 text-left transition hover:bg-slate-50"
-              :class="openSection === 'recent' ? 'bg-white' : 'bg-slate-50'">
+              :class="openSection === 'recent' ? 'bg-sky-50' : 'bg-slate-50'">
         <span class="flex items-center gap-2">
-          <i class="fas fa-clock-rotate-left text-[11px] text-slate-500"></i>
-          <span class="text-sm font-semibold text-slate-900">Recent Calls</span>
+          <i class="fas fa-clock-rotate-left text-[11px] text-sky-600"></i>
+          <span class="text-sm font-semibold text-slate-900">Today's Calls</span>
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'recent' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
-      {# Persist scroll position across full-page navigations and the
-         10-second polling refresh. Without this, an agent who scrolls
-         a long Recent Calls list to find a call from yesterday loses
-         their place every time they click into a customer card.
-
-         Implementation notes:
-         * Scroll handler writes synchronously — no debounce — so a
-           fast scroll+click sequence still captures the latest value
-           before the page navigates away.
-         * Restore listens on htmx:afterSettle (fires after layout has
-           settled) and uses requestAnimationFrame to ensure the new
-           rows have measured height before we set scrollTop. Without
-           that, scrollTop gets capped at the (small) visible-but-
-           still-rendering scrollHeight.
-         * Also restores on Alpine's $watch openSection→recent so a
-           collapsed-then-reopened panel jumps back to the saved spot. #}
-      <div x-show="openSection === 'recent'" x-cloak class="flex-1 overflow-y-auto"
-           x-data="{ key: 'recentCallsScrollTop' }"
-           x-init="
-             const restore = () => requestAnimationFrame(() => {
-               const v = parseInt(sessionStorage.getItem(key) || '0', 10);
-               if (v > 0 && $el.scrollHeight > $el.clientHeight) {
-                 $el.scrollTop = v;
-               }
-             });
-             $el.addEventListener('scroll', () => {
-               sessionStorage.setItem(key, $el.scrollTop);
-             }, { passive: true });
-             $el.addEventListener('htmx:afterSettle', restore);
-             $watch('openSection', v => { if (v === 'recent') restore(); });
-           "
+      <div x-show="openSection === 'recent'" x-cloak class="flex-1 overflow-y-auto bg-sky-50/40"
            hx-get="{{ url_for('live_calls.recent_calls') }}"
            hx-trigger="load, every 10s, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">
@@ -120,21 +93,22 @@
     </section>
 
     {# ============================================================
-       Section 3: PIN CALLS
+       Section 3: PIN CALLS — amber tint when active (matches the
+       pin icon).
        ============================================================ #}
     <section class="flex flex-col min-h-0"
              :class="openSection === 'pin' ? 'flex-1' : ''">
       <button type="button"
               @click="openSection = 'pin'"
               class="flex h-12 flex-shrink-0 items-center justify-between px-4 text-left transition hover:bg-slate-50"
-              :class="openSection === 'pin' ? 'bg-white' : 'bg-slate-50'">
+              :class="openSection === 'pin' ? 'bg-amber-50' : 'bg-slate-50'">
         <span class="flex items-center gap-2">
           <i class="fas fa-thumbtack text-[11px] text-amber-500"></i>
           <span class="text-sm font-semibold text-slate-900">Pin Calls</span>
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'pin' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
-      <div x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto"
+      <div x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto bg-amber-50/40"
            hx-get="{{ url_for('live_calls.pinned_calls') }}"
            hx-trigger="load, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">

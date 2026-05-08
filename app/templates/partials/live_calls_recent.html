@@ -1,8 +1,9 @@
-{# Section body for "Recent Calls" — last 20 ended sessions, polled every 10s
-   by the drawer frame. One row per session_id whose latest event is a
-   Disconnected. Click a card to open the customer 360 page. The pin button
-   in the top-right corner toggles the call into "Pin Calls" via the same
-   pin-changed event the live section uses. #}
+{# Section body for "Today's Calls" — every ended session since midnight
+   Australia/Melbourne, polled every 10s by the drawer frame. One row per
+   session_id whose latest event is a Disconnected. Click a card to open
+   the customer 360 page. The pin button in the top-right corner toggles
+   the call into "Pin Calls" via the same pin-changed event the live
+   section uses. #}
 
 <div class="flex h-full flex-col">
   {% if not recent %}
