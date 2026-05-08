@@ -194,10 +194,17 @@ function kbChat() {
       if (!q || this.busy) return;
       this.error = null;
 
-      // Push the user turn + a placeholder assistant turn (filled by streaming).
+      // Push the user turn + a placeholder assistant turn. Crucially we
+      // grab the assistant via this.messages[idx] AFTER the push so we
+      // mutate the proxied reactive object — mutating a local reference
+      // captured before the push doesn't trigger Alpine re-renders, so
+      // tokens would arrive but the UI would freeze on the empty bubble
+      // until refresh.
       this.messages.push({ role: 'user', content: q });
-      const assistant = { role: 'assistant', content: '', citations: [], streaming: true };
-      this.messages.push(assistant);
+      const assistantIdx = this.messages.push({
+        role: 'assistant', content: '', citations: [], streaming: true,
+      }) - 1;
+      const assistant = this.messages[assistantIdx];
       this.input = '';
       this.busy = true;
       this.persist();
