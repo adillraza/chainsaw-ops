@@ -2,44 +2,275 @@
 {% block title %}Knowledge Base{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-4xl px-4 py-6">
+{# Chat-style Knowledge Base. Conversation state lives in sessionStorage
+   (per-tab, ephemeral) — backend is stateless, frontend replays the
+   thread on every turn. Stream is parsed line-by-line as NDJSON. #}
+<div class="mx-auto flex h-[calc(100vh-4rem)] max-w-4xl flex-col px-4 py-4"
+     x-data="kbChat()"
+     x-init="init()">
 
-  <header class="mb-5">
-    <h2 class="text-lg font-semibold text-slate-900">Knowledge Base</h2>
-    <p class="mt-1 text-sm text-slate-600">
-      Search products, brochures and technical manuals to answer customer questions.
-      Click any SKU or title to open the source on chainsawspares.com.au.
-    </p>
+  {# ---------------- Header ---------------- #}
+  <header class="mb-4 flex items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h2 class="text-lg font-semibold text-slate-900">Knowledge Base</h2>
+      <p class="mt-0.5 text-xs text-slate-500">
+        Ask product questions in plain English. The assistant answers from chainsawspares.com.au
+        product data, with linked sources you can verify.
+      </p>
+    </div>
+    <button type="button"
+            x-show="messages.length > 0"
+            @click="newChat()"
+            class="flex-shrink-0 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+      <i class="fas fa-plus text-[10px]"></i> New chat
+    </button>
   </header>
 
-  <form method="get" action="{{ url_for('knowledge_base.index') }}"
-        class="mb-5"
-        autocomplete="off">
-    <label class="relative block">
-      <span class="sr-only">Search</span>
-      <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400"></i>
-      <input type="search" name="q" value="{{ query or '' }}"
-             placeholder="e.g. stihl ms250 chain pitch, electric fence energiser, fire hose"
-             autofocus
-             hx-get="{{ url_for('knowledge_base.search_partial') }}"
-             hx-trigger="keyup changed delay:250ms, search"
-             hx-target="#kb-results"
-             hx-swap="innerHTML"
-             hx-include="this"
-             hx-indicator="#kb-spinner"
-             class="w-full rounded-lg border border-slate-300 bg-white pl-10 pr-12 py-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:ring-brand-500">
-      <span id="kb-spinner" class="htmx-indicator absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-        <i class="fas fa-circle-notch fa-spin"></i>
-      </span>
-    </label>
-    <p class="mt-1.5 text-[11px] text-slate-400">
-      Phase 1A: searches across {{ '~11,400' }} products. Brochures and manuals coming soon.
-    </p>
-  </form>
+  {# ---------------- Conversation thread ---------------- #}
+  <div x-ref="thread"
+       class="flex-1 space-y-4 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-4">
 
-  <div id="kb-results">
-    {% include "knowledge_base/_results.html" %}
+    {# Empty state — show suggestion chips so a fresh chat isn't a blank page #}
+    <template x-if="messages.length === 0">
+      <div class="flex h-full flex-col items-center justify-center text-center">
+        <i class="fas fa-comments text-3xl text-slate-300"></i>
+        <p class="mt-3 text-sm font-medium text-slate-700">Ask a question to get started.</p>
+        <p class="mt-1 text-xs text-slate-500">Examples:</p>
+        <div class="mt-3 flex max-w-md flex-wrap items-center justify-center gap-2">
+          <template x-for="ex in examples" :key="ex">
+            <button type="button"
+                    @click="ask(ex)"
+                    class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700">
+              <span x-text="ex"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    {# Each message #}
+    <template x-for="(m, idx) in messages" :key="idx">
+      <div :class="m.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+        <div :class="m.role === 'user'
+                ? 'max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2 text-sm text-white shadow-sm'
+                : 'max-w-[88%] rounded-2xl rounded-bl-sm bg-white px-4 py-3 text-sm text-slate-800 shadow-sm border border-slate-200'">
+
+          {# User: plain text. Assistant: text + citations + sources. #}
+          <template x-if="m.role === 'user'">
+            <p class="whitespace-pre-wrap leading-relaxed" x-text="m.content"></p>
+          </template>
+
+          <template x-if="m.role === 'assistant'">
+            <div>
+              <div class="whitespace-pre-wrap leading-relaxed"
+                   x-html="renderAnswer(m.content, m.citations || [])"></div>
+
+              {# Sources panel under each assistant message #}
+              <template x-if="m.citations && m.citations.length > 0">
+                <div class="mt-3 border-t border-slate-100 pt-3">
+                  <p class="text-[11px] uppercase tracking-wide text-slate-500">Sources</p>
+                  <ol class="mt-1.5 space-y-1.5">
+                    <template x-for="(c, ci) in m.citations" :key="ci">
+                      <li class="flex items-start gap-2 text-xs">
+                        <span class="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 font-mono text-[10px] font-semibold text-slate-700"
+                              x-text="ci + 1"></span>
+                        <div class="min-w-0 flex-1">
+                          <a :href="c.url" target="_blank" rel="noopener"
+                             class="font-medium text-brand-700 hover:underline"
+                             x-text="c.title || '(untitled)'"></a>
+                          <span class="text-slate-400" x-show="c.sku"> · SKU
+                            <a :href="c.url" target="_blank" rel="noopener"
+                               class="font-mono text-slate-600 hover:underline"
+                               x-text="c.sku"></a>
+                          </span>
+                          <span class="text-slate-400" x-show="c.metadata && c.metadata.brand"> · <span x-text="c.metadata && c.metadata.brand"></span></span>
+                        </div>
+                      </li>
+                    </template>
+                  </ol>
+                </div>
+              </template>
+
+              {# Streaming indicator while we're still receiving tokens #}
+              <template x-if="m.streaming">
+                <span class="ml-1 inline-block h-3 w-1 animate-pulse bg-slate-400 align-middle"></span>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    {# Error banner after a failed turn #}
+    <template x-if="error">
+      <div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+        <i class="fas fa-circle-exclamation mr-1"></i>
+        <span x-text="error"></span>
+      </div>
+    </template>
   </div>
 
+  {# ---------------- Composer ---------------- #}
+  <form @submit.prevent="ask(input)" class="mt-3 flex gap-2">
+    <textarea
+        x-ref="composer"
+        x-model="input"
+        @keydown.enter.exact.prevent="ask(input)"
+        @keydown.meta.enter.prevent="ask(input)"
+        :disabled="busy"
+        rows="2"
+        placeholder="Ask about products, fitment, specs… (Enter to send · Shift+Enter for newline)"
+        class="flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 disabled:bg-slate-100"></textarea>
+    <button type="submit"
+            :disabled="busy || !input.trim()"
+            class="self-end rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+      <span x-show="!busy"><i class="fas fa-paper-plane mr-1"></i> Send</span>
+      <span x-show="busy"><i class="fas fa-circle-notch fa-spin mr-1"></i> Thinking</span>
+    </button>
+  </form>
+
+  <p class="mt-2 text-center text-[10px] text-slate-400">
+    Phase 1.5 · grounded in {{ '~6,200' }} active products · live data tools coming next
+  </p>
+
 </div>
+
+{# ----------------------------------------------------------------- #}
+{# Alpine component                                                  #}
+{# ----------------------------------------------------------------- #}
+<script>
+function kbChat() {
+  return {
+    STORAGE_KEY: 'kbChat',
+    messages: [],
+    input: '',
+    busy: false,
+    error: null,
+    examples: [
+      "Does the 67DL chain fit a Stihl MS250?",
+      "What chains fit the Perla Barb 70cc?",
+      "Electric fence energiser for 20km range",
+      "Difference between full chisel and semi chisel chain",
+    ],
+
+    init() {
+      try {
+        const saved = sessionStorage.getItem(this.STORAGE_KEY);
+        if (saved) this.messages = JSON.parse(saved);
+      } catch (e) { /* ignore */ }
+      this.$nextTick(() => this.scrollToBottom());
+    },
+
+    persist() {
+      try {
+        sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.messages));
+      } catch (e) { /* ignore quota */ }
+    },
+
+    newChat() {
+      this.messages = [];
+      this.error = null;
+      this.persist();
+      this.$refs.composer.focus();
+    },
+
+    scrollToBottom() {
+      const el = this.$refs.thread;
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+
+    async ask(question) {
+      const q = (question || '').trim();
+      if (!q || this.busy) return;
+      this.error = null;
+
+      // Push the user turn + a placeholder assistant turn (filled by streaming).
+      this.messages.push({ role: 'user', content: q });
+      const assistant = { role: 'assistant', content: '', citations: [], streaming: true };
+      this.messages.push(assistant);
+      this.input = '';
+      this.busy = true;
+      this.persist();
+      this.$nextTick(() => this.scrollToBottom());
+
+      try {
+        // Send everything except the still-empty assistant placeholder.
+        const payload = {
+          messages: this.messages.slice(0, -1).map(m => ({
+            role: m.role, content: m.content,
+          })),
+        };
+        const response = await fetch('/api/kb/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok || !response.body) {
+          throw new Error('Server returned ' + response.status);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            this.handleEvent(line, assistant);
+          }
+        }
+      } catch (e) {
+        this.error = 'Chat failed: ' + (e.message || e);
+        // Drop the placeholder so the thread doesn't show a blank assistant.
+        if (assistant.content === '') {
+          this.messages.pop();
+        }
+      } finally {
+        assistant.streaming = false;
+        this.busy = false;
+        this.persist();
+        this.$nextTick(() => {
+          this.scrollToBottom();
+          this.$refs.composer.focus();
+        });
+      }
+    },
+
+    handleEvent(line, assistant) {
+      let evt;
+      try { evt = JSON.parse(line); } catch (e) { return; }
+      if (evt.type === 'sources') {
+        assistant.citations = evt.hits || [];
+      } else if (evt.type === 'token') {
+        assistant.content += evt.text || '';
+        this.scrollToBottom();
+      } else if (evt.type === 'error') {
+        this.error = evt.message || 'Unknown error';
+      } else if (evt.type === 'done') {
+        // nothing extra; finally{} clears streaming flag
+      }
+    },
+
+    // Render assistant text with [N] turning into clickable citation pills.
+    // Note: x-html is used so this MUST escape user-derived HTML to avoid
+    // injection. We escape first, then replace [N] tokens.
+    renderAnswer(text, citations) {
+      const esc = (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return esc.replace(/\[(\d+)\]/g, (m, n) => {
+        const idx = parseInt(n, 10) - 1;
+        if (idx < 0 || idx >= (citations || []).length) return m;
+        const c = citations[idx];
+        const url = c.url || '#';
+        return `<a href="${url}" target="_blank" rel="noopener" `
+             + `class="inline-flex h-4 min-w-[16px] items-center justify-center rounded bg-brand-100 px-1 text-[10px] font-mono font-semibold text-brand-700 hover:bg-brand-200 mx-0.5 align-middle no-underline">${n}</a>`;
+      });
+    },
+  };
+}
+</script>
 {% endblock %}
