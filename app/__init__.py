@@ -121,6 +121,7 @@ def bootstrap_database(app: Flask) -> None:
     from app.services.startup import (
         create_admin_user,
         prewarm_graph_token,
+        prewarm_kb_models,
         sync_reviews_from_bigquery_safe,
     )
 
@@ -134,3 +135,7 @@ def bootstrap_database(app: Flask) -> None:
         # cache so the first inbound webhook's prewarm doesn't pay the
         # ~150ms auth round-trip.
         prewarm_graph_token()
+        # Same pattern for the KB embedding + Gemini models — first
+        # load is ~15s on the VPS, which would otherwise fall on the
+        # first agent who opens the chat after a deploy.
+        prewarm_kb_models()

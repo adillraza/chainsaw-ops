@@ -56,3 +56,26 @@ def prewarm_graph_token() -> None:
 
     t = threading.Thread(target=_worker, daemon=True, name="graph-token-prewarm")
     t.start()
+
+
+def prewarm_kb_models() -> None:
+    """Initialise Vertex AI's embedding + Gemini models at app boot.
+
+    First-load of the embedding SDK costs ~15s on the VPS (model fetch +
+    grpc setup). Without this, the agent's first KB chat sits there for
+    ~18s before the first token streams in — felt unusable. Backgrounded
+    so app startup itself stays fast.
+    """
+    def _worker():
+        try:
+            from app.services import kb_service, kb_chat
+            t0 = time.time()
+            # Trigger lazy load + warm the LRU cache with a dummy query.
+            kb_service._embed_query("warm-up query")
+            kb_chat._model()  # initialise the GenerativeModel
+            log.info("kb models pre-warmed in %.1fs", time.time() - t0)
+        except Exception as exc:
+            log.warning("kb model pre-warm failed: %s", exc)
+
+    t = threading.Thread(target=_worker, daemon=True, name="kb-prewarm")
+    t.start()
