@@ -79,7 +79,25 @@
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'recent' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
+      {# Persist scroll position across full-page navigations and the
+         10-second polling refresh. Without this, an agent who scrolls
+         a long Recent Calls list to find a call from yesterday loses
+         their place every time they click into a customer card. #}
       <div x-show="openSection === 'recent'" x-cloak class="flex-1 overflow-y-auto"
+           x-data="{ key: 'recentCallsScrollTop' }"
+           x-init="
+             let _t;
+             $el.addEventListener('scroll', () => {
+               clearTimeout(_t);
+               _t = setTimeout(() => {
+                 sessionStorage.setItem(key, $el.scrollTop);
+               }, 80);
+             });
+             $el.addEventListener('htmx:afterSwap', () => {
+               const v = parseInt(sessionStorage.getItem(key) || '0', 10);
+               if (v > 0) $el.scrollTop = v;
+             });
+           "
            hx-get="{{ url_for('live_calls.recent_calls') }}"
            hx-trigger="load, every 10s, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">
