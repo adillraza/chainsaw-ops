@@ -82,21 +82,33 @@
       {# Persist scroll position across full-page navigations and the
          10-second polling refresh. Without this, an agent who scrolls
          a long Recent Calls list to find a call from yesterday loses
-         their place every time they click into a customer card. #}
+         their place every time they click into a customer card.
+
+         Implementation notes:
+         * Scroll handler writes synchronously — no debounce — so a
+           fast scroll+click sequence still captures the latest value
+           before the page navigates away.
+         * Restore listens on htmx:afterSettle (fires after layout has
+           settled) and uses requestAnimationFrame to ensure the new
+           rows have measured height before we set scrollTop. Without
+           that, scrollTop gets capped at the (small) visible-but-
+           still-rendering scrollHeight.
+         * Also restores on Alpine's $watch openSection→recent so a
+           collapsed-then-reopened panel jumps back to the saved spot. #}
       <div x-show="openSection === 'recent'" x-cloak class="flex-1 overflow-y-auto"
            x-data="{ key: 'recentCallsScrollTop' }"
            x-init="
-             let _t;
-             $el.addEventListener('scroll', () => {
-               clearTimeout(_t);
-               _t = setTimeout(() => {
-                 sessionStorage.setItem(key, $el.scrollTop);
-               }, 80);
-             });
-             $el.addEventListener('htmx:afterSwap', () => {
+             const restore = () => requestAnimationFrame(() => {
                const v = parseInt(sessionStorage.getItem(key) || '0', 10);
-               if (v > 0) $el.scrollTop = v;
+               if (v > 0 && $el.scrollHeight > $el.clientHeight) {
+                 $el.scrollTop = v;
+               }
              });
+             $el.addEventListener('scroll', () => {
+               sessionStorage.setItem(key, $el.scrollTop);
+             }, { passive: true });
+             $el.addEventListener('htmx:afterSettle', restore);
+             $watch('openSection', v => { if (v === 'recent') restore(); });
            "
            hx-get="{{ url_for('live_calls.recent_calls') }}"
            hx-trigger="load, every 10s, refresh-pin-calls from:body delay:200ms"
