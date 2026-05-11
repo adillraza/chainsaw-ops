@@ -1046,10 +1046,13 @@ class Customer360Service:
             problems_detected, etc.)
           * callsrep_rep_contacts_completed_v2 — call metadata (start/duration/agent)
 
-        ``session_id`` matches CXone calls (numeric contactId stored as STRING in
-        our last_5_calls). PBX calls use a different session id format
-        (``s-...``) and won't match — for those we return an empty payload and
-        the modal renders a "no analysis available" state.
+        ``session_id`` matches CXone calls directly (numeric contactId stored
+        as STRING in our last_5_calls). For PBX calls the session_id is the
+        RC telephony session (``s-...``), which does NOT match
+        ``recording_fetch_status.contactId`` (we store the RC ``recording_id``
+        there). For PBX we therefore fall back to a phone+time lookup against
+        ``account_call_log_leg`` to find the corresponding ``recording_id``
+        and JOIN forward.
         """
         empty = {
             "session_id": session_id,
@@ -1071,6 +1074,7 @@ class Customer360Service:
           r.recording_filename,
           r.fetch_datetime,
           r.source AS recording_source,
+          r.account_call_log_id,
           c.call_type,
           c.sale_result,
           c.product_family,
@@ -1104,10 +1108,15 @@ class Customer360Service:
         )
         row = next(iter(job.result()), None)
 
-        # If nothing found in the analyzer output (recording_fetch_status),
-        # fall back to the local call_event log — covers today's calls
-        # (analyzer hasn't run yet) and any PBX session_ids that bypass
-        # the analyzer pipeline.
+        # If nothing found directly AND the session_id looks like a PBX one
+        # (the RC telephony session-id format starts with "s-"), try to find
+        # the matching PBX recording via phone+time lookup in the call log.
+        if row is None and isinstance(session_id, str) and session_id.startswith("s-"):
+            row = self._lookup_pbx_recording_via_call_log(session_id)
+
+        # If still nothing, fall back to the local call_event log — covers
+        # today's calls (analyzer hasn't run yet) and sessions that never
+        # produced a recording at all.
         if row is None:
             return self._call_details_from_event_log(session_id)
 
@@ -1134,6 +1143,96 @@ class Customer360Service:
             d["recording_signed_url"] = self._sign_gcs_url(d["gcs_uri"], minutes=15)
 
         return d
+
+    def _lookup_pbx_recording_via_call_log(self, session_id: str):
+        """For a PBX telephony session_id (``s-...``), find the matching row
+        in ``recording_fetch_status`` by:
+
+        1. Locate the matching ``CallEvent`` in the local SQLite (gives us
+           ``from_number`` + ``received_at``).
+        2. Run a BigQuery lookup in ``ringcentral.account_call_log_leg`` for
+           a recorded leg with that phone within ±10 minutes — this gives
+           us the ``recording_id``.
+        3. Return the recording_fetch_status + call_classifications JOIN
+           keyed on that recording_id, in the same row shape that
+           ``get_call_details``'s main query returns.
+
+        Returns a BigQuery ``Row`` or ``None``.
+        """
+        try:
+            from app.models.call_events import CallEvent
+        except Exception:
+            return None
+
+        event = (
+            CallEvent.query
+            .filter(CallEvent.session_id == session_id)
+            .order_by(CallEvent.received_at.asc())
+            .first()
+        )
+        if not event:
+            return None
+        phone = event.from_number or event.to_number
+        when = event.received_at
+        if not phone or when is None:
+            return None
+
+        sql = """
+        WITH matched AS (
+          SELECT recording_id, ANY_VALUE(account_call_log_id) AS account_call_log_id
+          FROM `chainsawspares-385722.ringcentral.account_call_log_leg`
+          WHERE recording_id IS NOT NULL AND recording_id != ''
+            AND (from_phone_number = @phone OR to_phone_number = @phone)
+            AND ABS(TIMESTAMP_DIFF(TIMESTAMP(start_time), @when, MINUTE)) <= 10
+          GROUP BY recording_id
+          ORDER BY MIN(TIMESTAMP(start_time)) DESC
+          LIMIT 1
+        )
+        SELECT
+          r.contactId,
+          r.summary,
+          r.transcription,
+          r.sentiment,
+          r.topics,
+          r.intents,
+          r.gcs_uri,
+          r.recording_filename,
+          r.fetch_datetime,
+          r.source AS recording_source,
+          r.account_call_log_id,
+          c.call_type,
+          c.sale_result,
+          c.product_family,
+          c.product_category_detail,
+          c.no_sale_reasons,
+          c.problems_detected,
+          c.escalation_actions,
+          c.delivery_tracking,
+          c.confidence_scores,
+          c.agent_name,
+          CAST(NULL AS TIMESTAMP) AS cxone_start_date,
+          CAST(NULL AS INT64)     AS cxone_duration_seconds,
+          CAST(NULL AS STRING)    AS cxone_end_reason,
+          CAST(NULL AS STRING)    AS skillName,
+          CAST(NULL AS STRING)    AS agent_first_name,
+          CAST(NULL AS STRING)    AS agent_last_name
+        FROM matched m
+        JOIN `chainsawspares-385722.ringcentral_jnj.recording_fetch_status` r
+          ON r.contactId = m.recording_id AND r.source = 'pbx'
+        LEFT JOIN `chainsawspares-385722.ringcentral_jnj.call_classifications` c
+          ON r.contactId = c.contactId
+        LIMIT 1
+        """
+        job = self.client.query(
+            sql,
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("phone", "STRING", phone),
+                    bigquery.ScalarQueryParameter("when", "TIMESTAMP", when),
+                ]
+            ),
+        )
+        return next(iter(job.result()), None)
 
     def _call_details_from_event_log(self, session_id: str) -> dict:
         """Fallback for the call-detail modal: summarise a session from
