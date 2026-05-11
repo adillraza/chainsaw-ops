@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh Knowledge Base — incremental Neto products → kb.documents
+Description=Refresh Knowledge Base — Neto products + CMS pages → kb.documents
 After=network-online.target chainsaw-ops-refresh.service
 Wants=network-online.target
 
@@ -9,7 +9,11 @@ User=root
 WorkingDirectory=/opt/chainsaw-ops
 EnvironmentFile=/opt/chainsaw-ops/.env
 Environment=PATH=/opt/chainsaw-ops/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Products first (heavier, watermark-driven incremental), then CMS pages.
+# Sequential so we don't compete for BQ slots; both finish in <2 min
+# typically once the corpus is loaded.
 ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/kb_neto_products_ingest.py
+ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/kb_neto_cms_ingest.py
 TimeoutStartSec=30min
 StandardOutput=journal
 StandardError=journal
