@@ -1146,47 +1146,31 @@ class Customer360Service:
 
     def _lookup_pbx_recording_via_call_log(self, session_id: str):
         """For a PBX telephony session_id (``s-...``), find the matching row
-        in ``recording_fetch_status`` by:
+        in ``recording_fetch_status`` via a deterministic JOIN.
 
-        1. Locate the matching ``CallEvent`` in the local SQLite (gives us
-           ``from_number`` + ``received_at``).
-        2. Run a BigQuery lookup in ``ringcentral.account_call_log_leg`` for
-           a recorded leg with that phone within ±10 minutes — this gives
-           us the ``recording_id``.
-        3. Return the recording_fetch_status + call_classifications JOIN
-           keyed on that recording_id, in the same row shape that
-           ``get_call_details``'s main query returns.
+        ``ringcentral.account_call_log_leg.telephony_session_id`` is the
+        same ``s-...`` identifier that RC sends in its Telephony webhook
+        events (and that Customer 360 stores on ``CallEvent.session_id``).
+        So:
 
+            session_id                      (e.g. "s-a035f291...")
+              == account_call_log_leg.telephony_session_id
+                 → gives us account_call_log_leg.recording_id
+                    == recording_fetch_status.contactId  (for source='pbx')
+
+        No phone/time fuzziness — it's a direct key-to-key match.
         Returns a BigQuery ``Row`` or ``None``.
         """
-        try:
-            from app.models.call_events import CallEvent
-        except Exception:
-            return None
-
-        event = (
-            CallEvent.query
-            .filter(CallEvent.session_id == session_id)
-            .order_by(CallEvent.received_at.asc())
-            .first()
-        )
-        if not event:
-            return None
-        phone = event.from_number or event.to_number
-        when = event.received_at
-        if not phone or when is None:
-            return None
-
         sql = """
         WITH matched AS (
-          SELECT recording_id, ANY_VALUE(account_call_log_id) AS account_call_log_id
+          -- A telephony_session_id is shared by every leg of a call;
+          -- pick the one leg that holds a recording_id.
+          SELECT
+            ANY_VALUE(recording_id)         AS recording_id,
+            ANY_VALUE(account_call_log_id)  AS account_call_log_id
           FROM `chainsawspares-385722.ringcentral.account_call_log_leg`
-          WHERE recording_id IS NOT NULL AND recording_id != ''
-            AND (from_phone_number = @phone OR to_phone_number = @phone)
-            AND ABS(TIMESTAMP_DIFF(TIMESTAMP(start_time), @when, MINUTE)) <= 10
-          GROUP BY recording_id
-          ORDER BY MIN(TIMESTAMP(start_time)) DESC
-          LIMIT 1
+          WHERE telephony_session_id = @session_id
+            AND recording_id IS NOT NULL AND recording_id != ''
         )
         SELECT
           r.contactId,
@@ -1221,14 +1205,14 @@ class Customer360Service:
           ON r.contactId = m.recording_id AND r.source = 'pbx'
         LEFT JOIN `chainsawspares-385722.ringcentral_jnj.call_classifications` c
           ON r.contactId = c.contactId
+        WHERE m.recording_id IS NOT NULL
         LIMIT 1
         """
         job = self.client.query(
             sql,
             job_config=bigquery.QueryJobConfig(
                 query_parameters=[
-                    bigquery.ScalarQueryParameter("phone", "STRING", phone),
-                    bigquery.ScalarQueryParameter("when", "TIMESTAMP", when),
+                    bigquery.ScalarQueryParameter("session_id", "STRING", session_id),
                 ]
             ),
         )
