@@ -151,7 +151,17 @@ def search(query: str, top_k: int = 8) -> list[dict[str, Any]]:
             "sku":       r.sku,
             "title":     r.title,
             "url":       r.url,
+            # ``snippet`` is the short preview the search-results UI shows
+            # under each hit (capped at SNIPPET_CHARS so cards stay tidy).
+            # ``body`` is the FULL retrieved document text — the chat
+            # layer needs this to ground its answers. Previously only
+            # ``snippet`` was returned and kb_chat looked up ``body``,
+            # silently getting "" and sending the LLM source blocks with
+            # zero content. That made Gemini refuse perfectly answerable
+            # questions because the SOURCES section was empty in the
+            # prompt — fixed by exposing the full body here.
             "snippet":   snippet,
+            "body":      body,
             "metadata":  metadata,
             "score":     round(score, 4),
         })
