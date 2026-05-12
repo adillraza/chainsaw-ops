@@ -1,0 +1,23 @@
+[Unit]
+Description=RingCentral Engage Voice Call Streaming receiver (Phase 1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chainsaw-ops
+EnvironmentFile=/opt/chainsaw-ops/.env
+Environment=PATH=/opt/chainsaw-ops/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Optional shared secret — must match the "secret" set on the RC
+# streaming profile. Set RCX_STREAM_SECRET in /opt/chainsaw-ops/.env
+# Optional WAV output dir — defaults to /tmp; override with
+# RCX_STREAM_OUTPUT_DIR=/opt/chainsaw-ops/data/voice-stream
+ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/rcx_stream_server.py --host 127.0.0.1 --port 3333
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
