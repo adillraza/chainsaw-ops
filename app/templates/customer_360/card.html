@@ -99,8 +99,16 @@
               {# Live-audio player — Phase 1.5. Streams μ-law audio
                  pushed by RingCentral via wss://.../listen, plays via
                  Web Audio API in this browser only. No data saved. #}
+              {# Single-quoted attribute is intentional: `tojson` emits a
+                 double-quoted JSON string literal for `c.phone`. Inside a
+                 double-quoted attribute those inner quotes would close the
+                 attribute early and Alpine receives a malformed expression
+                 (and silently bails — no reactive bindings, no background
+                 colour). Single quotes around the whole attribute let the
+                 JSON quotes pass through unescaped. `tojson` also escapes
+                 any embedded `'` to `'` so this stays safe. #}
               <div class="mt-2 flex items-center gap-2"
-                   x-data="liveAudio({ phone: {{ c.phone | tojson }} })">
+                   x-data='liveAudio({ phone: {{ c.phone | tojson }} })'>
                 <button type="button"
                         @click="toggle()"
                         :disabled="state === 'connecting'"
