@@ -324,6 +324,19 @@ def run(reset: bool = False, limit: int | None = None, dry_run: bool = False) ->
         print("--reset: clearing existing neto_pdf rows + watermark")
         bq.query(f"DELETE FROM `{PROJECT}.{DATASET}.documents` WHERE source = '{SOURCE}'").result()
         bq.query(f"DELETE FROM `{PROJECT}.{DATASET}.refresh_state` WHERE source = '{SOURCE}'").result()
+    elif not dry_run:
+        # No watermark check — PDFs don't carry per-file modified dates
+        # we can trust. Instead: if we already have rows ingested, skip
+        # entirely. PDFs change rarely; pass --reset to force a refresh
+        # (e.g. when new brochures are added). The hourly cron is a
+        # no-op once the initial load is done, which is what we want.
+        existing = list(bq.query(
+            f"SELECT COUNT(*) AS n FROM `{PROJECT}.{DATASET}.documents` WHERE source = '{SOURCE}'"
+        ).result())[0].n
+        if existing > 0:
+            print(f"  {existing:,} neto_pdf rows already in documents. "
+                  f"Skipping re-ingest (use --reset to force).")
+            return
 
     print("fetching CMS rows from Neto…")
     all_rows = fetch_all_content()
