@@ -764,8 +764,20 @@
 {# API. Streaming, ephemeral, browser-only — no audio leaves the page.   #}
 {# ---------------------------------------------------------------------- #}
 <script>
-function liveAudio({ phone }) {
-  return {
+// Register with Alpine via the `alpine:init` event rather than as a bare
+// global function. Two reasons:
+//   1. Alpine.js is loaded with `defer` in base.html, so it runs *after*
+//      this inline <script>. A bare `function liveAudio(){}` at parse
+//      time would normally work, but order is brittle when Alpine
+//      pre-walks the DOM and the function reference resolves to
+//      `undefined` for whatever reason (CSP, hoisting edge case, etc.).
+//      Using `alpine:init` guarantees registration happens at the exact
+//      moment Alpine is ready to look up component factories.
+//   2. `Alpine.data('liveAudio', factory)` is the documented Alpine 3
+//      pattern and produces clearer dev-tools errors when something
+//      misbehaves than the global-function form.
+document.addEventListener('alpine:init', () => {
+  window.Alpine.data('liveAudio', ({ phone } = {}) => ({
     phone,
     state: 'idle',          // idle | connecting | playing | error | no-stream
     elapsed: '0s',
@@ -914,7 +926,7 @@ function liveAudio({ phone }) {
       this.state = nextState;
       this.elapsed = '0s';
     },
-  };
-}
+  }));
+});
 </script>
 {% endblock %}
