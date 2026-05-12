@@ -14,6 +14,7 @@ Environment=PATH=/opt/chainsaw-ops/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/
 # typically once the corpus is loaded.
 ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/kb_neto_products_ingest.py
 ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/kb_neto_cms_ingest.py
+ExecStart=/opt/chainsaw-ops/venv/bin/python3 /opt/chainsaw-ops/scripts/kb_neto_pdfs_ingest.py
 TimeoutStartSec=30min
 StandardOutput=journal
 StandardError=journal
