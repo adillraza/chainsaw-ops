@@ -95,6 +95,42 @@
                   <span class="font-mono">{{ to_local }}</span>
                 {% endif %}
               </p>
+
+              {# Live-audio player — Phase 1.5. Streams μ-law audio
+                 pushed by RingCentral via wss://.../listen, plays via
+                 Web Audio API in this browser only. No data saved. #}
+              <div class="mt-2 flex items-center gap-2"
+                   x-data="liveAudio({ phone: {{ c.phone | tojson }} })">
+                <button type="button"
+                        @click="toggle()"
+                        :disabled="state === 'connecting'"
+                        :class="{
+                          'bg-emerald-600 text-white hover:bg-emerald-700': state === 'idle',
+                          'bg-rose-600 text-white hover:bg-rose-700': state === 'playing',
+                          'bg-slate-300 text-slate-600 cursor-wait': state === 'connecting',
+                          'bg-amber-100 text-amber-800 hover:bg-amber-200': state === 'error' || state === 'no-stream',
+                        }"
+                        class="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold shadow-sm">
+                  <template x-if="state === 'idle'"><i class="fas fa-headphones text-[11px]"></i></template>
+                  <template x-if="state === 'connecting'"><i class="fas fa-circle-notch fa-spin text-[11px]"></i></template>
+                  <template x-if="state === 'playing'"><i class="fas fa-stop text-[11px]"></i></template>
+                  <template x-if="state === 'error' || state === 'no-stream'"><i class="fas fa-circle-exclamation text-[11px]"></i></template>
+                  <span x-text="{
+                    idle:       'Listen Live',
+                    connecting: 'Connecting…',
+                    playing:    'Stop · listening',
+                    'no-stream': 'No audio stream',
+                    error:      'Retry',
+                  }[state]"></span>
+                </button>
+                <span x-show="state === 'playing'" class="text-[11px] text-emerald-700">
+                  <i class="fas fa-volume-high"></i>
+                  <span x-text="elapsed"></span>
+                </span>
+                <span x-show="state === 'no-stream' || state === 'error'"
+                      class="text-[11px] text-amber-700"
+                      x-text="errorMessage"></span>
+              </div>
             </div>
             <div class="text-right">
               <div class="text-[11px] uppercase tracking-wide text-emerald-600">Status</div>
@@ -720,4 +756,165 @@
   </details>
 
   {% endif %}{# /is_internal_line else-branch #}
+
+{# ---------------------------------------------------------------------- #}
+{# Live-audio player — Alpine.js component used in the CALL IN PROGRESS  #}
+{# panel. Connects to wss://.../listen?phone=…&token=… and plays the     #}
+{# 16-bit PCM stream pushed by rcx_stream_server.py via the Web Audio    #}
+{# API. Streaming, ephemeral, browser-only — no audio leaves the page.   #}
+{# ---------------------------------------------------------------------- #}
+<script>
+function liveAudio({ phone }) {
+  return {
+    phone,
+    state: 'idle',          // idle | connecting | playing | error | no-stream
+    elapsed: '0s',
+    errorMessage: '',
+    _audioCtx: null,
+    _ws: null,
+    _scheduledTime: 0,
+    _channels: 2,
+    _sampleRate: 8000,
+    _startedAt: 0,
+    _tickHandle: null,
+
+    async toggle() {
+      if (this.state === 'playing' || this.state === 'connecting') {
+        this._stop('idle');
+        return;
+      }
+      this.state = 'connecting';
+      this.errorMessage = '';
+
+      try {
+        // Step 1: ask Flask for a short-lived signed token. Reuses the
+        // user's session cookie so only logged-in agents can listen.
+        const tokResp = await fetch(`/customer/api/listen-token/${encodeURIComponent(this.phone)}`,
+                                    { credentials: 'same-origin' });
+        if (!tokResp.ok) throw new Error('token endpoint returned ' + tokResp.status);
+        const tokJson = await tokResp.json();
+        if (!tokJson.token) throw new Error('token endpoint returned no token');
+
+        // Step 2: connect to the WSS receiver
+        const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const url = `${wsProto}//${location.host}/listen`
+                  + `?phone=${encodeURIComponent(tokJson.phone)}`
+                  + `&token=${encodeURIComponent(tokJson.token)}`;
+        this._ws = new WebSocket(url);
+        this._ws.binaryType = 'arraybuffer';
+
+        this._ws.onopen = () => { /* wait for Start frame */ };
+
+        this._ws.onmessage = (ev) => {
+          if (typeof ev.data === 'string') {
+            this._handleJsonFrame(JSON.parse(ev.data));
+          } else {
+            this._handlePcmFrame(ev.data);
+          }
+        };
+
+        this._ws.onerror = () => {
+          if (this.state === 'connecting' || this.state === 'playing') {
+            this._stop('error');
+            this.errorMessage = 'connection failed';
+          }
+        };
+
+        this._ws.onclose = (ev) => {
+          if (this.state === 'playing' || this.state === 'connecting') {
+            // 4404 = no active call for this phone
+            if (ev.code === 4404) {
+              this._stop('no-stream');
+              this.errorMessage = 'no live audio for this caller yet';
+            } else if (ev.code === 4401) {
+              this._stop('error');
+              this.errorMessage = 'auth rejected';
+            } else {
+              this._stop('idle');
+            }
+          }
+        };
+      } catch (exc) {
+        this._stop('error');
+        this.errorMessage = (exc && exc.message) || 'unknown error';
+      }
+    },
+
+    _handleJsonFrame(msg) {
+      if (msg.event === 'Start') {
+        const md = msg.metadata || {};
+        this._sampleRate = md.sampleRateHertz || 8000;
+        this._channels   = md.channels || 2;
+        // Build the AudioContext NOW (after user gesture in toggle()).
+        // Safari blocks new AudioContext() in a non-gesture context, so
+        // we must do this synchronously off the click that called us.
+        if (!this._audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          this._audioCtx = new Ctx({ sampleRate: this._sampleRate });
+        } else if (this._audioCtx.state === 'suspended') {
+          this._audioCtx.resume();
+        }
+        this._scheduledTime = this._audioCtx.currentTime + 0.05;  // 50ms cushion
+        this._startedAt = Date.now();
+        this.state = 'playing';
+        this._startTick();
+      } else if (msg.event === 'Stop' || msg.event === 'no_active_call') {
+        this._stop(msg.event === 'no_active_call' ? 'no-stream' : 'idle');
+      }
+    },
+
+    _handlePcmFrame(buf) {
+      if (this.state !== 'playing' || !this._audioCtx) return;
+      // buf is interleaved 16-bit little-endian PCM, two channels.
+      const view = new DataView(buf);
+      const totalSamples = view.byteLength / 2;
+      const framesPerChannel = totalSamples / this._channels;
+      if (framesPerChannel === 0) return;
+      const audioBuffer = this._audioCtx.createBuffer(
+        this._channels, framesPerChannel, this._sampleRate);
+      for (let ch = 0; ch < this._channels; ch++) {
+        const chData = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < framesPerChannel; i++) {
+          const off = (i * this._channels + ch) * 2;
+          chData[i] = view.getInt16(off, true) / 32768;
+        }
+      }
+      const src = this._audioCtx.createBufferSource();
+      src.buffer = audioBuffer;
+      src.connect(this._audioCtx.destination);
+      // Don't fall behind real-time if the user tabs away or the stream
+      // pauses — re-anchor to "now + small cushion" if we drift.
+      const now = this._audioCtx.currentTime;
+      if (this._scheduledTime < now) this._scheduledTime = now + 0.05;
+      src.start(this._scheduledTime);
+      this._scheduledTime += audioBuffer.duration;
+    },
+
+    _startTick() {
+      this._stopTick();
+      this._tickHandle = setInterval(() => {
+        if (this.state !== 'playing') return;
+        const s = Math.floor((Date.now() - this._startedAt) / 1000);
+        if (s < 60) this.elapsed = `${s}s`;
+        else if (s < 3600) this.elapsed = `${Math.floor(s/60)}m ${s%60}s`;
+        else this.elapsed = `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+      }, 1000);
+    },
+
+    _stopTick() {
+      if (this._tickHandle) { clearInterval(this._tickHandle); this._tickHandle = null; }
+    },
+
+    _stop(nextState) {
+      this._stopTick();
+      try { if (this._ws) this._ws.close(); } catch (e) {}
+      this._ws = null;
+      try { if (this._audioCtx) this._audioCtx.close(); } catch (e) {}
+      this._audioCtx = null;
+      this.state = nextState;
+      this.elapsed = '0s';
+    },
+  };
+}
+</script>
 {% endblock %}

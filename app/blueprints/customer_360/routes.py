@@ -1,11 +1,21 @@
 """Customer 360 routes."""
 from __future__ import annotations
 
-from flask import jsonify, render_template, request
+import hashlib
+import hmac
+import os
+import time
+
+from flask import current_app, jsonify, render_template, request
 
 from app.auth.abilities import require_capability
 from app.blueprints.customer_360 import customer_360_bp
 from app.services.customer_360_service import customer_360_service, normalize_phone
+
+
+# Short-lived signing for the /listen WSS endpoint on rcx-stream-server.
+# The receiver validates with the same secret + algorithm.
+LISTEN_TOKEN_TTL_SECONDS = 5 * 60
 
 
 @customer_360_bp.route("/", methods=["GET"])
@@ -41,6 +51,31 @@ def card(phone: str):
 def card_json(phone: str):
     """JSON variant of the card payload."""
     return jsonify(customer_360_service.get_card(phone))
+
+
+@customer_360_bp.route("/api/listen-token/<phone>", methods=["GET"])
+@require_capability("support.calls.view")
+def listen_token(phone: str):
+    """Issue a short-lived HMAC token for the live-audio /listen WSS.
+
+    The receiver process (scripts/rcx_stream_server.py) shares the same
+    signing secret and validates the token before attaching the browser
+    to a call's audio fan-out. Token lives ~5 minutes; the player
+    refreshes before expiry if the call is still in flight.
+    """
+    norm = normalize_phone(phone) or ""
+    secret_str = (os.environ.get("RCX_LISTEN_SECRET")
+                  or current_app.config.get("SECRET_KEY") or "")
+    if not norm or not secret_str:
+        return jsonify({"error": "unavailable"}), 503
+    expiry = int(time.time()) + LISTEN_TOKEN_TTL_SECONDS
+    sig = hmac.new(secret_str.encode(), f"{norm}:{expiry}".encode(),
+                   hashlib.sha256).hexdigest()[:16]
+    return jsonify({
+        "phone":     norm,
+        "expires_at": expiry,
+        "token":     f"{expiry}:{sig}",
+    })
 
 
 @customer_360_bp.route("/api/call/<path:session_id>", methods=["GET"])
