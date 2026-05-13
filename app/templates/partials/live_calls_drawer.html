@@ -24,13 +24,13 @@
       </span>
     </div>
 
-    <ul class="flex-1 divide-y divide-slate-100 overflow-y-auto">
+    <ul class="flex-1 divide-y divide-slate-200 overflow-y-auto">
       {% for call in active %}
         <li class="{{ 'opacity-60' if call.is_recently_ended else '' }}">
           <div class="relative">
             {# Pin button — top-right corner, click to pin / unpin #}
             <button type="button"
-                    class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md text-xs transition
+                    class="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md text-[10px] transition
                            {% if call.is_pinned %}text-amber-500 hover:bg-amber-50
                            {% else %}text-slate-300 hover:bg-slate-100 hover:text-amber-500{% endif %}"
                     title="{{ 'Unpin this call' if call.is_pinned else 'Pin this call for follow-up' }}"
@@ -46,33 +46,35 @@
             </button>
 
             <a href="{{ url_for('customer_360.card', phone=call.phone) }}"
-               class="block px-4 py-3 pr-10 transition
+               class="block px-3 py-2 pr-8 transition
                       {% if call.is_ringing %}bg-amber-50/40 hover:bg-amber-50
                       {% elif call.is_connected %}bg-emerald-50/40 hover:bg-emerald-50
                       {% elif call.is_recently_ended %}hover:bg-slate-100
                       {% else %}hover:bg-brand-50{% endif %}">
 
+              {# Row 1 — status pill (left) + age (right). Status pill is the
+                 only thing that varies by section, so we keep it prominent. #}
               <div class="flex items-center justify-between gap-2">
                 {% if call.is_ringing %}
-                  <span class="relative inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-                    <span class="absolute -left-1 -top-1 flex h-2.5 w-2.5">
+                  <span class="relative inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                    <span class="absolute -left-1 -top-1 flex h-2 w-2">
                       <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
-                      <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+                      <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
                     </span>
-                    <span class="ml-2">Ringing · {{ call.status_code }}</span>
+                    <span class="ml-1.5">Ringing · {{ call.status_code }}</span>
                   </span>
                 {% elif call.is_connected %}
-                  <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
-                    <i class="fas fa-circle text-[7px] text-emerald-600 mr-1"></i>
+                  <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                    <i class="fas fa-circle text-[6px] text-emerald-600 mr-1"></i>
                     On call · {{ call.status_code }}
                   </span>
                 {% elif call.is_recently_ended %}
-                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                    <i class="fas fa-phone-slash text-[10px] text-slate-400 mr-1"></i>
+                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    <i class="fas fa-phone-slash text-[9px] text-slate-400 mr-1"></i>
                     Ended {{ call.seconds_since_end }}s ago
                   </span>
                 {% else %}
-                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
                     {{ call.status_code or 'Unknown' }}
                   </span>
                 {% endif %}
@@ -85,26 +87,32 @@
                 </span>
               </div>
 
-              <div class="mt-2 truncate text-lg font-semibold tracking-tight {% if call.customer_name %}text-slate-900{% else %}text-slate-400{% endif %}">
+              {# Row 2 — customer name. Was text-lg; trimmed to text-sm so
+                 four rows fit in the same vertical space as the old two. #}
+              <div class="mt-1 truncate text-sm font-semibold tracking-tight {% if call.customer_name %}text-slate-900{% else %}text-slate-400{% endif %}">
                 {{ call.customer_name or 'No Name' }}
               </div>
-              <div class="mt-0.5 font-mono text-sm text-slate-600">
-                {{ call.phone or '—' }}
+
+              {# Row 3 — phone number (left) + direction indicator (right).
+                 Was on separate lines; combined here for vertical density. #}
+              <div class="mt-0.5 flex items-center justify-between gap-2 text-[11px]">
+                <span class="font-mono text-slate-700">{{ call.phone or '—' }}</span>
+                <span class="whitespace-nowrap text-slate-500">
+                  {% if call.direction == 'Inbound' %}<i class="fas fa-phone-arrow-down-left text-[9px] text-emerald-500"></i> incoming
+                  {% elif call.direction == 'Outbound' %}<i class="fas fa-phone-arrow-up-right text-[9px] text-sky-500"></i> outbound{% endif %}
+                </span>
               </div>
 
-              <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                <span class="whitespace-nowrap">
-                  {% if call.direction == 'Inbound' %}<i class="fas fa-phone-arrow-down-left text-emerald-500"></i> incoming
-                  {% elif call.direction == 'Outbound' %}<i class="fas fa-phone-arrow-up-right text-sky-500"></i> outbound{% endif %}
-                </span>
-                {% if call.to_local %}
-                  <span class="truncate font-mono text-[11px] text-slate-500" title="dialed {{ call.to_number }}">
-                    → {{ call.to_local }}
-                  </span>
-                {% endif %}
-              </div>
+              {# Row 4 — dialed-to number, only when present. #}
+              {% if call.to_local %}
+                <div class="mt-0.5 truncate font-mono text-[10px] text-slate-500" title="dialed {{ call.to_number }}">
+                  → {{ call.to_local }}
+                </div>
+              {% endif %}
+
+              {# Row 5 — transferred indicator (rare). #}
               {% if call.is_transferred %}
-                <div class="mt-1 text-[10px] text-slate-400" title="This call was transferred between {{ call.leg_count }} agents">
+                <div class="mt-0.5 text-[10px] text-slate-400" title="This call was transferred between {{ call.leg_count }} agents">
                   <i class="fas fa-shuffle text-slate-300"></i> transferred ({{ call.leg_count }} legs)
                 </div>
               {% endif %}

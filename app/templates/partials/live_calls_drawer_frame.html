@@ -93,62 +93,6 @@
       </div>
     </section>
 
-    {# ----------------------------------------------------------------- #}
-    {# Today's Calls — scroll-position persistence                       #}
-    {# ----------------------------------------------------------------- #}
-    {# Save on scroll, restore after every HTMX swap. A few subtleties: #}
-    {# 1. Restore polls until scrollHeight is tall enough — htmx:afterSettle #}
-    {#    sometimes fires before the new rows have fully measured.       #}
-    {# 2. ``restoring`` flag stops the scroll handler from saving the    #}
-    {#    clamped value when scrollHeight is briefly small (would erase  #}
-    {#    the real saved position).                                      #}
-    {# 3. window.__tcDebug exposes counters so we can sanity-check from  #}
-    {#    devtools if it stops working again.                            #}
-    <script>
-    (function() {
-      const KEY = 'todaysCallsScrollTop';
-      const el = document.getElementById("todays-calls-body");
-      if (!el) return;
-      window.__tcDebug = { saves: 0, restoreCalls: 0, restoreApplied: 0,
-                           lastSave: 0, lastRestore: 0 };
-      let restoring = false;
-
-      el.addEventListener('scroll', function() {
-        if (restoring) return;
-        const v = el.scrollTop;
-        sessionStorage.setItem(KEY, v);
-        window.__tcDebug.saves++;
-        window.__tcDebug.lastSave = v;
-      }, { passive: true });
-
-      function restore() {
-        const v = parseInt(sessionStorage.getItem(KEY) || '0', 10);
-        window.__tcDebug.restoreCalls++;
-        if (v <= 0) return;
-        restoring = true;
-        let tries = 0;
-        (function tick() {
-          if (el.scrollHeight - el.clientHeight >= v) {
-            el.scrollTop = v;
-            window.__tcDebug.restoreApplied++;
-            window.__tcDebug.lastRestore = v;
-            requestAnimationFrame(function() { restoring = false; });
-            return;
-          }
-          if (tries++ < 30) {
-            setTimeout(tick, 50);
-          } else {
-            restoring = false;
-          }
-        })();
-      }
-
-      el.addEventListener('htmx:afterSettle', restore);
-      // Also restore after the very first HTMX load, in case the
-      // afterSettle handler attached AFTER the event fired.
-      setTimeout(restore, 200);
-    })();
-    </script>
 
     {# ============================================================
        Section 3: PIN CALLS — amber tint when active (matches the
@@ -166,7 +110,8 @@
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'pin' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
-      <div x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto bg-amber-50/40"
+      <div id="pin-calls-body"
+           x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto bg-amber-50/40"
            hx-get="{{ url_for('live_calls.pinned_calls') }}"
            hx-trigger="load, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">
@@ -178,3 +123,95 @@
 
   </aside>
 </div>
+
+{# ----------------------------------------------------------------- #}
+{# Drawer scroll persistence — unified across all three sections.    #}
+{# ----------------------------------------------------------------- #}
+{# Each section's scroll position is saved per-session and restored: #}
+{#   1. on page load (the agent navigated away and came back), and   #}
+{#   2. after every HTMX innerHTML swap (the 3s / 10s poll).         #}
+{# Two subtleties we hit in v1 — both now handled:                   #}
+{#                                                                     #}
+{#   • SCROLL-TO-TOP MID-SCROLL.  When HTMX swaps innerHTML, the      #}
+{#     browser briefly drops scrollTop to 0 as the children are       #}
+{#     replaced. That fires a real scroll event, the listener saves  #}
+{#     0 to sessionStorage, then the restore reads 0 and gives up.   #}
+{#     The user, who was at row 5, snaps back to the top. Fix:       #}
+{#     ``suppressSave`` is true throughout the swap window, so the   #}
+{#     scroll-to-0 doesn't overwrite the real saved value.           #}
+{#                                                                     #}
+{#   • CONTENT NOT MEASURED YET. ``htmx:afterSettle`` sometimes fires #}
+{#     before the new rows have laid out, so scrollHeight is still   #}
+{#     small and setting scrollTop to the saved value silently       #}
+{#     clamps to a smaller number. Fix: poll scrollHeight until it's #}
+{#     tall enough, up to 30 × 50ms.                                 #}
+{# ----------------------------------------------------------------- #}
+<script>
+(function() {
+  function setupScrollPersist(elId, key) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    let savedScroll = parseInt(sessionStorage.getItem(key) || '0', 10);
+    let suppressSave = false;
+
+    // User-initiated scrolls are saved continuously. Swap-induced
+    // scroll-to-0 events are blocked by the suppressSave guard.
+    el.addEventListener('scroll', () => {
+      if (suppressSave) return;
+      savedScroll = el.scrollTop;
+      sessionStorage.setItem(key, savedScroll);
+    }, { passive: true });
+
+    // Capture the user's true scroll position immediately before the
+    // swap; HTMX's beforeSwap fires synchronously while the DOM is
+    // still the old one, so el.scrollTop is the pre-swap value.
+    el.addEventListener('htmx:beforeSwap', () => {
+      if (el.scrollTop > 0) {
+        savedScroll = el.scrollTop;
+        sessionStorage.setItem(key, savedScroll);
+      }
+      suppressSave = true;
+    });
+
+    function applyRestore() {
+      if (savedScroll <= 0) {
+        suppressSave = false;
+        return;
+      }
+      let tries = 0;
+      (function tick() {
+        if (el.scrollHeight - el.clientHeight >= savedScroll) {
+          if (Math.abs(el.scrollTop - savedScroll) > 2) {
+            el.scrollTop = savedScroll;
+          }
+          // Re-enable saves on the next frame, after any browser-
+          // induced scroll events from the swap have settled.
+          requestAnimationFrame(() => { suppressSave = false; });
+          return;
+        }
+        if (tries++ < 30) setTimeout(tick, 50);
+        else suppressSave = false;
+      })();
+    }
+
+    el.addEventListener('htmx:afterSettle', applyRestore);
+    // First-load restore — in case afterSettle attached AFTER the
+    // initial HTMX fetch's event already fired (race on cold page load).
+    setTimeout(applyRestore, 200);
+  }
+
+  // Wait until DOMContentLoaded so the body elements exist when we
+  // attach. We also need the IDs from each section's <div> — these
+  // are stamped above on Live, Today's, and Pin.
+  function init() {
+    setupScrollPersist('live-section-body', 'liveCallsScrollTop');
+    setupScrollPersist('todays-calls-body', 'todaysCallsScrollTop');
+    setupScrollPersist('pin-calls-body',    'pinCallsScrollTop');
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
