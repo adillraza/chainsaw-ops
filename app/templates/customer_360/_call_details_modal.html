@@ -142,7 +142,8 @@
      lacks ``support.calls.view_sensitive``. The data has already been
      scrubbed server-side (see redact_sensitive_call_details), so the
      {% if d.summary %} / {% if d.transcription %} blocks below
-     evaluate false; this banner explains why. #}
+     evaluate false; this banner explains why and where the flag came
+     from (auto = Dataform rule, manual = leader/admin toggle). #}
   {% if d.redacted_for_sensitive %}
     <section class="border-b border-slate-200 bg-rose-50 px-6 py-4">
       <div class="flex items-start gap-3">
@@ -153,12 +154,22 @@
             This call has been flagged as sensitive. Recording playback,
             AI summary, transcript, and classifications are hidden from
             your role.
-            {% if d.sensitivity_flagged_by %}
-              Flagged by <strong>{{ d.sensitivity_flagged_by }}</strong>
-              {% if d.sensitivity_flagged_at %} · {{ d.sensitivity_flagged_at | format_dt('datetime') }}{% endif %}.
-            {% endif %}
           </p>
-          <p class="mt-1 text-[11px] text-rose-700">
+          {# Attribution lines — show whichever source(s) apply. #}
+          {% if d.sensitivity_source in ('auto', 'both') and d.sensitivity_reason_auto %}
+            <p class="mt-1 text-[12px] text-rose-800">
+              <i class="fas fa-bolt text-[10px] mr-1"></i>
+              {{ d.sensitivity_reason_auto }}.
+            </p>
+          {% endif %}
+          {% if d.sensitivity_source in ('manual', 'both') and d.sensitivity_flagged_by %}
+            <p class="mt-1 text-[12px] text-rose-800">
+              <i class="fas fa-user text-[10px] mr-1"></i>
+              Manually flagged by <strong>{{ d.sensitivity_flagged_by }}</strong>
+              {% if d.sensitivity_flagged_at %} on {{ d.sensitivity_flagged_at | format_dt('datetime') }}{% endif %}{% if d.sensitivity_reason %} — {{ d.sensitivity_reason }}{% endif %}.
+            </p>
+          {% endif %}
+          <p class="mt-2 text-[11px] text-rose-700">
             If you need access for an investigation or coaching session,
             ask a team lead or admin to review with you.
           </p>

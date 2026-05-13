@@ -19,29 +19,71 @@
       Both swap the modal body in-place so the banner + analysis
       sections + button label update in one round-trip. #}
 
+{# Badge — shown to everyone when the call is sensitive (auto OR manual).
+   Auto-only gets a slightly different tone ("auto") so the source is
+   clear at a glance. #}
 {% if d.is_sensitive %}
+  {% set tooltip_parts = [] %}
+  {% if d.sensitivity_source in ('auto', 'both') and d.sensitivity_reason_auto %}
+    {% set _ = tooltip_parts.append(d.sensitivity_reason_auto) %}
+  {% endif %}
+  {% if d.sensitivity_source in ('manual', 'both') and d.sensitivity_flagged_by %}
+    {% set manual_line = 'Manually flagged by ' ~ d.sensitivity_flagged_by %}
+    {% if d.sensitivity_flagged_at %}
+      {% set manual_line = manual_line ~ ' on ' ~ (d.sensitivity_flagged_at | format_dt('datetime')) %}
+    {% endif %}
+    {% if d.sensitivity_reason %}
+      {% set manual_line = manual_line ~ ' — ' ~ d.sensitivity_reason %}
+    {% endif %}
+    {% set _ = tooltip_parts.append(manual_line) %}
+  {% endif %}
   <span class="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800"
-        title="{% if d.sensitivity_flagged_by %}Flagged by {{ d.sensitivity_flagged_by }}{% if d.sensitivity_flagged_at %} on {{ d.sensitivity_flagged_at | format_dt('datetime') }}{% endif %}{% if d.sensitivity_reason %} — {{ d.sensitivity_reason }}{% endif %}{% else %}This call is flagged sensitive{% endif %}">
+        title="{{ tooltip_parts | join(' · ') if tooltip_parts else 'This call is flagged sensitive' }}">
     <i class="fas fa-shield-halved text-[9px]"></i>
-    Sensitive
+    Sensitive{% if d.sensitivity_source == 'auto' %} · Auto{% endif %}
   </span>
 {% endif %}
 
+{# Manual flag/unflag toggle. The MANUAL side is the only thing the
+   button controls — auto-flags are decided in the Dataform view and
+   can't be cleared from the UI. So when a call is auto-only:
+     * leader sees "Override: clear sensitive" — which inserts a
+       manual entry... wait no, that'd just RE-FLAG it. We can't
+       UNDO an auto-flag from chainsaw-ops without touching Dataform.
+       For now we just don't show the toggle when the call is
+       auto-only-sensitive; the source-of-truth fix is to edit the
+       Dataform identifier lists.
+   When the call is MANUAL-sensitive (with or without auto), Unflag
+   removes the manual row. If auto still hits, the call stays
+   sensitive — exactly the behaviour we want. #}
 {% if can('support.calls.flag_sensitive') and d.session_id %}
-  {% if d.is_sensitive %}
-    {# Unflag — DELETE. Confirm before clearing so a misclick on a row
-       full of sensitive content doesn't open it to the wider team. #}
+  {% if d.sensitivity_source in ('manual', 'both') %}
+    {# Unflag manual side. If auto also hits, the call stays gated —
+       hx-confirm wording reflects that. #}
+    {% if d.sensitivity_source == 'both' %}
+      {% set confirm_msg = "Clear the manual flag on this call? It will REMAIN gated because the Dataform model also auto-flags it. Edit the Dataform management lists to remove the auto-flag." %}
+    {% else %}
+      {% set confirm_msg = "Unflag this call? The full analysis will become visible to everyone with support.calls.view." %}
+    {% endif %}
     <button type="button"
             hx-delete="{{ url_for('customer_360.toggle_call_sensitivity', session_id=d.session_id) }}"
             hx-target="#call-modal-body"
             hx-swap="innerHTML"
-            hx-confirm="Unflag this call? The full analysis will become visible to everyone with support.calls.view."
+            hx-confirm="{{ confirm_msg }}"
             class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50">
       <i class="fas fa-shield-halved text-[10px] text-rose-500"></i>
-      Unflag sensitive
+      Unflag manual
     </button>
+  {% elif d.sensitivity_source == 'auto' %}
+    {# Auto-only — no manual toggle available. Show a passive hint so
+       the leader knows where to look to change this. #}
+    <span class="text-[10px] italic text-slate-500"
+          title="Edit the Dataform call_sensitivity.sqlx management lists to change which calls auto-flag.">
+      Auto-flagged · edit Dataform to override
+    </span>
   {% else %}
-    {# Flag — POST. No confirmation; flagging is the safe direction. #}
+    {# No flag at all — let the leader add a manual one. Safe direction,
+       no confirmation. #}
     <button type="button"
             hx-post="{{ url_for('customer_360.toggle_call_sensitivity', session_id=d.session_id) }}"
             hx-target="#call-modal-body"

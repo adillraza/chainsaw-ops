@@ -1051,13 +1051,68 @@ class Customer360Service:
     # restricted fields from the payload before render.
 
     def is_call_sensitive(self, session_id: str) -> bool:
-        """Return True iff a ``call_sensitivity_flag`` row exists."""
+        """Return True iff a manual ``call_sensitivity_flag`` row exists.
+
+        For the FULL sensitivity decision (manual OR auto), use
+        :meth:`get_call_details` — it merges the manual flag with the
+        Dataform-managed ``call_sensitivity_v`` view.
+        """
         if not session_id:
             return False
         from app.models.call_sensitivity import CallSensitivityFlag
         return CallSensitivityFlag.query.filter_by(
             session_id=session_id
         ).first() is not None
+
+    def get_auto_sensitivity(self, session_id: str) -> dict:
+        """Query the Dataform-managed ``call_sensitivity_v`` view.
+
+        The view emits one row per session whose any-leg touched a
+        configured management identifier (extension, DID, agent name,
+        or CXone skill). See
+        ``misc_ai_work/chainsawspares-dataform/definitions/Customer
+        Service/call_sensitivity.sqlx``.
+
+        Returns ``{is_sensitive_auto, sensitivity_reason}`` — both
+        falsy when the view has no matching row, when BigQuery is
+        unavailable, or when the view simply doesn't exist yet (the
+        first deploy lands the Python before the Dataform run, and
+        gracefully degrading here keeps the modal working in that
+        window).
+        """
+        default = {"is_sensitive_auto": False, "sensitivity_reason_auto": None}
+        if not session_id or self.client is None:
+            return default
+        sql = """
+        SELECT is_sensitive_auto, sensitivity_reason
+        FROM `chainsawspares-385722.ringcentral_jnj.call_sensitivity_v`
+        WHERE contactId = @sid OR session_id = @sid
+        LIMIT 1
+        """
+        try:
+            job = self.client.query(
+                sql,
+                job_config=bigquery.QueryJobConfig(query_parameters=[
+                    bigquery.ScalarQueryParameter("sid", "STRING", session_id),
+                ]),
+            )
+            row = next(iter(job.result()), None)
+        except Exception as exc:
+            # The view doesn't exist yet, or BQ is sick. Treat as
+            # "no auto-flag" rather than 500ing the modal — manual
+            # flags still work, and once Dataform runs the next
+            # request will pick up the real answer.
+            import logging
+            logging.getLogger(__name__).debug(
+                "get_auto_sensitivity: degrading to no-auto-flag (%s)", exc
+            )
+            return default
+        if row is None:
+            return default
+        return {
+            "is_sensitive_auto": bool(row.is_sensitive_auto),
+            "sensitivity_reason_auto": row.sensitivity_reason,
+        }
 
     def get_sensitivity_flag(self, session_id: str):
         """Return the ``CallSensitivityFlag`` row or None.
@@ -1133,19 +1188,51 @@ class Customer360Service:
         ``account_call_log_leg`` to find the corresponding ``recording_id``
         and JOIN forward.
         """
-        # Resolve the sensitivity flag once, up-front, so every code path
-        # below sees a consistent value (every branch of get_call_details
-        # ultimately returns a dict — empty, basic, or full — and they
-        # all need is_sensitive on them).
+        # Resolve sensitivity once, up-front, so every branch of
+        # get_call_details (empty / basic / full) sees a consistent value.
+        # Two independent sources are merged:
+        #
+        #   manual — a row in the local SQLite ``call_sensitivity_flag``
+        #            table, written by leaders/admins via the modal's
+        #            Flag button. Carries reason + audit attribution.
+        #
+        #   auto   — the Dataform-managed BQ view ``call_sensitivity_v``
+        #            (see misc_ai_work/chainsawspares-dataform). Tags a
+        #            session sensitive when any leg touched a management
+        #            extension, DID, agent, or skill. Reason is a short
+        #            machine-generated string like "Auto: routed to
+        #            management extension".
+        #
+        # Final ``is_sensitive`` is the OR — either source can gate the
+        # call. ``sensitivity_source`` records which one(s) hit so the
+        # modal can show the right attribution line.
         flag = self.get_sensitivity_flag(session_id)
+        auto = self.get_auto_sensitivity(session_id)
+
+        is_manual = flag is not None
+        is_auto   = bool(auto.get("is_sensitive_auto"))
+
+        if is_manual and is_auto:
+            sensitivity_source = "both"
+        elif is_manual:
+            sensitivity_source = "manual"
+        elif is_auto:
+            sensitivity_source = "auto"
+        else:
+            sensitivity_source = None
+
         sens_fields = {
-            "is_sensitive": flag is not None,
+            "is_sensitive": is_manual or is_auto,
+            "sensitivity_source": sensitivity_source,
+            # Manual-side attribution. Empty when only auto-flagged.
             "sensitivity_reason": (flag.reason if flag else None),
             "sensitivity_flagged_by": (
                 (flag.flagged_by.display_name or flag.flagged_by.username)
                 if flag and flag.flagged_by else None
             ),
             "sensitivity_flagged_at": (flag.flagged_at_local if flag else None),
+            # Auto-side attribution. Empty when only manually-flagged.
+            "sensitivity_reason_auto": auto.get("sensitivity_reason_auto"),
         }
 
         empty = {
