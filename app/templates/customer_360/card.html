@@ -25,6 +25,37 @@
 
 {% block content %}
   {# ----------------------------------------------------------------- #}
+  {# Recently-searched ledger — every visit to /customer/<phone>      #}
+  {# pushes one entry into localStorage so the right-sidebar           #}
+  {# "Recently Searched" panel can show a jump-list across pages.     #}
+  {# Skipped for internal-line stubs (no point keeping the IVR DID    #}
+  {# in the agent's recent list) and for blank phones.                #}
+  {# ----------------------------------------------------------------- #}
+  {% if not c.is_internal_line and c.phone %}
+    {% set _primary = c.customers[0] if c.customers else None %}
+    {% set _full_name = ((_primary.name_first or '') ~ ' ' ~ (_primary.name_last or '')) if _primary else '' %}
+    <script>
+      (function () {
+        const KEY   = 'recent_customer_lookups';
+        const CAP   = 10;
+        const phone = {{ c.phone | tojson }};
+        const name  = ({{ _full_name | tojson }}).trim();
+        if (!phone) return;
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch (e) {}
+        // Dedupe — newest visit wins, moves the entry to the top.
+        list = list.filter(x => x && x.phone !== phone);
+        list.unshift({ phone, name, ts: Date.now() });
+        if (list.length > CAP) list = list.slice(0, CAP);
+        localStorage.setItem(KEY, JSON.stringify(list));
+        // ``storage`` event only fires in OTHER tabs of the same origin,
+        // so dispatch a same-tab event for the sidebar widget to refresh.
+        window.dispatchEvent(new CustomEvent('recent-lookups-changed'));
+      })();
+    </script>
+  {% endif %}
+
+  {# ----------------------------------------------------------------- #}
   {# INTERNAL LINE — short-circuit when the phone is one of JJ's own  #}
   {# numbers (IVR DID / staff direct line / main company / fax).      #}
   {# Renders a single explainer card and skips every other section.   #}
