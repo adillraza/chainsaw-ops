@@ -54,7 +54,14 @@
         </span>
         <i class="fas text-xs text-slate-400" :class="openSection === 'live' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
-      <div x-show="openSection === 'live'" x-cloak class="flex-1 overflow-y-auto bg-emerald-50/40"
+      {# ``flex flex-col`` here so the section body itself is the
+         flex column that holds either the empty state (with flex-1
+         to fill height) or the call list. Crucially this is also
+         the ONLY scrollable container in the section — the inner
+         <ul> doesn't get its own overflow-y-auto. That's required
+         for scroll-position persistence: the scroll listener is
+         attached to this element by ID. #}
+      <div x-show="openSection === 'live'" x-cloak class="flex-1 overflow-y-auto bg-emerald-50/40 flex flex-col"
            id="live-section-body"
            hx-get="{{ url_for('live_calls.active_calls') }}"
            hx-trigger="load, every 3s, refresh-pin-calls from:body delay:200ms"
@@ -83,7 +90,7 @@
       </button>
       <div id="todays-calls-body"
            x-show="openSection === 'recent'" x-cloak
-           class="flex-1 overflow-y-auto bg-sky-50/40"
+           class="flex-1 overflow-y-auto bg-sky-50/40 flex flex-col"
            hx-get="{{ url_for('live_calls.recent_calls') }}"
            hx-trigger="load, every 10s, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">
@@ -111,7 +118,7 @@
         <i class="fas text-xs text-slate-400" :class="openSection === 'pin' ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
       <div id="pin-calls-body"
-           x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto bg-amber-50/40"
+           x-show="openSection === 'pin'" x-cloak class="flex-1 overflow-y-auto bg-amber-50/40 flex flex-col"
            hx-get="{{ url_for('live_calls.pinned_calls') }}"
            hx-trigger="load, refresh-pin-calls from:body delay:200ms"
            hx-swap="innerHTML">

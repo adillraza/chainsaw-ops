@@ -5,15 +5,17 @@
    customer 360 page. Refresh is driven by the pin-changed window event
    dispatched from the Live and Recent sections. #}
 
-<div class="flex h-full flex-col">
-  {% if not pinned %}
-    <div class="flex flex-1 flex-col items-center justify-center px-4 py-10 text-center text-xs text-slate-400">
-      <i class="fas fa-thumbtack text-3xl text-slate-200"></i>
-      <p class="mt-3">No pinned calls.</p>
-      <p class="mt-0.5 text-[11px] text-slate-300">Pin a call from Live or Recent to follow up later.</p>
-    </div>
-  {% else %}
-    <ul class="flex-1 divide-y divide-slate-200 overflow-y-auto">
+{# Render directly into #pin-calls-body (which provides flex flex-col
+   + overflow-y-auto). No nested overflow — see comment in
+   live_calls_recent.html for why. #}
+{% if not pinned %}
+  <div class="flex flex-1 flex-col items-center justify-center px-4 py-10 text-center text-xs text-slate-400">
+    <i class="fas fa-thumbtack text-3xl text-slate-200"></i>
+    <p class="mt-3">No pinned calls.</p>
+    <p class="mt-0.5 text-[11px] text-slate-300">Pin a call from Live or Recent to follow up later.</p>
+  </div>
+{% else %}
+    <ul class="divide-y divide-slate-200">
       {% for call in pinned %}
         {% set phone_local = ('0' ~ call.phone[3:]) if (call.phone and call.phone.startswith('+61')) else (call.phone or '') %}
         {% set to_local = ('0' ~ call.to_number[3:]) if (call.to_number and call.to_number.startswith('+61')) else (call.to_number or '') %}
@@ -49,20 +51,28 @@
                 {{ call.customer_name or 'No Name' }}
               </div>
 
-              {# Row 3 — phone + direction #}
-              <div class="mt-0.5 flex items-center justify-between gap-2 text-[11px]">
-                <span class="font-mono text-slate-700">{{ phone_local or '—' }}</span>
-                <span class="whitespace-nowrap text-slate-500">
-                  {% if call.direction == 'Inbound' %}<i class="fas fa-phone-arrow-down-left text-[9px] text-emerald-500"></i> incoming
-                  {% elif call.direction == 'Outbound' %}<i class="fas fa-phone-arrow-up-right text-[9px] text-sky-500"></i> outbound
-                  {% endif %}
-                </span>
+              {# Row 3 — customer phone, alone (mono). #}
+              <div class="mt-0.5 font-mono text-[11px] text-slate-700">
+                {{ phone_local or '—' }}
               </div>
 
-              {# Row 4 — dialed-to number, only when present. #}
-              {% if to_local %}
-                <div class="mt-0.5 truncate font-mono text-[10px] text-slate-500" title="dialed {{ to_local }}">
-                  → {{ to_local }}
+              {# Row 4 — Inbound/Outbound pill + dialed-to. #}
+              {% if call.direction or to_local %}
+                <div class="mt-1 flex items-center gap-1.5 text-[10px]">
+                  {% if call.direction == 'Inbound' %}
+                    <span class="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-emerald-700">
+                      <i class="fas fa-phone-arrow-down-left text-[8px] mr-1"></i>Inbound
+                    </span>
+                  {% elif call.direction == 'Outbound' %}
+                    <span class="inline-flex items-center rounded-full bg-sky-50 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-sky-700">
+                      <i class="fas fa-phone-arrow-up-right text-[8px] mr-1"></i>Outbound
+                    </span>
+                  {% endif %}
+                  {% if to_local %}
+                    <span class="truncate font-mono text-slate-500" title="dialed {{ to_local }}">
+                      → {{ to_local }}
+                    </span>
+                  {% endif %}
                 </div>
               {% endif %}
 
@@ -89,5 +99,4 @@
         </li>
       {% endfor %}
     </ul>
-  {% endif %}
-</div>
+{% endif %}
