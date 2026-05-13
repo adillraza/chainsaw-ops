@@ -1,0 +1,54 @@
+{# Sensitive-call badge + toggle. Included from the call-details modal
+   header strip on both branches (basic-details and full-details).
+
+   Expects ``d`` in scope with these fields (set by
+   customer_360_service.get_call_details + redact_sensitive_call_details):
+     * ``d.session_id``           — used in the HTMX endpoint URL
+     * ``d.is_sensitive``         — True when a call_sensitivity_flag row exists
+     * ``d.sensitivity_flagged_by``, ``d.sensitivity_flagged_at`` — audit attribution
+     * ``d.redacted_for_sensitive`` — True when the route stripped fields
+
+   Two pieces:
+
+   1. Badge: rendered to EVERY viewer when the call is sensitive, so
+      non-privileged agents understand why the bottom of the modal is
+      empty / behind the restricted banner. Hidden when not flagged.
+
+   2. Toggle button: only rendered when the viewer holds
+      ``support.calls.flag_sensitive``. POST flags, DELETE unflags.
+      Both swap the modal body in-place so the banner + analysis
+      sections + button label update in one round-trip. #}
+
+{% if d.is_sensitive %}
+  <span class="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800"
+        title="{% if d.sensitivity_flagged_by %}Flagged by {{ d.sensitivity_flagged_by }}{% if d.sensitivity_flagged_at %} on {{ d.sensitivity_flagged_at | format_dt('datetime') }}{% endif %}{% if d.sensitivity_reason %} — {{ d.sensitivity_reason }}{% endif %}{% else %}This call is flagged sensitive{% endif %}">
+    <i class="fas fa-shield-halved text-[9px]"></i>
+    Sensitive
+  </span>
+{% endif %}
+
+{% if can('support.calls.flag_sensitive') and d.session_id %}
+  {% if d.is_sensitive %}
+    {# Unflag — DELETE. Confirm before clearing so a misclick on a row
+       full of sensitive content doesn't open it to the wider team. #}
+    <button type="button"
+            hx-delete="{{ url_for('customer_360.toggle_call_sensitivity', session_id=d.session_id) }}"
+            hx-target="#call-modal-body"
+            hx-swap="innerHTML"
+            hx-confirm="Unflag this call? The full analysis will become visible to everyone with support.calls.view."
+            class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+      <i class="fas fa-shield-halved text-[10px] text-rose-500"></i>
+      Unflag sensitive
+    </button>
+  {% else %}
+    {# Flag — POST. No confirmation; flagging is the safe direction. #}
+    <button type="button"
+            hx-post="{{ url_for('customer_360.toggle_call_sensitivity', session_id=d.session_id) }}"
+            hx-target="#call-modal-body"
+            hx-swap="innerHTML"
+            class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200">
+      <i class="fas fa-shield-halved text-[10px] text-slate-400"></i>
+      Flag sensitive
+    </button>
+  {% endif %}
+{% endif %}

@@ -7,10 +7,15 @@ import os
 import time
 
 from flask import current_app, jsonify, render_template, request
+from flask_login import current_user
 
-from app.auth.abilities import require_capability
+from app.auth.abilities import require_capability, user_can
 from app.blueprints.customer_360 import customer_360_bp
-from app.services.customer_360_service import customer_360_service, normalize_phone
+from app.services.customer_360_service import (
+    customer_360_service,
+    normalize_phone,
+    redact_sensitive_call_details,
+)
 
 
 # Short-lived signing for the /listen WSS endpoint on rcx-stream-server.
@@ -85,8 +90,57 @@ def call_details(session_id: str):
 
     ``path`` converter (not ``string``) so PBX session ids that contain dots
     (``s-a035ddc2def3bz...``) come through unmangled.
+
+    Sensitive-call gating: every payload carries ``is_sensitive``. If it's
+    True and the viewer lacks ``support.calls.view_sensitive``, the
+    analysis fields (summary / transcription / audio URL / classifications
+    / sentiment) are stripped server-side before render — defense in depth
+    against future template regressions.
     """
     details = customer_360_service.get_call_details(session_id)
+    if not user_can(current_user, "support.calls.view_sensitive"):
+        details = redact_sensitive_call_details(details)
+    return render_template("customer_360/_call_details_modal.html", d=details)
+
+
+@customer_360_bp.route("/api/call/<path:session_id>/sensitive", methods=["POST", "DELETE"])
+@require_capability("support.calls.flag_sensitive")
+def toggle_call_sensitivity(session_id: str):
+    """Flag (POST) or unflag (DELETE) a call as sensitive.
+
+    Gated by ``support.calls.flag_sensitive`` — leaders and admins, not
+    every viewer-of-sensitive. We deliberately keep these two capabilities
+    separable so an org could create a "compliance auditor" role that
+    can VIEW sensitive transcripts but can't change which calls are
+    flagged.
+
+    Request shape:
+      * POST   /customer/api/call/<sid>/sensitive  body: optional ``reason`` form field
+      * DELETE /customer/api/call/<sid>/sensitive  body: ignored
+
+    Response is the same HTML the modal expects — the caller swaps the
+    modal body so the new state (banner present/absent, "Flagged by X"
+    line, button label flipped) renders in one round-trip.
+    """
+    user_id = getattr(current_user, "id", None)
+    if request.method == "POST":
+        reason = (request.form.get("reason") or "").strip() or None
+        customer_360_service.set_call_sensitivity(
+            session_id, sensitive=True, user_id=user_id, reason=reason
+        )
+    else:  # DELETE
+        customer_360_service.set_call_sensitivity(
+            session_id, sensitive=False, user_id=user_id
+        )
+
+    # Re-fetch + re-render the modal body so the agent sees the new state
+    # without an extra round-trip. The toggler itself sees the full payload
+    # (they hold flag_sensitive, which implies they understand what they're
+    # looking at). If you ever decouple — letting a flag_sensitive holder
+    # NOT have view_sensitive — apply the same redaction step as call_details.
+    details = customer_360_service.get_call_details(session_id)
+    if not user_can(current_user, "support.calls.view_sensitive"):
+        details = redact_sensitive_call_details(details)
     return render_template("customer_360/_call_details_modal.html", d=details)
 
 

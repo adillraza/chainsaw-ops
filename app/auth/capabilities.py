@@ -49,8 +49,10 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("roles.manage",             "Create, edit, and delete roles and their capabilities"),
     ],
     "Customer Service": [
-        ("support.calls.view",       "See the live-calls dashboard and customer 360 cards"),
-        ("kb.view",                  "Use the Knowledge Base — search products, manuals, brochures"),
+        ("support.calls.view",           "See the live-calls dashboard and customer 360 cards"),
+        ("support.calls.view_sensitive", "See transcripts, summaries, and audio playback for calls flagged sensitive (management portions, escalations, internal-handover legs). Without this capability the agent still sees the call exists and its basic metadata but the analysis is restricted."),
+        ("support.calls.flag_sensitive", "Mark a call as sensitive / not sensitive from the call-details modal. Generally paired with view_sensitive — you need to see the analysis to know whether it should be restricted."),
+        ("kb.view",                      "Use the Knowledge Base — search products, manuals, brochures"),
     ],
 }
 
@@ -101,6 +103,19 @@ SYSTEM_ROLE_DEFAULTS: dict[str, set[str]] = {
     # users until an admin promotes them.
     "viewer": {
         "support.calls.view",
+        "kb.view",
+    },
+    # ``leader`` is the supervisor / team-lead role. Has the same
+    # Customer 360 + KB access as viewer/agents, plus the two
+    # sensitive-call capabilities: they can see transcripts / summaries
+    # / audio for calls flagged sensitive AND they can flag/unflag
+    # other calls as sensitive themselves. Created so an org admin
+    # can promote a team lead without granting full admin (users.manage,
+    # roles.manage, validation.*, etc).
+    "leader": {
+        "support.calls.view",
+        "support.calls.view_sensitive",
+        "support.calls.flag_sensitive",
         "kb.view",
     },
 }

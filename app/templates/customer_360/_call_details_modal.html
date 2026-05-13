@@ -1,6 +1,14 @@
 {# Modal contents — HTMX swaps this into #call-modal-body when an agent
    clicks a call row in the customer 360 card. The outer modal frame
-   (backdrop + open/close handling) lives in card.html. #}
+   (backdrop + open/close handling) lives in card.html.
+
+   Sensitivity gating lives here too — see the three insertion points
+   below:
+     1. The "Sensitive" badge in the header strip (visible to all).
+     2. The flag/unflag button in the header strip (only when the
+        viewer holds ``support.calls.flag_sensitive``).
+     3. The "restricted" banner shown to non-privileged viewers when
+        ``d.redacted_for_sensitive`` is set by the route. #}
 
 {% if not d.found %}
   <div class="px-6 py-12 text-center">
@@ -32,6 +40,13 @@
         <p class="mt-0.5 text-[11px] text-slate-400">
           session <span class="font-mono">{{ d.session_id }}</span> · source <span class="font-mono">{{ d.source }}</span>
         </p>
+      </div>
+
+      {# Same sensitive controls as the full-details branch. A leader can
+         flag a call as sensitive BEFORE the analyzer has run on it, so
+         the moment the analysis lands tomorrow it'll already be gated. #}
+      <div class="flex flex-shrink-0 flex-col items-end gap-2">
+        {% include "customer_360/_call_sensitive_controls.html" %}
       </div>
     </div>
   </header>
@@ -99,21 +114,58 @@
           contactId <span class="font-mono">{{ d.contactId }}</span>
         </p>
       </div>
-      {# Sentiment badge (top-level "average") #}
-      {% if d.sentiment_parsed and d.sentiment_parsed.average %}
-        {% set s = d.sentiment_parsed.average %}
-        {% set sent_color = 'emerald' if s.sentiment == 'positive' else 'rose' if s.sentiment == 'negative' else 'slate' %}
-        <span class="inline-flex flex-col items-end">
-          <span class="inline-flex items-center rounded-full bg-{{ sent_color }}-100 px-2.5 py-0.5 text-xs font-medium text-{{ sent_color }}-800 capitalize">
-            {{ s.sentiment }}
+
+      {# Right-rail of the header — sensitive badge + sentiment + flag toggle. #}
+      <div class="flex flex-shrink-0 flex-col items-end gap-2">
+        {% include "customer_360/_call_sensitive_controls.html" %}
+
+        {# Sentiment badge (top-level "average") — only renders when the
+           call has analysis. Sensitive-call redaction nukes
+           sentiment_parsed so this auto-hides for non-privileged viewers. #}
+        {% if d.sentiment_parsed and d.sentiment_parsed.average %}
+          {% set s = d.sentiment_parsed.average %}
+          {% set sent_color = 'emerald' if s.sentiment == 'positive' else 'rose' if s.sentiment == 'negative' else 'slate' %}
+          <span class="inline-flex flex-col items-end">
+            <span class="inline-flex items-center rounded-full bg-{{ sent_color }}-100 px-2.5 py-0.5 text-xs font-medium text-{{ sent_color }}-800 capitalize">
+              {{ s.sentiment }}
+            </span>
+            <span class="mt-1 text-[10px] uppercase tracking-wide text-slate-400">
+              score {{ '%.2f' % (s.sentiment_score or 0) }}
+            </span>
           </span>
-          <span class="mt-1 text-[10px] uppercase tracking-wide text-slate-400">
-            score {{ '%.2f' % (s.sentiment_score or 0) }}
-          </span>
-        </span>
-      {% endif %}
+        {% endif %}
+      </div>
     </div>
   </header>
+
+  {# Restricted banner — replaces the analysis sections when the viewer
+     lacks ``support.calls.view_sensitive``. The data has already been
+     scrubbed server-side (see redact_sensitive_call_details), so the
+     {% if d.summary %} / {% if d.transcription %} blocks below
+     evaluate false; this banner explains why. #}
+  {% if d.redacted_for_sensitive %}
+    <section class="border-b border-slate-200 bg-rose-50 px-6 py-4">
+      <div class="flex items-start gap-3">
+        <i class="fas fa-shield-halved mt-0.5 text-rose-500"></i>
+        <div class="flex-1 text-sm">
+          <p class="font-medium text-rose-900">Analysis restricted</p>
+          <p class="mt-1 text-rose-800">
+            This call has been flagged as sensitive. Recording playback,
+            AI summary, transcript, and classifications are hidden from
+            your role.
+            {% if d.sensitivity_flagged_by %}
+              Flagged by <strong>{{ d.sensitivity_flagged_by }}</strong>
+              {% if d.sensitivity_flagged_at %} · {{ d.sensitivity_flagged_at | format_dt('datetime') }}{% endif %}.
+            {% endif %}
+          </p>
+          <p class="mt-1 text-[11px] text-rose-700">
+            If you need access for an investigation or coaching session,
+            ask a team lead or admin to review with you.
+          </p>
+        </div>
+      </div>
+    </section>
+  {% endif %}
 
   {# Audio player #}
   {% if d.recording_signed_url %}

@@ -1036,6 +1036,79 @@ class Customer360Service:
     # Per-call detail: AI summary + transcript + classifications + audio
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Sensitivity flag — see app.models.call_sensitivity.CallSensitivityFlag
+    # ------------------------------------------------------------------
+    # Calls flagged "sensitive" (management portions, escalations, internal
+    # handovers) are gated so only users with the
+    # ``support.calls.view_sensitive`` capability see the analysis bundle
+    # (summary, transcription, audio URL, classifications, sentiment).
+    # Other users see the metadata header + a "restricted" banner.
+    #
+    # These helpers are pure data — they don't enforce auth. Auth is
+    # enforced by ``require_capability`` on the route layer and by
+    # :func:`redact_sensitive_call_details` below, which strips the
+    # restricted fields from the payload before render.
+
+    def is_call_sensitive(self, session_id: str) -> bool:
+        """Return True iff a ``call_sensitivity_flag`` row exists."""
+        if not session_id:
+            return False
+        from app.models.call_sensitivity import CallSensitivityFlag
+        return CallSensitivityFlag.query.filter_by(
+            session_id=session_id
+        ).first() is not None
+
+    def get_sensitivity_flag(self, session_id: str):
+        """Return the ``CallSensitivityFlag`` row or None.
+
+        Used by the modal to show "Flagged by Adil · 14 May, 10:30" when
+        the viewer holds ``support.calls.view_sensitive``.
+        """
+        if not session_id:
+            return None
+        from app.models.call_sensitivity import CallSensitivityFlag
+        return CallSensitivityFlag.query.filter_by(session_id=session_id).first()
+
+    def set_call_sensitivity(
+        self,
+        session_id: str,
+        sensitive: bool,
+        user_id: int | None,
+        reason: str | None = None,
+    ) -> bool:
+        """Flag / unflag a call. Returns the new ``is_sensitive`` value.
+
+        Presence of a row == flagged. Unflagging deletes the row, which
+        also drops the audit attribution (who flagged it last); that's
+        fine for v1, an audit log table can be added later if needed.
+        """
+        from app.extensions import db
+        from app.models.call_sensitivity import CallSensitivityFlag
+        existing = CallSensitivityFlag.query.filter_by(session_id=session_id).first()
+        if sensitive:
+            if existing is None:
+                row = CallSensitivityFlag(
+                    session_id=session_id,
+                    flagged_by_user_id=user_id,
+                    reason=(reason or None),
+                )
+                db.session.add(row)
+            else:
+                # Re-flagging — update attribution and reason but don't
+                # bump flagged_at (the original moment is more interesting
+                # than the most-recent edit).
+                existing.flagged_by_user_id = user_id
+                if reason is not None:
+                    existing.reason = reason or None
+            db.session.commit()
+            return True
+        else:
+            if existing is not None:
+                db.session.delete(existing)
+                db.session.commit()
+            return False
+
     def get_call_details(self, session_id: str) -> dict:
         """Pull the full bundle for one historical call (for the modal).
 
@@ -1046,6 +1119,12 @@ class Customer360Service:
             problems_detected, etc.)
           * callsrep_rep_contacts_completed_v2 — call metadata (start/duration/agent)
 
+        Always sets ``is_sensitive`` on the returned dict based on the
+        ``call_sensitivity_flag`` table. Server-side redaction for users
+        without ``support.calls.view_sensitive`` happens in the route
+        layer via :func:`redact_sensitive_call_details`, not here — this
+        function is a pure data fetcher.
+
         ``session_id`` matches CXone calls directly (numeric contactId stored
         as STRING in our last_5_calls). For PBX calls the session_id is the
         RC telephony session (``s-...``), which does NOT match
@@ -1054,10 +1133,26 @@ class Customer360Service:
         ``account_call_log_leg`` to find the corresponding ``recording_id``
         and JOIN forward.
         """
+        # Resolve the sensitivity flag once, up-front, so every code path
+        # below sees a consistent value (every branch of get_call_details
+        # ultimately returns a dict — empty, basic, or full — and they
+        # all need is_sensitive on them).
+        flag = self.get_sensitivity_flag(session_id)
+        sens_fields = {
+            "is_sensitive": flag is not None,
+            "sensitivity_reason": (flag.reason if flag else None),
+            "sensitivity_flagged_by": (
+                (flag.flagged_by.display_name or flag.flagged_by.username)
+                if flag and flag.flagged_by else None
+            ),
+            "sensitivity_flagged_at": (flag.flagged_at_local if flag else None),
+        }
+
         empty = {
             "session_id": session_id,
             "found": False,
             "recording_signed_url": None,
+            **sens_fields,
         }
         if not session_id or self.client is None:
             return empty
@@ -1116,9 +1211,12 @@ class Customer360Service:
 
         # If still nothing, fall back to the local call_event log — covers
         # today's calls (analyzer hasn't run yet) and sessions that never
-        # produced a recording at all.
+        # produced a recording at all. The fallback path merges sens_fields
+        # in itself (see ``_call_details_from_event_log``).
         if row is None:
-            return self._call_details_from_event_log(session_id)
+            basic = self._call_details_from_event_log(session_id)
+            basic.update(sens_fields)
+            return basic
 
         d = _row_to_dict(row)
         d["session_id"] = session_id
@@ -1142,6 +1240,9 @@ class Customer360Service:
         if d.get("gcs_uri"):
             d["recording_signed_url"] = self._sign_gcs_url(d["gcs_uri"], minutes=15)
 
+        # Sensitivity attribution. Templates read these; ``is_sensitive``
+        # also drives the redaction in :func:`redact_sensitive_call_details`.
+        d.update(sens_fields)
         return d
 
     def _lookup_pbx_recording_via_call_log(self, session_id: str):
@@ -1378,6 +1479,67 @@ class Customer360Service:
 
 # Global singleton, mirroring purchase_orders_service.
 customer_360_service = Customer360Service()
+
+
+# ---------------------------------------------------------------------------
+# Sensitive-call redaction (defense in depth)
+# ---------------------------------------------------------------------------
+# The call-details modal template ALSO gates these fields via ``can(...)``,
+# but redacting them here guarantees they never reach the rendering path
+# for a user without ``support.calls.view_sensitive`` — so a future
+# template change can't accidentally leak them. The route layer calls
+# this immediately after :func:`Customer360Service.get_call_details`.
+
+# Fields stripped when a call is flagged sensitive and the viewer lacks
+# ``support.calls.view_sensitive``. Header metadata (agent, duration,
+# skill, end reason, contactId, start date) is deliberately KEPT so the
+# basic-info view still works.
+_SENSITIVE_FIELDS: tuple[str, ...] = (
+    # Raw analysis content
+    "summary",
+    "transcription",
+    # Audio playback — both the signed URL and the source pointer
+    "recording_signed_url",
+    "gcs_uri",
+    "recording_filename",
+    # Sentiment + topics + intents (both raw JSON strings and parsed views)
+    "sentiment",
+    "sentiment_parsed",
+    "topics",
+    "topics_parsed",
+    "intents",
+    "intents_parsed",
+    # Structured ML classifications
+    "call_type",
+    "sale_result",
+    "product_family",
+    "product_category_detail",
+    "no_sale_reasons",
+    "problems_detected",
+    "escalation_actions",
+    "delivery_tracking",
+    "confidence_scores",
+)
+
+
+def redact_sensitive_call_details(payload: dict) -> dict:
+    """Strip analysis fields when a call is flagged sensitive.
+
+    Should be called by the route AFTER ``get_call_details`` and AFTER
+    checking the viewer's capabilities — if the viewer holds
+    ``support.calls.view_sensitive``, pass the payload through unchanged.
+
+    Mutates and returns the same dict (in-place) for convenience. Sets
+    ``redacted_for_sensitive=True`` so the template can show the
+    "restricted" banner.
+    """
+    if not payload or not payload.get("is_sensitive"):
+        return payload
+    for k in _SENSITIVE_FIELDS:
+        if k in payload:
+            payload[k] = None
+    payload["redacted_for_sensitive"] = True
+    return payload
 
 
 # ---------------------------------------------------------------------------
