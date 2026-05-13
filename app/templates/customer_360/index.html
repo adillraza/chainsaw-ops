@@ -22,6 +22,72 @@
     </button>
   </form>
 
+  {# ----------------------------------------------------------------- #}
+  {# Recently Searched — jump-list of recent /customer/<phone> visits.#}
+  {# Backed entirely by localStorage (see the writer in card.html);    #}
+  {# no server-side state. Refreshes on the same-tab                   #}
+  {# ``recent-lookups-changed`` event card.html dispatches, and on the #}
+  {# cross-tab ``storage`` event.                                      #}
+  {# ----------------------------------------------------------------- #}
+  <section class="mt-6 max-w-xl rounded-lg border border-slate-200 bg-white shadow-sm"
+           x-data="recentLookupsPanel()"
+           x-init="load()"
+           @recent-lookups-changed.window="load()"
+           @storage.window="load()">
+    <header class="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+      <div class="flex items-center gap-2">
+        <i class="fas fa-clock-rotate-left text-[12px] text-violet-500"></i>
+        <h3 class="text-sm font-semibold text-slate-900">Recently searched</h3>
+        <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
+              x-show="entries.length > 0"
+              x-text="entries.length"></span>
+      </div>
+      <button type="button" @click="clearAll()"
+              x-show="entries.length > 0"
+              class="text-[11px] font-medium text-slate-500 hover:text-rose-600 hover:underline">
+        Clear all
+      </button>
+    </header>
+
+    {# Empty state — first time on this browser, or after Clear all. #}
+    <template x-if="entries.length === 0">
+      <div class="px-4 py-6 text-center text-xs text-slate-400">
+        <i class="fas fa-magnifying-glass text-base text-slate-300"></i>
+        <p class="mt-2">No recent lookups in this browser yet.</p>
+        <p class="mt-0.5 text-[11px] text-slate-300">
+          Search a phone number above and it'll show up here for quick re-entry.
+        </p>
+      </div>
+    </template>
+
+    {# Grid of recent lookups — each tile is a click target. #}
+    <template x-if="entries.length > 0">
+      <ul class="divide-y divide-slate-100">
+        <template x-for="(e, i) in entries" :key="e.phone">
+          <li>
+            <a :href="'/customer/' + encodeURIComponent(e.phone)"
+               class="flex items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-violet-50">
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-slate-900"
+                     x-text="e.name || 'Unknown caller'"></div>
+                <div class="mt-0.5 font-mono text-xs text-slate-600" x-text="e.phone"></div>
+              </div>
+              <div class="flex flex-shrink-0 items-center gap-2">
+                <span class="text-[11px] text-slate-400" x-text="relTime(e.ts)"></span>
+                <button type="button"
+                        @click.prevent.stop="remove(i)"
+                        title="Remove from recent"
+                        class="flex h-6 w-6 items-center justify-center rounded-full text-slate-300 hover:bg-rose-100 hover:text-rose-600">
+                  <i class="fas fa-times text-[10px]"></i>
+                </button>
+              </div>
+            </a>
+          </li>
+        </template>
+      </ul>
+    </template>
+  </section>
+
   <section class="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
     <p class="font-medium text-slate-700">Tips</p>
     <ul class="mt-2 list-disc space-y-1 pl-5">
@@ -30,4 +96,52 @@
       <li>Numbers with no Neto match still show call history and behaviour insights when we've seen them before.</li>
     </ul>
   </section>
+
+  {# Alpine factory for the Recently Searched panel. Registered via
+     alpine:init so it's robust against script ordering. The same
+     localStorage key is written by every customer card view. #}
+  <script>
+    document.addEventListener('alpine:init', () => {
+      window.Alpine.data('recentLookupsPanel', () => ({
+        entries: [],
+        KEY: 'recent_customer_lookups',
+
+        load() {
+          try {
+            const raw = localStorage.getItem(this.KEY) || '[]';
+            const list = JSON.parse(raw);
+            this.entries = Array.isArray(list) ? list : [];
+          } catch (e) {
+            this.entries = [];
+          }
+        },
+
+        remove(i) {
+          this.entries.splice(i, 1);
+          localStorage.setItem(this.KEY, JSON.stringify(this.entries));
+        },
+
+        clearAll() {
+          this.entries = [];
+          localStorage.removeItem(this.KEY);
+        },
+
+        // Compact relative time. Goes plain-text date once a week has
+        // passed because by then "8d ago" is less useful than "5 May".
+        relTime(ts) {
+          if (!ts) return '';
+          const diff = Date.now() - ts;
+          const m = Math.floor(diff / 60000);
+          if (m < 1) return 'just now';
+          if (m < 60) return m + 'm ago';
+          const h = Math.floor(m / 60);
+          if (h < 24) return h + 'h ago';
+          const d = Math.floor(h / 24);
+          if (d === 1) return 'yesterday';
+          if (d < 7) return d + 'd ago';
+          return new Date(ts).toLocaleDateString();
+        },
+      }));
+    });
+  </script>
 {% endblock %}

@@ -77,12 +77,11 @@
       x-init="$watch('sidebarCollapsed', v => localStorage.setItem('sidebarCollapsed', v ? '1' : '0'));
               $watch('liveCallsDrawerOpen', v => localStorage.setItem('liveCallsDrawer', v ? 'open' : 'closed'))">
   {% if current_user.is_authenticated %}
-    {# Live-calls drawer is scoped to call-adjacent areas — agents don't
-       need it staring at them while they're working on a PO or the MSL
-       queue, but they DO want it while looking things up in the KB
-       during a call. Visible on /customer/* and /kb/*. #}
-    {% set show_live_drawer = can('support.calls.view')
-                              and request.blueprint in ('customer_360', 'knowledge_base') %}
+    {# Live-calls drawer is scoped to the Customer 360 area only — agents
+       don't need it staring at them while they're working on a PO, the
+       MSL queue, or the KB. Visible on /customer/* (the customer_360
+       blueprint). #}
+    {% set show_live_drawer = can('support.calls.view') and request.blueprint == 'customer_360' %}
     {% if show_live_drawer %}
       {% include "partials/live_calls_drawer_frame.html" %}
     {% endif %}
