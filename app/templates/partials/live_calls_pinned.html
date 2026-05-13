@@ -46,19 +46,23 @@
                 </span>
               </div>
 
-              {# Row 2 — customer name #}
-              <div class="mt-1 truncate text-sm font-semibold tracking-tight {% if call.customer_name %}text-slate-900{% else %}text-slate-400{% endif %}">
-                {{ call.customer_name or 'No Name' }}
-              </div>
+              {# Row 2 — two-column body. Same shape as the other
+                 sections; bigger name on the left, routing facts on
+                 the right. #}
+              <div class="mt-1 flex items-start justify-between gap-3">
 
-              {# Row 3 — customer phone, alone (mono). #}
-              <div class="mt-0.5 font-mono text-[11px] text-slate-700">
-                {{ phone_local or '—' }}
-              </div>
+                {# LEFT — name + customer phone. #}
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-base font-semibold leading-tight tracking-tight {% if call.customer_name %}text-slate-900{% else %}text-slate-400{% endif %}">
+                    {{ call.customer_name or 'No Name' }}
+                  </div>
+                  <div class="mt-1 font-mono text-xs text-slate-700">
+                    {{ phone_local or '—' }}
+                  </div>
+                </div>
 
-              {# Row 4 — Inbound/Outbound pill + dialed-to. #}
-              {% if call.direction or to_local %}
-                <div class="mt-1 flex items-center gap-1.5 text-[10px]">
+                {# RIGHT — direction pill, dialed-to, agent, status_at_pin. #}
+                <div class="flex flex-shrink-0 flex-col items-end gap-0.5 text-[10px]">
                   {% if call.direction == 'Inbound' %}
                     <span class="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-emerald-700">
                       <i class="fas fa-phone-arrow-down-left text-[8px] mr-1"></i>Inbound
@@ -69,28 +73,26 @@
                     </span>
                   {% endif %}
                   {% if to_local %}
-                    <span class="truncate font-mono text-slate-500" title="dialed {{ to_local }}">
+                    <span class="font-mono text-slate-500" title="dialed {{ to_local }}">
                       → {{ to_local }}
                     </span>
                   {% endif %}
-                </div>
-              {% endif %}
-
-              {# Row 5 — agent + status-at-pin on one combined line. #}
-              {% if call.agent_name or call.status_at_pin %}
-                <div class="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-500">
                   {% if call.agent_name %}
-                    <span class="truncate"><i class="fas fa-headset text-[9px] text-slate-400 mr-1"></i>{{ call.agent_name }}</span>
+                    <span class="max-w-full truncate text-slate-500">
+                      <i class="fas fa-headset text-[9px] text-slate-400 mr-1"></i>{{ call.agent_name }}
+                    </span>
                   {% endif %}
                   {% if call.status_at_pin %}
-                    <span class="text-slate-400">· {{ call.status_at_pin }}</span>
+                    <span class="text-slate-400">{{ call.status_at_pin }}</span>
                   {% endif %}
                 </div>
-              {% endif %}
+              </div>
 
-              {# Row 6 — pin note, only when present. #}
+              {# Note — full-width row below the two columns, only
+                 when present. Pin notes can be a sentence or two,
+                 so they need the full card width to read cleanly. #}
               {% if call.note %}
-                <div class="mt-0.5 text-[10px] italic text-slate-500">
+                <div class="mt-1 text-[10px] italic text-slate-500">
                   {{ call.note }}
                 </div>
               {% endif %}
