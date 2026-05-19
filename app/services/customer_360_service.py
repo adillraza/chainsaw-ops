@@ -318,8 +318,17 @@ class Customer360Service:
         entry per session, in the same shape as the BQ ``last_5_calls``
         struct so the template renders both kinds identically.
 
-        Phone matched in either AU local or +61 form; events from the past
-        24 hours considered "today" for the purposes of merging.
+        Phone matched in either AU local or +61 form, and on EITHER side
+        of the leg (``from_number`` for inbound, ``to_number`` for
+        outbound). Events from the past 24 hours considered "today" for
+        the purposes of merging.
+
+        Bug history (2026-05-20): the filter previously checked only
+        ``from_number``, so outbound calls — where the customer phone
+        sits in ``to_number`` and our IVR DID is in ``from_number`` —
+        never matched, never topped up, and the call-history strip went
+        stale until the next-day Dataform rebuild. Outbound-only
+        customers could go ~24h with no visible recent activity.
         """
         from urllib.parse import parse_qs
         from datetime import datetime, timedelta
@@ -336,7 +345,10 @@ class Customer360Service:
             CallEvent.query
             .filter(CallEvent.received_at > since)
             .filter(CallEvent.session_id.isnot(None))
-            .filter(or_(CallEvent.from_number == phone, CallEvent.from_number == e164))
+            .filter(or_(
+                CallEvent.from_number == phone, CallEvent.from_number == e164,
+                CallEvent.to_number   == phone, CallEvent.to_number   == e164,
+            ))
             .order_by(CallEvent.received_at.asc())  # ASC so first event = call start
             .all()
         )
@@ -376,7 +388,19 @@ class Customer360Service:
                 disposition = "connected"
 
             duration_s = int((last.received_at - first.received_at).total_seconds())
-            direction = (first.event_type or "").split(":", 1)[0] if ":" in (first.event_type or "") else "Inbound"
+
+            # Direction is whichever side of the leg the customer's phone
+            # sits on. Don't trust event_type's prefix — CXone labels
+            # outbound calls as ``Inbound:Answered`` (the agent receives
+            # the leg) even when the customer is being dialed. Falling
+            # back to the prefix only when neither side matches the
+            # phone (shouldn't happen given our filter, but defensive).
+            if first.to_number in (phone, e164):
+                direction = "Outbound"
+            elif first.from_number in (phone, e164):
+                direction = "Inbound"
+            else:
+                direction = (first.event_type or "").split(":", 1)[0] if ":" in (first.event_type or "") else "Inbound"
 
             # Pull agent name from latest event's body if it's there
             agent_name = None
