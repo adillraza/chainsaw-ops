@@ -324,19 +324,6 @@ def run(reset: bool = False, limit: int | None = None, dry_run: bool = False) ->
         print("--reset: clearing existing neto_pdf rows + watermark")
         bq.query(f"DELETE FROM `{PROJECT}.{DATASET}.documents` WHERE source = '{SOURCE}'").result()
         bq.query(f"DELETE FROM `{PROJECT}.{DATASET}.refresh_state` WHERE source = '{SOURCE}'").result()
-    elif not dry_run:
-        # No watermark check — PDFs don't carry per-file modified dates
-        # we can trust. Instead: if we already have rows ingested, skip
-        # entirely. PDFs change rarely; pass --reset to force a refresh
-        # (e.g. when new brochures are added). The hourly cron is a
-        # no-op once the initial load is done, which is what we want.
-        existing = list(bq.query(
-            f"SELECT COUNT(*) AS n FROM `{PROJECT}.{DATASET}.documents` WHERE source = '{SOURCE}'"
-        ).result())[0].n
-        if existing > 0:
-            print(f"  {existing:,} neto_pdf rows already in documents. "
-                  f"Skipping re-ingest (use --reset to force).")
-            return
 
     print("fetching CMS rows from Neto…")
     all_rows = fetch_all_content()
@@ -344,6 +331,35 @@ def run(reset: bool = False, limit: int | None = None, dry_run: bool = False) ->
 
     pdfs = collect_pdf_links(all_rows)
     print(f"  found {len(pdfs):,} unique PDF URLs linked from CMS")
+
+    # --- Incremental filter -------------------------------------------------
+    # Previously this script bailed out entirely if any neto_pdf rows
+    # existed in kb.documents — a deliberate guard to avoid re-embedding the
+    # same brochures every hour. Cheap on the wrong side: it also meant
+    # **new** PDFs added to the website after the initial load never got
+    # picked up. Now we ask BQ which URL-hashes we already have and only
+    # process the ones we don't. The doc_id pattern is
+    # ``neto_pdf:{sha256(url)[:12]}:c{chunk_idx}``, so ``source_id``
+    # (the url_hash) is the natural per-URL key.
+    if not reset and not dry_run and pdfs:
+        existing_hashes = {
+            row.source_id for row in bq.query(
+                f"SELECT DISTINCT source_id "
+                f"FROM `{PROJECT}.{DATASET}.documents` "
+                f"WHERE source = '{SOURCE}' AND source_id IS NOT NULL"
+            ).result()
+        }
+        before = len(pdfs)
+        pdfs = {
+            url: parents for url, parents in pdfs.items()
+            if hashlib.sha256(url.encode()).hexdigest()[:12] not in existing_hashes
+        }
+        skipped = before - len(pdfs)
+        print(f"  incremental filter: {skipped:,} already ingested, {len(pdfs):,} new to process")
+        if not pdfs:
+            print("  no new PDFs — nothing to embed. Done.")
+            return
+
     if limit:
         pdfs = dict(list(pdfs.items())[:limit])
         print(f"  --limit {limit}: keeping {len(pdfs):,} PDFs")
