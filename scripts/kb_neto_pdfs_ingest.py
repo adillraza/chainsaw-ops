@@ -45,6 +45,28 @@ DATASET  = "kb"
 LOCATION = "us-central1"
 SOURCE   = "neto_pdf"
 
+# Document AI OCR fallback for image-only (scanned) PDFs. Created
+# 2026-05-21 in the chainsawspares-385722 project, us location.
+# The pypdf path can't read scanned PDFs (no text layer), so for the
+# 24 manufacturer manuals (VS135ES, VS175ES, JPE680/750/1000, Perla
+# Barb 84cc / 91.6cc, EF-81/82 fence energisers, PBKK brushcutter,
+# JWP50/80 wood splitters, LT-80 log horse, etc.) we send the blob
+# to Document AI's OCR processor and use the returned text.
+#
+# Sync ``process_document`` supports up to 15 pages per request and
+# 20 MB per file. Longer PDFs are split via pypdf into 15-page chunks
+# and each chunk OCR'd separately, then concatenated.
+#
+# Cost: $1.50 per 1,000 pages. The 24 known scans total ~240 pages,
+# so the one-off backfill is well under $1. Going forward, only new
+# scanned brochures hit OCR (already-known URLs are filtered by the
+# incremental hash check).
+DOCAI_PROCESSOR_NAME = (
+    "projects/34820011125/locations/us/processors/eb4d1250b17c937e"
+)
+DOCAI_API_ENDPOINT     = "us-documentai.googleapis.com"
+DOCAI_SYNC_PAGE_LIMIT  = 15
+
 EMBED_MODEL          = "text-embedding-004"
 MAX_CHARS_PER_DOC    = 4500
 MAX_CHARS_PER_BATCH  = 35_000
@@ -155,6 +177,67 @@ def download_pdf(url: str) -> bytes | None:
     except Exception as exc:
         log.warning("PDF download failed %s: %s", url, exc)
         return None
+
+
+def ocr_pdf(blob: bytes) -> list[str]:
+    """OCR a scanned PDF via Document AI; return per-page text strings.
+
+    Used as the fallback path when ``extract_text_pages`` returns
+    nothing useful (image-only PDFs that ``looks_like_scan`` flagged).
+
+    Sync ``process_document`` caps at 15 pages per call. For longer
+    documents we split via pypdf into 15-page slices and stitch the
+    per-slice page lists back together. The text returned for each
+    page is built from the layout text-anchor segments — same shape
+    as ``extract_text_pages`` so the rest of the pipeline (chunker
+    + embedder + MERGE) doesn't need to know which path produced it.
+
+    Raises on hard API failures (network, IAM, quota) so the caller
+    can log + skip the specific URL rather than abort the whole run.
+    """
+    from io import BytesIO
+    from pypdf import PdfReader, PdfWriter
+    from google.cloud import documentai_v1 as documentai
+
+    client = documentai.DocumentProcessorServiceClient(
+        client_options={"api_endpoint": DOCAI_API_ENDPOINT}
+    )
+
+    def _ocr_chunk(chunk_blob: bytes) -> list[str]:
+        req = documentai.ProcessRequest(
+            name=DOCAI_PROCESSOR_NAME,
+            raw_document=documentai.RawDocument(
+                content=chunk_blob, mime_type="application/pdf"
+            ),
+        )
+        result = client.process_document(request=req)
+        doc = result.document
+        out: list[str] = []
+        for page in doc.pages:
+            parts: list[str] = []
+            if page.layout and page.layout.text_anchor:
+                for seg in page.layout.text_anchor.text_segments:
+                    parts.append(doc.text[int(seg.start_index):int(seg.end_index)])
+            out.append("".join(parts))
+        return out
+
+    # Fast path — single sync call for PDFs at or below the page cap.
+    reader = PdfReader(BytesIO(blob), strict=False)
+    n_pages = len(reader.pages)
+    if n_pages <= DOCAI_SYNC_PAGE_LIMIT:
+        return _ocr_chunk(blob)
+
+    # Slow path — split the PDF into 15-page slices, OCR each, stitch.
+    pages_text: list[str] = []
+    for start in range(0, n_pages, DOCAI_SYNC_PAGE_LIMIT):
+        end = min(start + DOCAI_SYNC_PAGE_LIMIT, n_pages)
+        writer = PdfWriter()
+        for i in range(start, end):
+            writer.add_page(reader.pages[i])
+        buf = BytesIO()
+        writer.write(buf)
+        pages_text.extend(_ocr_chunk(buf.getvalue()))
+    return pages_text
 
 
 def extract_text_pages(blob: bytes) -> list[str]:
@@ -374,6 +457,7 @@ def run(reset: bool = False, limit: int | None = None, dry_run: bool = False) ->
     chunks_to_embed: list[dict] = []  # each: {url, parents, chunk}
     t_total = time.perf_counter()
 
+    ocr_failed: list[str] = []  # OCR was attempted but failed (network/quota)
     for i, (url, parents) in enumerate(pdfs.items(), 1):
         t = time.perf_counter()
         blob = download_pdf(url)
@@ -384,21 +468,41 @@ def run(reset: bool = False, limit: int | None = None, dry_run: bool = False) ->
         if not pages:
             print(f"  [{i}/{len(pdfs)}] SKIP (pdf parse failed) {url}")
             continue
+        # If the PDF is image-only (no embedded text), fall back to
+        # Document AI OCR instead of skipping. Tracked via ``ocr_used``
+        # so the per-chunk metadata can record the provenance.
+        ocr_used = False
         if looks_like_scan(pages, len(blob)):
-            skipped_scans.append(url)
-            print(f"  [{i}/{len(pdfs)}] SKIP (scanned) {url}")
-            continue
+            try:
+                ocr_pages = ocr_pdf(blob)
+            except Exception as exc:
+                ocr_failed.append(url)
+                print(f"  [{i}/{len(pdfs)}] OCR FAILED ({exc}) {url}")
+                continue
+            if not ocr_pages or sum(len(p) for p in ocr_pages) < 200:
+                # OCR ran but returned essentially nothing — treat as
+                # un-OCR-able (e.g. blank scans, diagrams only). Skip
+                # rather than embed empty chunks.
+                skipped_scans.append(url)
+                print(f"  [{i}/{len(pdfs)}] SKIP (OCR returned no text) {url}")
+                continue
+            pages = ocr_pages
+            ocr_used = True
         ch = chunk_pdf(pages)
         if not ch:
             print(f"  [{i}/{len(pdfs)}] SKIP (no text after chunk) {url}")
             continue
         for c in ch:
             chunks_to_embed.append({"url": url, "parents": parents, "chunk": c,
-                                    "n_pages": len(pages), "blob_size": len(blob)})
-        print(f"  [{i}/{len(pdfs)}] {url[-60:]:<60}  pages={len(pages):>3} chunks={len(ch):>3}  ({(time.perf_counter()-t):.1f}s)")
+                                    "n_pages": len(pages), "blob_size": len(blob),
+                                    "ocr_used": ocr_used})
+        tag = "OCR" if ocr_used else "txt"
+        print(f"  [{i}/{len(pdfs)}] [{tag}] {url[-60:]:<60}  pages={len(pages):>3} chunks={len(ch):>3}  ({(time.perf_counter()-t):.1f}s)")
 
     if skipped_scans:
-        print(f"\n  scanned PDFs skipped (OCR needed): {len(skipped_scans)}")
+        print(f"\n  scanned PDFs with no extractable text (even after OCR): {len(skipped_scans)}")
+    if ocr_failed:
+        print(f"  OCR call failed for: {len(ocr_failed)} URL(s) — they'll retry next run")
     print(f"\n  embedding {len(chunks_to_embed):,} chunks…")
 
     def iter_batches():
@@ -451,6 +555,12 @@ def run(reset: bool = False, limit: int | None = None, dry_run: bool = False) ->
                     "n_pages": c["n_pages"],
                     "page_num": chunk["page_num"],
                     "chunk_idx": chunk["chunk_idx"],
+                    # Provenance: True if the text came from Document AI
+                    # OCR (scanned PDF), False if it came from pypdf
+                    # (PDF had an embedded text layer). Useful for the
+                    # rare case where OCR quality is poor and we want
+                    # to filter or re-process specific chunks later.
+                    "ocr_used": bool(c.get("ocr_used")),
                     "parent_cms_name": primary_parent.get("ContentName"),
                     "parent_cms_url":  ("https://www.chainsawspares.com.au/"
                                         + (primary_parent.get("ContentURL") or "")
