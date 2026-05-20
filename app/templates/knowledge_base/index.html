@@ -62,7 +62,14 @@
 
           <template x-if="m.role === 'assistant'">
             <div>
-              <div class="whitespace-pre-wrap leading-relaxed"
+              {# NOT ``whitespace-pre-wrap`` on assistant output — pre-wrap
+                 renders every literal \n in the HTML as a visible line
+                 break, including the \ns ``renderAnswer`` puts between
+                 <ul>/<li>/</ul> tags (which browsers would normally
+                 collapse). That produced a ~25px gap between every
+                 bullet item. Line breaks in the assistant's prose are
+                 handled explicitly by the renderer's \n → <br> step. #}
+              <div class="leading-relaxed"
                    x-html="renderAnswer(m.content, m.citations || [])"></div>
 
               {# Citation pills [1][2] in the answer text are clickable links
