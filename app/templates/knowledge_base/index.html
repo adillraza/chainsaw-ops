@@ -332,17 +332,31 @@ function kbChat() {
       // --- 5. Bullet lists. Find consecutive lines starting with "* "
       // or "- " and wrap them in a <ul>. Done line-by-line so blocks
       // of bullets nest cleanly between paragraphs of prose.
+      //
+      // Subtlety — Gemini regularly outputs ``* item1\n\n* item2``
+      // (blank line between bullets, valid markdown). The original
+      // implementation closed the <ul> on the blank line and opened a
+      // new one for the next bullet, leaving the source's blank line
+      // between two adjacent <ul> blocks — which then became a <br>
+      // in step 7 below, producing a ~25px gap between every bullet.
+      // Fix: treat whitespace-only lines INSIDE a list as continuations
+      // (skip them entirely). Non-empty prose still closes the list
+      // and opens a new one for the next bullet block.
       const lines = html.split('\n');
       const out = [];
       let inList = false;
       for (const ln of lines) {
-        const m = ln.match(/^\s*[\*\-]\s+(.*)$/);
-        if (m) {
+        const bulletMatch = ln.match(/^\s*[\*\-]\s+(.*)$/);
+        const isBlank = /^\s*$/.test(ln);
+        if (bulletMatch) {
           if (!inList) {
             out.push('<ul class="list-disc pl-5 my-1 space-y-0.5">');
             inList = true;
           }
-          out.push(`<li>${m[1]}</li>`);
+          out.push(`<li>${bulletMatch[1]}</li>`);
+        } else if (isBlank && inList) {
+          // swallow blank line inside a list — don't close the <ul>
+          continue;
         } else {
           if (inList) { out.push('</ul>'); inList = false; }
           out.push(ln);
