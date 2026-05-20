@@ -28,8 +28,10 @@ MODEL    = "gemini-2.0-flash-001"
 # Conservative defaults. Temperature low so answers are factual; max
 # tokens kept tight so agents on a call don't get a wall of text.
 TEMPERATURE      = 0.2
-MAX_OUTPUT       = 600
-TOP_K_SOURCES    = 5
+MAX_OUTPUT       = 800
+TOP_K_SOURCES    = 10   # was 5 — too tight for category questions like
+                         # "any chain for 445". 10 covers ~all common
+                         # length/pitch/gauge variants for a model.
 HISTORY_TURN_CAP = 12   # last 6 user/model pairs — enough for context
 
 log = logging.getLogger(__name__)
@@ -51,7 +53,11 @@ LIVE-DATA TOOLS:
 
 **When to call which tool — by INTENT, not by whether a product is mentioned:**
 
-(a) RECOMMENDATION questions — agent is helping the customer find / buy / compare products. "What fits the MS250?", "Which chain should they buy?", "Is the 67DL compatible?", "How much is it?", "Is it in stock?". These need a stock+price tool call so the answer is complete. Pick 1–3 most relevant SKUs from SOURCES and call ``get_stock_and_price`` for each BEFORE answering. Weave stock + price into the response.
+(a) RECOMMENDATION questions — agent is helping the customer find / buy / compare products. "What fits the MS250?", "Which chain should they buy?", "Is the 67DL compatible?", "How much is it?", "Is it in stock?". These need a stock+price tool call so the answer is complete.
+
+Picking SKUs from SOURCES: **prefer breadth over depth**. If the question is generic (e.g., "any chain for the Husqvarna 445", "show me the bars for MS250"), list EVERY distinct SKU in SOURCES that matches the customer's stated requirement — typically 4–8 SKUs, sometimes more, occasionally fewer. Don't pre-filter to "the best one". The agent and customer want to see options. Issue parallel ``get_stock_and_price`` calls for each SKU you pick BEFORE answering, then present them as a bullet list with stock + price + key spec (length / pitch / gauge for chains, etc.).
+
+If the question is specific to one model/SKU the customer named ("is 67DL in stock?"), don't pad with unrequested alternatives — one or two tool calls is enough.
 
 (b) HOW-TO / TECHNICAL / POLICY questions — agent or customer wants to know how something works, how to do a task, or what a policy is. "How do I tension the chain?", "What oil should I use?", "How do I install the bar?", "What's the warranty?", "How do vouchers work?", "What's the difference between full and semi chisel?". Even if a specific product is mentioned, these are NOT recommendation questions. They are answered DIRECTLY FROM THE SOURCES with [N] citations. Do not call get_stock_and_price for these — there's no purchase decision being made.
 
@@ -69,9 +75,12 @@ If a stock tool returns ``matched=False``, mention briefly that the SKU isn't cu
 
 OUTPUT STYLE:
 - Be concise. The agent is on a phone call — aim for 1-3 sentences they can read aloud, plus optional short follow-up detail.
-- Don't use markdown headers or bold. Plain text. Line breaks are fine.
-- Quote SKUs as plain text — the UI will auto-link them.
-- Use [N] inline for SOURCE citations. Tool results don't get [N].
+- Markdown IS rendered. You may use ``**bold**`` for SKUs and key specs, bulleted lists for multiple options, and `` `code` `` for product codes — they'll display correctly. Don't use headers (``#``) or tables — keep it conversational.
+- When listing options as bullets, put the SKU first in **bold**, then a colon, then the specs and stock/price. Example:
+    * **64DL004**: 15" bar, .325" pitch, .058" gauge — 80 online, 13 Ballarat, $24 [3]
+    * **66DL012**: 16" bar, .325" pitch, .050" gauge — 105 online, 0 Ballarat, $24 [4]
+- Quote SKUs as plain text in the bullets — the UI auto-links them to the Neto product page using the source URL.
+- Use [N] inline for SOURCE citations. Tool results (stock/price/customer) don't get [N] — they're live data, not catalogue facts.
 
 CONVERSATION CONTEXT:
 You'll receive the chat history followed by the latest user message. The latest user message has SOURCES appended after a separator. Treat anything before the separator as the question; anything after as the retrieval-time context for THIS turn only.

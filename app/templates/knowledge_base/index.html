@@ -267,21 +267,96 @@ function kbChat() {
       }
     },
 
-    // Render assistant text with [N] turning into clickable citation pills.
-    // Pills carry a native ``title`` tooltip so an agent can hover to see
-    // the source product name (with SKU + brand) without clicking through.
-    // Note: x-html is used so this MUST escape user-derived HTML to avoid
-    // injection. We escape first, then replace [N] tokens.
+    // Render assistant text with:
+    //   • light Markdown   — **bold**, *italic*, `code`, and bullet lists
+    //   • SKU auto-linking — any token matching a citation's sku field
+    //                        becomes an anchor to that citation's url, so
+    //                        agents can one-click through to the Neto
+    //                        product page
+    //   • [N] citation pills — small clickable markers that link back
+    //                          to the source and show metadata on hover
+    //
+    // Order of operations matters for HTML safety:
+    //   1. Escape all HTML in the raw text first
+    //   2. Layer markdown / SKU / citation transforms on top — these
+    //      introduce intentional HTML
+    //   3. Convert remaining newlines to <br> last
+    //
+    // x-html is used in the template so anything not escaped at step 1
+    // would be an XSS vector. Don't reorder.
     renderAnswer(text, citations) {
-      const escHtml = s => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      const esc = escHtml(text);
-      return esc.replace(/\[(\d+)\]/g, (m, n) => {
+      const escHtml = s => (s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      let html = escHtml(text);
+
+      // --- 1. Bold (** **) — must run before italic so a doubled
+      // asterisk doesn't get mis-eaten by the single-asterisk rule.
+      html = html.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+
+      // --- 2. Italic (* *) — only when the asterisk is NOT immediately
+      // followed by whitespace (otherwise it's a list bullet, handled
+      // below) and NOT already part of a bold pair.
+      html = html.replace(/(^|[^\*])\*(?!\s)([^*\n]+?)\*(?!\*)/g,
+                          '$1<em>$2</em>');
+
+      // --- 3. Inline code (` `)
+      html = html.replace(/`([^`\n]+?)`/g,
+        '<code class="rounded bg-slate-100 px-1 py-0.5 text-[12px] font-mono">$1</code>');
+
+      // --- 4. SKU auto-linking. Walk the citations: for each that has
+      // both a sku and a url, wrap occurrences of that exact SKU in the
+      // text with an anchor. Word boundaries on both sides so SKUs
+      // inside longer codes don't get partially matched. Re-uses any
+      // <strong>/<em> wrapping from above — the regex sees the SKU
+      // string regardless of surrounding tags.
+      const skuToCite = new Map();
+      (citations || []).forEach(c => {
+        if (c && c.sku && c.url) skuToCite.set(c.sku, c);
+      });
+      // Sort longest-SKU-first so a SKU that's a prefix of another
+      // doesn't get matched first (e.g. "BPR6ES" before "BPR6").
+      const skus = Array.from(skuToCite.keys()).sort((a, b) => b.length - a.length);
+      for (const sku of skus) {
+        const c = skuToCite.get(sku);
+        const safe = sku.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // (?<!skuStartChars) and (?!skuEndChars) keep this from
+        // matching within a longer alphanumeric run.
+        const re = new RegExp(`(?<![A-Za-z0-9])${safe}(?![A-Za-z0-9])`, 'g');
+        const tip = escHtml((c.title || '') + (c.metadata && c.metadata.brand ? ' · ' + c.metadata.brand : ''));
+        html = html.replace(re,
+          `<a href="${c.url}" target="_blank" rel="noopener" title="${tip}" `
+          + `class="font-mono text-brand-700 hover:text-brand-900 hover:underline">${sku}</a>`);
+      }
+
+      // --- 5. Bullet lists. Find consecutive lines starting with "* "
+      // or "- " and wrap them in a <ul>. Done line-by-line so blocks
+      // of bullets nest cleanly between paragraphs of prose.
+      const lines = html.split('\n');
+      const out = [];
+      let inList = false;
+      for (const ln of lines) {
+        const m = ln.match(/^\s*[\*\-]\s+(.*)$/);
+        if (m) {
+          if (!inList) {
+            out.push('<ul class="list-disc pl-5 my-1 space-y-0.5">');
+            inList = true;
+          }
+          out.push(`<li>${m[1]}</li>`);
+        } else {
+          if (inList) { out.push('</ul>'); inList = false; }
+          out.push(ln);
+        }
+      }
+      if (inList) out.push('</ul>');
+      html = out.join('\n');
+
+      // --- 6. Citation pills [N] → small clickable badges.
+      html = html.replace(/\[(\d+)\]/g, (m, n) => {
         const idx = parseInt(n, 10) - 1;
         if (idx < 0 || idx >= (citations || []).length) return m;
         const c = citations[idx];
         const url = c.url || '#';
-        // Build a readable hover tooltip: "Title — SKU · Brand"
         const bits = [c.title || '(untitled)'];
         if (c.sku) bits.push('SKU ' + c.sku);
         if (c.metadata && c.metadata.brand) bits.push(c.metadata.brand);
@@ -289,6 +364,13 @@ function kbChat() {
         return `<a href="${url}" target="_blank" rel="noopener" title="${tip}" `
              + `class="inline-flex h-4 min-w-[16px] items-center justify-center rounded bg-brand-100 px-1 text-[10px] font-mono font-semibold text-brand-700 hover:bg-brand-200 mx-0.5 align-middle no-underline">${n}</a>`;
       });
+
+      // --- 7. Remaining newlines → <br>. Skip newlines that are
+      // sandwiched between HTML block tags (</ul>\n<p>) since those
+      // would produce a redundant blank line.
+      html = html.replace(/\n(?!<\/?(?:ul|li|ol|p|div|br))/g, '<br>');
+
+      return html;
     },
   };
 }
