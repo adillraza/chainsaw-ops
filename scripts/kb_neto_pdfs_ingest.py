@@ -66,6 +66,12 @@ DOCAI_PROCESSOR_NAME = (
 )
 DOCAI_API_ENDPOINT     = "us-documentai.googleapis.com"
 DOCAI_SYNC_PAGE_LIMIT  = 15
+# Document AI sync cap is 20 MB; aim well under to allow for pypdf's
+# slight re-encoding overhead. Discovered the hard way on the first
+# batch: four 100–130 MB scanned booklets (LS001_HOIL, WS001, JWP50/80
+# manuals — all ~5 MB/page) failed with 400 INVALID_ARGUMENT because
+# even 4-page slices exceeded the cap.
+DOCAI_SYNC_BYTES_LIMIT = 18 * 1024 * 1024
 
 EMBED_MODEL          = "text-embedding-004"
 MAX_CHARS_PER_DOC    = 4500
@@ -221,22 +227,51 @@ def ocr_pdf(blob: bytes) -> list[str]:
             out.append("".join(parts))
         return out
 
-    # Fast path — single sync call for PDFs at or below the page cap.
+    # Fast path — single sync call when the whole PDF fits both caps.
     reader = PdfReader(BytesIO(blob), strict=False)
     n_pages = len(reader.pages)
-    if n_pages <= DOCAI_SYNC_PAGE_LIMIT:
+    if n_pages <= DOCAI_SYNC_PAGE_LIMIT and len(blob) <= DOCAI_SYNC_BYTES_LIMIT:
         return _ocr_chunk(blob)
 
-    # Slow path — split the PDF into 15-page slices, OCR each, stitch.
+    # Slow path — slice the PDF into pieces that satisfy BOTH the
+    # 15-page cap AND the 18 MB byte cap. Initial slice size is the
+    # tighter of the two constraints given the average per-page size.
+    # If a slice still ends up oversized after pypdf re-serialisation
+    # (rare — pypdf occasionally writes slightly larger than input),
+    # we halve and retry on the same start position. A single-page
+    # slice that's STILL over the byte cap is skipped with a warning
+    # and an empty placeholder string preserves page numbering.
+    avg_page_bytes = max(1, len(blob) // max(n_pages, 1))
+    base_slice_n = max(
+        1,
+        min(DOCAI_SYNC_PAGE_LIMIT, DOCAI_SYNC_BYTES_LIMIT // avg_page_bytes),
+    )
+
     pages_text: list[str] = []
-    for start in range(0, n_pages, DOCAI_SYNC_PAGE_LIMIT):
-        end = min(start + DOCAI_SYNC_PAGE_LIMIT, n_pages)
+    start = 0
+    cur_slice_n = base_slice_n
+    while start < n_pages:
+        end = min(start + cur_slice_n, n_pages)
         writer = PdfWriter()
         for i in range(start, end):
             writer.add_page(reader.pages[i])
         buf = BytesIO()
         writer.write(buf)
-        pages_text.extend(_ocr_chunk(buf.getvalue()))
+        chunk_bytes = buf.getvalue()
+        if len(chunk_bytes) <= DOCAI_SYNC_BYTES_LIMIT:
+            pages_text.extend(_ocr_chunk(chunk_bytes))
+            start = end
+            cur_slice_n = base_slice_n   # reset for the next slice
+        elif (end - start) > 1:
+            cur_slice_n = max(1, (end - start) // 2)  # halve, same start
+        else:
+            log.warning(
+                "ocr_pdf: single page %d/%d is %.1f MB (>%.0f MB cap), skipping",
+                start, n_pages, len(chunk_bytes) / 1e6, DOCAI_SYNC_BYTES_LIMIT / 1e6,
+            )
+            pages_text.append("")
+            start += 1
+            cur_slice_n = base_slice_n
     return pages_text
 
 
