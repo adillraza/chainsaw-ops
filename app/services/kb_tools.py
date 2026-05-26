@@ -5,7 +5,7 @@ the model picks which to call based on the agent's question. They all
 return a flat JSON-serialisable dict — the model reads that as the
 "tool result" and weaves it into the streamed answer.
 
-Three tools in Phase 1.5b:
+Four tools:
 
 * ``get_stock_and_price(sku)`` — combined Neto online + REX Ballarat
   retail availability, prices, warehouse breakdown.
@@ -13,6 +13,11 @@ Three tools in Phase 1.5b:
   (lifetime value, badge, last order date).
 * ``get_customer_orders(phone, email, limit)`` — recent orders from
   the cached customer 360 row.
+* ``list_products(...)`` — enumerate the catalog by filter (fits_model,
+  product_type, brand, in_stock_online_only). Used when the agent asks
+  "give me all X" type questions — vector retrieval caps at 10 hits and
+  isn't designed for enumeration. Returns top-N by stock + a count of
+  total matches + a chainsawspares.com.au browse URL for the full list.
 
 Data sources:
 - Neto product: ``dataform.neto_product_list`` (Fivetran ~10min lag)
@@ -266,6 +271,219 @@ def get_customer_orders(phone: str | None = None,
 
 
 # ---------------------------------------------------------------------------
+# list_products
+# ---------------------------------------------------------------------------
+#
+# Why this tool exists, in plain English:
+#
+# The default KB retrieval path is vector search over kb.documents, capped
+# at TOP_K_SOURCES = 10. That's the right surface for "what's the right
+# chain for this bar" / "does product X fit Y" questions — semantically
+# tight, similarity-ranked. It is the WRONG surface for "give me all
+# bars for the MS660", where the catalogue genuinely has 200+ matches
+# and the user wants enumeration, not recommendation. With TOP_K=10 the
+# agent only sees ~3-4% of the available products and assumes that's
+# the full list.
+#
+# ``list_products`` is the structured-filter counterpart. It runs a
+# direct SQL filter on ``dataform.neto_product_list`` — no embeddings,
+# no similarity ranking — and returns a representative top-N ordered by
+# online stock (so well-stocked options surface first), plus the total
+# count of matches and a chainsawspares.com.au search URL the agent can
+# hand to the customer to browse the full list.
+
+# The default sort. "In-stock first" so the top-N is genuinely useful;
+# zero-stock and discontinued products rank below. Within an in-stock
+# tier rows are ordered by SKU so output is stable across calls.
+_LIST_ORDER_BY = (
+    "SAFE_CAST(AvailableSellQuantity AS INT64) > 0 DESC, "
+    "SAFE_CAST(AvailableSellQuantity AS INT64) DESC NULLS LAST, "
+    "SKU ASC"
+)
+
+
+def list_products(fits_model: str | None = None,
+                  product_type: str | None = None,
+                  brand: str | None = None,
+                  in_stock_online_only: bool = False,
+                  limit: int = 20) -> dict[str, Any]:
+    """Enumerate products in the catalogue matching the given filters.
+
+    All filters are optional, but at least one should be provided —
+    calling with everything-None would return "top N of the whole
+    catalogue" which is useless. The function returns:
+
+    * ``total_matched``   — full COUNT(*) of rows passing the filters
+    * ``returned``        — len(products) ≤ ``limit``
+    * ``products``        — list of dicts (sku, name, brand, stock, prices, url)
+    * ``filters_applied`` — echoes the filter values back for traceability
+    * ``browse_url``      — chainsawspares.com.au search URL the agent
+                            can give the customer for the full list
+    """
+    # Soft clamp — the agent might pass weird values. 30 is a reasonable
+    # max for chat-pane display; beyond that send them to ``browse_url``.
+    try:
+        limit = max(1, min(30, int(limit or 20)))
+    except (TypeError, ValueError):
+        limit = 20
+
+    if not any([fits_model, product_type, brand]):
+        return {
+            "matched": False,
+            "reason": "At least one filter (fits_model, product_type, or brand) is required.",
+        }
+
+    where = ["Approved = 'True'", "IsActive = 'True'"]
+    params: list[bigquery.ScalarQueryParameter] = []
+
+    if fits_model:
+        # Split on whitespace so multi-word models ("Stihl MS660",
+        # "Husqvarna 445") match products that use ANY form of the
+        # phrase — "066 MS660", "MS660 044", "Husq. 445", etc. — not
+        # just an exact substring. Require EVERY token to appear
+        # somewhere in the searchable text fields.
+        # We special-case single-character tokens (skip them) to avoid
+        # matching every product on stray "a"/"e" particles.
+        # Stop-words: brand names that are too generic on their own
+        # should still match BUT we also have an OR clause so "Stihl"
+        # alone matches "Stihl" products. Acceptable trade-off.
+        tokens = [t for t in fits_model.lower().split() if len(t) > 1]
+        if not tokens:
+            tokens = [fits_model.strip().lower()]
+        token_clauses = []
+        for i, tok in enumerate(tokens):
+            pname = f"fm{i}"
+            token_clauses.append(
+                f"(LOWER(IFNULL(Name,'')) LIKE @{pname} "
+                f"OR LOWER(IFNULL(Model,'')) LIKE @{pname} "
+                f"OR LOWER(IFNULL(ModelNumber,'')) LIKE @{pname} "
+                f"OR LOWER(IFNULL(Description,'')) LIKE @{pname} "
+                f"OR LOWER(IFNULL(SearchKeywords,'')) LIKE @{pname})"
+            )
+            params.append(bigquery.ScalarQueryParameter(pname, "STRING", f"%{tok}%"))
+        where.append("(" + " AND ".join(token_clauses) + ")")
+
+    if product_type:
+        # Match against Name (e.g., "Chainsaw Chain", "Guide Bar", "Spark
+        # Plug") rather than the product_type column, which is the
+        # kit/standalone taxonomy (not item category).
+        #
+        # Two common categories need special handling because chain
+        # product names also mention "Bar" (in the fitment text like "for
+        # Stihl 20\" Bar"). A naive LIKE '%bar%' for product_type='bar'
+        # ends up returning hundreds of chains. So:
+        #   * pt='bar'   → name has "bar" as a word AND name doesn't have
+        #                  "chain" UNLESS it's a "combo" (bar+chain combos
+        #                  are legitimately both)
+        #   * pt='chain' → name has "chain"
+        #   * everything else → substring match (the simple case)
+        pt = product_type.strip().lower()
+        if pt in ("bar", "bars", "guide bar"):
+            # Bar products mention "bar" in their name. But chain
+            # products ALSO often mention "bar" in their fitment text
+            # ("for Stihl 20\" Bar"). Exclude items whose name also
+            # contains "chain" UNLESS they're a "Bar & Chain Combo"
+            # (which is legitimately both).
+            where.append(
+                "(LOWER(IFNULL(Name,'')) LIKE '%bar%' "
+                "AND (LOWER(IFNULL(Name,'')) NOT LIKE '%chain%' "
+                "     OR LOWER(IFNULL(Name,'')) LIKE '%combo%'))"
+            )
+        elif pt in ("chain", "chains"):
+            where.append("LOWER(IFNULL(Name,'')) LIKE '%chain%'")
+        else:
+            where.append("LOWER(IFNULL(Name,'')) LIKE @pt")
+            params.append(bigquery.ScalarQueryParameter("pt", "STRING", f"%{pt}%"))
+
+    if brand:
+        where.append("LOWER(IFNULL(Brand,'')) = @brand")
+        params.append(bigquery.ScalarQueryParameter("brand", "STRING", brand.strip().lower()))
+
+    if in_stock_online_only:
+        where.append("SAFE_CAST(AvailableSellQuantity AS INT64) > 0")
+
+    where_sql = " AND ".join(where)
+
+    # Count + list in a single round-trip via WITH + UNION ALL would be
+    # one extra layer of complexity for no real gain — Neto product list
+    # is small (~6k active rows), so two cheap queries is fine.
+    count_sql = (
+        f"SELECT COUNT(*) AS total "
+        f"FROM `{PROJECT}.dataform.neto_product_list` "
+        f"WHERE {where_sql}"
+    )
+    list_sql = f"""
+    SELECT
+      SKU, Name, Brand, ItemURL, Model,
+      SAFE_CAST(AvailableSellQuantity AS INT64) AS available_online,
+      SAFE_CAST(DefaultPrice   AS NUMERIC) AS default_price,
+      SAFE_CAST(PromotionPrice AS NUMERIC) AS promo_price
+    FROM `{PROJECT}.dataform.neto_product_list`
+    WHERE {where_sql}
+    ORDER BY {_LIST_ORDER_BY}
+    LIMIT @lim
+    """
+
+    try:
+        total_job = _bq().query(
+            count_sql,
+            job_config=bigquery.QueryJobConfig(query_parameters=params),
+        )
+        total_matched = int(next(iter(total_job.result())).total)
+    except Exception as exc:
+        log.warning("list_products: count query failed: %s", exc)
+        return {"matched": False, "reason": f"count query failed: {exc}"}
+
+    list_params = params + [bigquery.ScalarQueryParameter("lim", "INT64", limit)]
+    try:
+        rows = list(_bq().query(
+            list_sql,
+            job_config=bigquery.QueryJobConfig(query_parameters=list_params),
+        ).result())
+    except Exception as exc:
+        log.warning("list_products: list query failed: %s", exc)
+        return {"matched": False, "reason": f"list query failed: {exc}"}
+
+    products = []
+    for r in rows:
+        products.append({
+            "sku":               r.SKU,
+            "name":              r.Name,
+            "brand":             r.Brand,
+            "model":             r.Model,
+            "available_online":  r.available_online,
+            "default_price_aud": _to_float(r.default_price),
+            "promo_price_aud":   _to_float(r.promo_price),
+            "url": (f"https://www.chainsawspares.com.au/{r.ItemURL}"
+                    if r.ItemURL else None),
+        })
+
+    # Build the "see all" browse URL. Chainsawspares' default search
+    # endpoint is ``/?q=<terms>`` — verified 2026-05-26. Combine the
+    # filter values into a single search string, URL-encoded.
+    from urllib.parse import quote_plus
+    search_bits = [b for b in (brand, fits_model, product_type) if b]
+    browse_url = (
+        "https://www.chainsawspares.com.au/?q="
+        + quote_plus(" ".join(search_bits)) if search_bits else None
+    )
+
+    return {
+        "matched": True,
+        "total_matched": total_matched,
+        "returned": len(products),
+        "filters_applied": {
+            "fits_model":            fits_model,
+            "product_type":          product_type,
+            "brand":                 brand,
+            "in_stock_online_only":  in_stock_online_only,
+        },
+        "products":   products,
+        "browse_url": browse_url,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Internal — customer resolution via the shared customer cache
 # ---------------------------------------------------------------------------
 
@@ -327,6 +545,7 @@ TOOL_DISPATCH = {
     "get_stock_and_price":  get_stock_and_price,
     "get_customer_summary": get_customer_summary,
     "get_customer_orders":  get_customer_orders,
+    "list_products":        list_products,
 }
 
 
@@ -389,6 +608,49 @@ def function_declarations():
                     "phone": {"type": "string", "description": "Customer phone."},
                     "email": {"type": "string", "description": "Customer email address."},
                     "limit": {"type": "integer", "description": "How many recent orders to return (default 5, max 20)."},
+                },
+            },
+        ),
+        FunctionDeclaration(
+            name="list_products",
+            description=(
+                "Enumerate products in the catalogue by filter. Use this — "
+                "NOT vector retrieval — when the agent asks for a list / "
+                "category browse, e.g. 'give me all bars for the MS660', "
+                "'what Hurricane chains do we have', 'list spark plugs that "
+                "fit the Husqvarna 445'. Vector retrieval caps at 10 hits "
+                "and is for similarity-ranked recommendations; this tool "
+                "does a structured filter so the agent sees a true count "
+                "of matches and a representative sample. Combine filters "
+                "freely — at least one of fits_model, product_type, or "
+                "brand is required. Returns up to ``limit`` products "
+                "(sorted in-stock-first) plus the total match count and "
+                "a chainsawspares.com.au browse URL the agent can give "
+                "the customer for the full list."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "fits_model": {
+                        "type": "string",
+                        "description": "Saw / equipment model the product must fit. Free-text — matches against Name, Model, Description, SearchKeywords. Examples: 'MS660', 'Husqvarna 445', 'Stihl MS250'. Be specific; broad strings like 'chainsaw' will match thousands of products.",
+                    },
+                    "product_type": {
+                        "type": "string",
+                        "description": "Item category as it appears in the product name. Examples: 'bar', 'chain', 'spark plug', 'air filter', 'oil pump', 'bar oil', 'sprocket'. Substring-matched against Name (case-insensitive), so 'bar' will also match 'Bar & Chain Combo'.",
+                    },
+                    "brand": {
+                        "type": "string",
+                        "description": "Exact brand match. Examples: 'Hurricane', 'Carlton', 'Tsumura', 'Jakmax', 'JONO & JOHNO'. Use the brand strings from previous answers — case-insensitive equality.",
+                    },
+                    "in_stock_online_only": {
+                        "type": "boolean",
+                        "description": "If true, hide products with zero online stock. Useful when the customer needs something they can buy right now.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max products to return (default 20, capped at 30). The catalogue often has 100+ matches — total_matched will tell you, and browse_url has the full list.",
+                    },
                 },
             },
         ),

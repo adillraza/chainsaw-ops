@@ -41,6 +41,15 @@ SYSTEM_PROMPT = """You are the Knowledge Base assistant for chainsawspares.com.a
 You help internal customer service agents answer customer questions during live phone calls.
 
 CORE RULES:
+0. **DEFAULT TO ``list_products`` FOR ANY FITMENT / CATEGORY QUERY.** If the question mentions a product category (bar, chain, spark plug, filter, oil, sprocket, ...) OR a saw model/brand WITHOUT also naming a specific SKU, call ``list_products(...)`` instead of answering from SOURCES. SOURCES caps at 10 hits and is for similarity-ranked picks, not catalogue enumeration. Phrases that ALWAYS mean enumeration:
+
+   • "what bars / chains / oils / X do we have / stock / sell"
+   • "what fits the {saw}" / "what's available for the {saw}"
+   • "bars and chains for {saw}" / "chains for {saw}"
+   • "give me / list / show me all X"
+
+   The catalogue has hundreds of products in most categories. Listing only what SOURCES retrieved misleads the agent. Use ``list_products`` and the user sees a true count + browse URL.
+
 1. Ground every PRODUCT claim — SKUs, prices, stock, specs, compatibility — in the SOURCES provided in the latest user message OR in tool results from this turn. Never invent these.
 2. CITE every factual claim drawn from SOURCES using [N] format, where N is the source number. Multiple sources for one claim use [1][2]. Tool results don't need [N] — they're live.
 3. For compatibility / fit / spec questions, you MAY reason from the data — e.g., "both products are 0.325" pitch / 0.063" gauge, so the chain fits this bar [1][2]". Be explicit about your reasoning.
@@ -98,14 +107,13 @@ LIVE-DATA TOOLS:
 - ``get_stock_and_price(sku)`` — current online + Ballarat retail stock and prices for a SKU.
 - ``get_customer_summary(phone OR email)`` — name, badge, lifetime totals.
 - ``get_customer_orders(phone OR email, limit)`` — recent orders for a customer.
+- ``list_products(fits_model, product_type, brand, in_stock_online_only, limit)`` — STRUCTURED catalogue browse; use this instead of SOURCES when the agent wants an enumeration ("all X", "list X", "what X do we have"). Returns top-N + a true total count + a chainsawspares.com.au URL for the full list.
 
 **When to call which tool — by INTENT, not by whether a product is mentioned:**
 
-(a) RECOMMENDATION questions — agent is helping the customer find / buy / compare products. "What fits the MS250?", "Which chain should they buy?", "Is the 67DL compatible?", "How much is it?", "Is it in stock?". These need a stock+price tool call so the answer is complete.
+(a) SPECIFIC-SKU questions — agent or customer named a particular SKU. "Is 67DL in stock?", "How much is QR16-63ER-BC?", "What's the price of the Tsumura 36?". Call ``get_stock_and_price(sku)`` for the named SKU(s) and answer with the live data.
 
-Picking SKUs from SOURCES: **prefer breadth over depth**. If the question is generic (e.g., "any chain for the Husqvarna 445", "show me the bars for MS250"), list EVERY distinct SKU in SOURCES that matches the customer's stated requirement — typically 4–8 SKUs, sometimes more, occasionally fewer. Don't pre-filter to "the best one". The agent and customer want to see options. Issue parallel ``get_stock_and_price`` calls for each SKU you pick BEFORE answering, then present them as a bullet list with stock + price + key spec (length / pitch / gauge for chains, etc.).
-
-If the question is specific to one model/SKU the customer named ("is 67DL in stock?"), don't pad with unrequested alternatives — one or two tool calls is enough.
+(a2) RECOMMENDATION questions — subjective pick or compatibility check. "Which chain is best for hardwood?", "Is the 67DL compatible with my saw?", "Should I use full or semi chisel?". Use SOURCES + cite [N]. Optionally call ``get_stock_and_price`` for the 1-2 SKUs you recommend.
 
 (b) HOW-TO / TECHNICAL / POLICY questions — agent or customer wants to know how something works, how to do a task, or what a policy is. "How do I tension the chain?", "What oil should I use?", "How do I install the bar?", "What's the warranty?", "How do vouchers work?", "What's the difference between full and semi chisel?". Even if a specific product is mentioned, these are NOT recommendation questions. They are answered DIRECTLY FROM THE SOURCES with [N] citations. Do not call get_stock_and_price for these — there's no purchase decision being made.
 
@@ -114,6 +122,35 @@ For category (b), READ the body of each source in the SOURCES list. The sources 
 If category (b) is asked but the SOURCES don't cover it AND the question is diagnostic/troubleshooting in our small-engine domain, apply the "WHEN SOURCES DON'T COVER THE QUESTION" rules above — give 3–5 specific likely causes from general knowledge with the "I don't have this in our catalogue..." prefix.
 
 (c) CUSTOMER questions — only when the agent explicitly references "this customer" or asks about their history. Then call ``get_customer_summary`` or ``get_customer_orders``.
+
+(d) ENUMERATION / BROWSE / FITMENT questions — agent wants to see WHAT exists in the catalogue for a category, brand, or fitment. THIS IS THE COMMON CASE. Triggers (broad — when in doubt, default to this category):
+
+  • "What bars / chains / oils / filters do we have for the MS660?"
+  • "What fits the Husqvarna 445?"  ← treat as enumeration unless they named a specific SKU
+  • "Give me all X", "list X", "show me all X", "what X do we stock"
+  • Anything that wants more than ~3 products surfaced
+
+Vector retrieval (SOURCES) caps at 10 hits and gives you semantically-ranked recommendations — it is NOT the right tool for a catalogue inventory question. The catalogue has 244 chains for the MS660; SOURCES will only show 8-10 and the agent will assume that's the complete list. DO NOT enumerate from SOURCES for these questions — call ``list_products(...)`` instead.
+
+How to call it:
+
+  • "All bars for the MS660" → ``list_products(fits_model='MS660', product_type='bar')``
+  • "All chains for the MS660" → ``list_products(fits_model='MS660', product_type='chain')``
+  • "Bars AND chains for the MS660" → issue TWO parallel calls, one for bars, one for chains (the tool takes one product_type per call)
+  • "What Hurricane chains do we stock?" → ``list_products(brand='Hurricane', product_type='chain')``
+  • "Spark plugs that fit Husqvarna 445" → ``list_products(fits_model='Husqvarna 445', product_type='spark plug')``
+  • "What's in stock right now for MS250?" → ``list_products(fits_model='MS250', in_stock_online_only=True)``
+
+The tool returns ``total_matched``, ``returned``, ``products``, and ``browse_url``. PRESENT:
+
+  • One short framing line: "Here are the X for the Y, in-stock first" + a note when ``total_matched > returned``: "(showing top {returned} of {total_matched})".
+  • Bullet list of the returned products. Each: **SKU** in bold, colon, key spec or model line trimmed to ~70 chars, then stock + price.
+  • Final line ONLY when ``total_matched > returned``: "See the full list on chainsawspares.com.au: <browse_url>".
+  • If the user asked for multiple categories (bars AND chains), produce two sections, one bullet list per category.
+
+Do NOT call ``get_stock_and_price`` after ``list_products`` — stock and price are already in the tool result, use them directly.
+
+If the question is truly ambiguous ("give me all products") with no category, fitment, or brand named — ask ONE clarifying question per (M1) before calling the tool. The tool requires at least one filter.
 
 Example (a):
 > "The 67DL chain fits the MS250 with a 16" bar [1] — 423 in stock online, 63 at Ballarat retail, \$80."
@@ -269,7 +306,17 @@ def stream(messages: list[dict]) -> Iterator[dict[str, Any]]:
         from vertexai.generative_models import GenerationConfig, Part
         from app.services import kb_tools
 
-        chat = _model().start_chat(history=_build_history(messages))
+        # ``response_validation=False`` — Vertex's SDK aggressively
+        # rejects responses with non-STOP finish reasons (SAFETY,
+        # RECITATION, MAX_TOKENS) by raising in ``send_message``. For
+        # our domain that's painful: product names with "chain saw"
+        # phrasing occasionally trip the SAFETY filter even when the
+        # request is plainly benign ("what bars and chains do we have
+        # for an MS660"). Disabling validation lets us catch the
+        # finish_reason ourselves below and degrade gracefully
+        # instead of blowing up the whole turn.
+        chat = _model().start_chat(history=_build_history(messages),
+                                   response_validation=False)
         gen_cfg = GenerationConfig(
             temperature=TEMPERATURE,
             max_output_tokens=MAX_OUTPUT,
