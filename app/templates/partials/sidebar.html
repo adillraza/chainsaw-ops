@@ -94,6 +94,13 @@
       {{ nav_group('Customer Service', 'fa-headset', support_items, default_open=true) }}
     {% endif %}
 
+    {% if can('services.shipping.view') %}
+      {% set service_items = [
+        {'label': 'NETO Shippings', 'href': url_for('services.neto_shipping'), 'icon': 'fa-truck-fast'},
+      ] %}
+      {{ nav_group('Services', 'fa-screwdriver-wrench', service_items, default_open=true) }}
+    {% endif %}
+
     {% if can('users.manage') or can('roles.manage') %}
       <div class="my-3 border-t border-slate-200"></div>
       {% if can('users.manage') %}{{ nav_item('admin.admin', 'User Management', 'fa-users-gear') }}{% endif %}

@@ -16,3 +16,6 @@ msal==1.31.0
 google-cloud-aiplatform==1.151.0
 pypdf==6.11.0
 websockets==16.0
+beautifulsoup4>=4.12
+curl_cffi>=0.7
+google-cloud-secret-manager>=2.20

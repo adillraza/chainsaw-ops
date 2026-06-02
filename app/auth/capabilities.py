@@ -54,6 +54,11 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("support.calls.flag_sensitive", "Mark a call as sensitive / not sensitive from the call-details modal. Generally paired with view_sensitive — you need to see the analysis to know whether it should be restricted."),
         ("kb.view",                      "Use the Knowledge Base — search products, manuals, brochures"),
     ],
+    "Services": [
+        ("services.shipping.view",       "See the NETO Shippings tab — visualised Neto shipping configuration (carriers, categories, options, rate tables, routing matrix)"),
+        ("services.shipping.refresh",    "Trigger a re-scrape of the Neto shipping configuration from cPanel"),
+        ("services.calculator.view",     "Use the Startrack Freight Calculator (reserved — not built yet)"),
+    ],
 }
 
 # Flat set used for validation.
