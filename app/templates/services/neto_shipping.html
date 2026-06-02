@@ -1,0 +1,290 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'NETO Shippings' %}
+{% block title %}NETO Shippings - Chainsawspares Ops{% endblock %}
+
+{% set family_class = {
+  'startrack': 'bg-orange-100 text-orange-800 border-orange-200',
+  'auspost':   'bg-blue-100 text-blue-800 border-blue-200',
+  'stamp':     'bg-violet-100 text-violet-800 border-violet-200',
+  'generic':   'bg-slate-100 text-slate-700 border-slate-200',
+  'other':     'bg-slate-100 text-slate-600 border-slate-200'
+} %}
+
+{% block content %}
+<section class="mb-6 flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-xl font-semibold text-slate-900">NETO Shippings</h1>
+    <p class="mt-1 text-sm text-slate-500">
+      How Chainsaw Spares' Neto shipping is wired — carriers, categories, options and rate tables,
+      with live usage and actual carrier costs. Active configuration only.
+    </p>
+    {% if snap and snap.meta %}
+      <p class="mt-1 text-xs text-slate-400">
+        Snapshot <span class="font-mono">{{ snap.snapshot_id }}</span> · refreshed {{ snap.meta.scraped_at }} · source {{ snap.meta.source }}
+      </p>
+    {% endif %}
+  </div>
+  {% if can('services.shipping.refresh') %}
+  <div x-data="shipRefresh()" class="text-right">
+    <button type="button" @click="start()" :disabled="running"
+            class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+      <i class="fas" :class="running ? 'fa-spinner fa-spin' : 'fa-rotate'"></i>
+      <span x-text="running ? 'Updating…' : 'Update'"></span>
+    </button>
+    <p x-show="msg" x-cloak class="mt-1 max-w-xs text-xs text-slate-500" x-text="msg"></p>
+  </div>
+  {% endif %}
+</section>
+
+{% if error %}
+  <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Couldn't load shipping config: {{ error }}</div>
+{% elif snap and snap.snapshot_id %}
+
+  {# Summary cards #}
+  <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {% for label, value, icon in [('Carriers', summary.carriers, 'fa-truck'),('Categories', summary.categories, 'fa-tags'),('Options', summary.options, 'fa-list-check'),('Rate tables', summary.services, 'fa-table-cells')] %}
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <div class="flex items-center gap-2 text-slate-400"><i class="fas {{ icon }}"></i><span class="text-xs font-medium uppercase tracking-wide">{{ label }}</span></div>
+        <div class="mt-1 text-2xl font-semibold text-slate-900">{{ value }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if anomalies or summary.handling_services %}
+    <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <h2 class="flex items-center gap-2 text-sm font-semibold text-amber-900"><i class="fas fa-triangle-exclamation"></i> Configuration flags</h2>
+      <ul class="mt-2 space-y-1 text-sm text-amber-800">
+        {% for a in anomalies %}<li>• <span class="font-medium">{{ a.service }}</span> — {{ a.detail }}</li>{% endfor %}
+        {% if summary.handling_services %}<li>• Per-item handling fee applies on: <span class="font-medium">{{ summary.handling_services|join(', ') }}</span> — charges handling × number of cartons (source of multi-carton over-charges).</li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div x-data="{ view: 'matrix', cell: null }">
+    {# View switcher #}
+    <div class="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
+      {% for key, label, icon in [('matrix','Routing Matrix','fa-table-cells-large'),('reference','Reference','fa-list'),('flow','Flow','fa-diagram-project')] %}
+        <button type="button" @click="view='{{ key }}'"
+                class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition"
+                :class="view==='{{ key }}' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'">
+          <i class="fas {{ icon }}"></i> {{ label }}
+        </button>
+      {% endfor %}
+    </div>
+
+    {# ============ MATRIX ============ #}
+    <div x-show="view==='matrix'" x-cloak>
+      <div class="mb-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+        <span class="font-medium text-slate-600">Carrier:</span>
+        <span class="rounded border border-orange-200 bg-orange-100 px-2 py-0.5 text-orange-800">StarTrack</span>
+        <span class="rounded border border-blue-200 bg-blue-100 px-2 py-0.5 text-blue-800">AusPost</span>
+        <span class="rounded border border-violet-200 bg-violet-100 px-2 py-0.5 text-violet-800">Stamp</span>
+        <span class="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-600">Generic/Other</span>
+        <span class="ml-2"><i class="fas fa-code-branch text-amber-600"></i> = block routes categories to different services</span>
+      </div>
+
+      <div class="overflow-auto rounded-lg border border-slate-200 bg-white" style="max-height: 70vh;">
+        <table class="border-separate text-xs" style="border-spacing:0;">
+          <thead>
+            <tr>
+              <th class="sticky left-0 top-0 z-20 border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-600">Category</th>
+              {% for b in matrix.blocks %}
+                <th class="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2 text-center font-medium text-slate-500" style="min-width:84px;">
+                  <div class="whitespace-nowrap">{{ b.routing_group }}</div>
+                  <div class="text-[10px] text-slate-400">#{{ b.block_index }}
+                    {% if b.discriminates %}<i class="fas fa-code-branch text-amber-600" title="Routes to {{ b.services|length }} services"></i>{% endif %}
+                    {% if not b.visible %}<i class="fas fa-eye-slash" title="Not visible to customers"></i>{% endif %}
+                  </div>
+                </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in matrix.categories %}
+              <tr>
+                <th class="sticky left-0 z-10 border-b border-r border-slate-200 bg-white px-3 py-1.5 text-left font-medium text-slate-800 whitespace-nowrap">
+                  {{ c.name }}<span class="ml-1 text-[10px] text-slate-400">{{ '{:,}'.format(c.product_count) }}p</span>
+                </th>
+                {% for b in matrix.blocks %}
+                  {% set key = c.name ~ '||' ~ b.block_index %}
+                  {% set cell = matrix.grid.get(key) %}
+                  <td class="border-b border-slate-100 px-1 py-1 text-center align-middle">
+                    {% if cell %}
+                      <button type="button"
+                              @click="cell = {service: {{ cell.service|tojson }}, carrier: {{ cell.carrier|tojson }}, category: {{ c.name|tojson }}, cfg: ({{ matrix.svc_cfg.get(cell.service, {})|tojson }})}"
+                              class="w-full truncate rounded border px-1.5 py-1 text-[11px] leading-tight {{ family_class[cell.family] }}"
+                              title="{{ cell.service }} — {{ cell.carrier }}">
+                        {{ cell.service|replace('StarTrack','ST')|replace('Startrack','ST')|replace('Australia Post','AP')|replace('Auspost','AP')|truncate(16, true, '…') }}
+                      </button>
+                    {% else %}
+                      <span class="text-slate-200">·</span>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {# Drill-down panel #}
+      <div x-show="cell" x-cloak class="mt-4 rounded-lg border border-slate-200 bg-white p-4" @keydown.escape.window="cell=null">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs uppercase tracking-wide text-slate-400">Category “<span x-text="cell?.category"></span>” →</div>
+            <h3 class="text-base font-semibold text-slate-900" x-text="cell?.service"></h3>
+            <div class="text-sm text-slate-500" x-text="cell?.carrier"></div>
+          </div>
+          <button type="button" @click="cell=null" class="rounded p-1 text-slate-400 hover:bg-slate-100"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+          <template x-if="cell?.cfg">
+            <div class="contents">
+              <div><span class="text-slate-400">Rate table #</span> <span x-text="cell.cfg.service_id ?? '—'"></span></div>
+              <div><span class="text-slate-400">Type</span> <span x-text="cell.cfg.type ?? '—'"></span></div>
+              <div><span class="text-slate-400">Charge type</span> <span x-text="cell.cfg.charge_type ?? '—'"></span></div>
+              <div><span class="text-slate-400">Fuel %</span> <span x-text="cell.cfg.fuel_pct ?? '—'"></span></div>
+              <div><span class="text-slate-400">Handling</span> <span x-text="(cell.cfg.handling_amt ? ('$'+cell.cfg.handling_amt+'/item') : '—')"></span></div>
+              <div><span class="text-slate-400">Tax inc</span> <span x-text="cell.cfg.tax_inclusive ? 'yes' : 'no'"></span></div>
+              <div><span class="text-slate-400">Cubic</span> <span x-text="cell.cfg.cubic_modifier ?? '—'"></span></div>
+              <div class="col-span-2 sm:col-span-3" x-show="cell.cfg.cost_band">
+                <span class="text-slate-400">Actual carrier cost (min/med/max):</span>
+                <span x-text="cell.cfg.cost_band ? ('$'+cell.cfg.cost_band.min+' / $'+cell.cfg.cost_band.median+' / $'+cell.cfg.cost_band.max+' (n='+cell.cfg.cost_band.n+')') : ''"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    {# ============ REFERENCE (tables) ============ #}
+    <div x-show="view==='reference'" x-cloak x-data="{ tab: 'services' }">
+      <div class="mb-3 flex gap-1 border-b border-slate-200 text-sm">
+        {% for key, label in [('services','Services & Rates'),('options','Options'),('categories','Categories'),('carriers','Carriers')] %}
+          <button @click="tab='{{ key }}'" type="button" class="border-b-2 px-3 py-2 font-medium transition" :class="tab==='{{ key }}' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-700'">{{ label }}</button>
+        {% endfor %}
+      </div>
+
+      <div x-show="tab==='services'" x-cloak class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Type</th><th class="px-3 py-2">Charge type</th><th class="px-3 py-2 text-right">Cubic</th><th class="px-3 py-2 text-center">Tax inc</th><th class="px-3 py-2 text-right">Fuel %</th><th class="px-3 py-2 text-right">Handling</th><th class="px-3 py-2">Actual cost (min/med/max)</th></tr></thead>
+          <tbody>{% for s in snap.services|sort(attribute='name') %}<tr>
+            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ s.service_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ s.name }}</td><td class="px-3 py-2 text-slate-600">{{ s.type }}</td><td class="px-3 py-2 text-slate-600">{{ s.charge_type or '—' }}</td><td class="px-3 py-2 text-right">{{ s.cubic_modifier or '—' }}</td>
+            <td class="px-3 py-2 text-center">{% if s.tax_inclusive %}<i class="fas fa-check text-emerald-600"></i>{% else %}<span class="text-slate-300">—</span>{% endif %}</td>
+            <td class="px-3 py-2 text-right {% if s.fuel_pct is not none and summary.common_fuel is not none and s.fuel_pct != summary.common_fuel %}font-semibold text-amber-700{% endif %}">{{ s.fuel_pct if s.fuel_pct is not none else '—' }}</td>
+            <td class="px-3 py-2 text-right {% if s.handling_amt and s.handling_amt > 0 %}font-semibold text-amber-700{% endif %}">{% if s.handling_amt %}${{ '%.2f'|format(s.handling_amt) }}/item{% else %}—{% endif %}</td>
+            <td class="px-3 py-2 text-xs text-slate-600">{% if s.cost_band %}${{ s.cost_band.min }} / ${{ s.cost_band.median }} / ${{ s.cost_band.max }} <span class="text-slate-400">(n={{ s.cost_band.n }})</span>{% else %}<span class="text-slate-300">no invoices</span>{% endif %}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      <div x-show="tab==='options'" x-cloak class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr><th class="px-3 py-2">Name</th><th class="px-3 py-2">Routing group</th><th class="px-3 py-2 text-right">Max charge</th><th class="px-3 py-2">Weight range</th><th class="px-3 py-2 text-right">Orders (365d)</th><th class="px-3 py-2 text-right">$ shipped</th><th class="px-3 py-2 text-right">Avg</th></tr></thead>
+          <tbody>{% for o in snap.options|sort(attribute='orders', reverse=true) %}<tr>
+            <td class="px-3 py-2 font-medium text-slate-900">{{ o.name }}</td><td class="px-3 py-2 text-slate-600">{{ o.routing_group or '—' }}</td>
+            <td class="px-3 py-2 text-right">{% if o.max_charge %}${{ '%.2f'|format(o.max_charge) }}{% else %}—{% endif %}</td>
+            <td class="px-3 py-2 text-slate-600">{{ o.min_weight_kg or 0 }}–{{ o.max_weight_kg or 0 }} kg</td>
+            <td class="px-3 py-2 text-right">{{ '{:,}'.format(o.orders) }}</td><td class="px-3 py-2 text-right">${{ '{:,.2f}'.format(o.total_shipping) }}</td><td class="px-3 py-2 text-right">${{ '%.2f'|format(o.avg_shipping) }}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      <div x-show="tab==='categories'" x-cloak class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th><th class="px-3 py-2 text-right">Active products</th><th class="px-3 py-2 text-right">In N service mappings</th><th class="px-3 py-2 text-center">Default</th></tr></thead>
+          <tbody>{% for c in snap.categories|sort(attribute='product_count', reverse=true) %}{% set nsvc = cat_services.get(c.name, [])|length %}<tr>
+            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ c.category_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ c.name }}</td>
+            <td class="px-3 py-2 text-right">{{ '{:,}'.format(c.product_count) }}</td><td class="px-3 py-2 text-right text-slate-600">{{ nsvc }}</td>
+            <td class="px-3 py-2 text-center">{% if c.is_default %}<i class="fas fa-star text-amber-500"></i>{% endif %}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      <div x-show="tab==='carriers'" x-cloak class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Location</th><th class="px-3 py-2">Courier zone</th></tr></thead>
+          <tbody>{% for c in snap.carriers|sort(attribute='name') %}<tr>
+            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ c.carrier_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ c.name }}</td><td class="px-3 py-2 text-slate-600">{{ c.location or '—' }}</td><td class="px-3 py-2 text-slate-600">{{ c.courier_zone or '—' }}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ============ FLOW (Sankey) ============ #}
+    <div x-show="view==='flow'" x-cloak
+         x-init="$watch('view', v => { if (v==='flow') $nextTick(() => window.renderShipFlow && window.renderShipFlow()); })">
+      <p class="mb-2 text-xs text-slate-500">Flow of <span class="font-medium">active products</span> → rate-table service → carrier. Band width ∝ number of products in each category (split across the services/carriers it routes to).</p>
+      <div id="ship-flow" class="rounded-lg border border-slate-200 bg-white" style="height: 640px;"></div>
+    </div>
+  </div>
+
+  <script id="ship-flow-data" type="application/json">{{ flow|tojson }}</script>
+{% else %}
+  <div class="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">No shipping snapshot found yet. Run the scraper to populate <span class="font-mono">neto_shipping.*</span>.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function shipRefresh() {
+    return {
+      running: false, msg: '',
+      async start() {
+        if (this.running) return;
+        this.running = true; this.msg = 'starting…';
+        try {
+          const r = await fetch('{{ url_for("services.neto_shipping_refresh") }}', { method: 'POST' });
+          const j = await r.json();
+          if (j.status === 'already_running') this.msg = 'a refresh is already running…';
+        } catch (e) { this.running = false; this.msg = 'could not start: ' + e; return; }
+        this._poll();
+      },
+      _poll() {
+        const url = '{{ url_for("services.neto_shipping_refresh_status") }}';
+        const tick = async () => {
+          try {
+            const s = await (await fetch(url)).json();
+            this.msg = s.message || '';
+            if (s.running) { setTimeout(tick, 2000); return; }
+            this.running = false;
+            if (s.error) { this.msg = 'Failed: ' + s.error; }
+            else { this.msg = 'Updated — reloading…'; setTimeout(() => location.reload(), 900); }
+          } catch (e) { this.running = false; this.msg = 'status error: ' + e; }
+        };
+        setTimeout(tick, 1500);
+      }
+    };
+  }
+</script>
+{% if snap and snap.snapshot_id %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+  window.renderShipFlow = function () {
+    var el = document.getElementById('ship-flow');
+    if (!el || el.__inited) return;
+    var raw = JSON.parse(document.getElementById('ship-flow-data').textContent || '{"nodes":[],"links":[]}');
+    var strip = function (n) { return n.replace(/^cat:|^svc:|^car:/, ''); };
+    var depthOf = function (n) { return n.startsWith('cat:') ? 0 : (n.startsWith('svc:') ? 1 : 2); };
+    var nodes = raw.nodes.map(function (n) { return { name: n.name, depth: depthOf(n.name) }; });
+    var chart = echarts.init(el);
+    chart.setOption({
+      tooltip: { trigger: 'item', formatter: function (p) {
+        if (p.dataType === 'edge') return strip(p.data.source) + ' → ' + strip(p.data.target) + ': ' + Math.round(p.data.value) + ' products';
+        return strip(p.name);
+      }},
+      series: [{
+        type: 'sankey', emphasis: { focus: 'adjacency' },
+        nodeAlign: 'left', draggable: false,
+        label: { formatter: function (p) { return strip(p.name); }, fontSize: 11 },
+        lineStyle: { color: 'gradient', opacity: 0.4 },
+        data: nodes, links: raw.links
+      }]
+    });
+    el.__inited = true;
+    new ResizeObserver(function () { chart.resize(); }).observe(el);
+  };
+</script>
+{% endif %}
+{% endblock %}
