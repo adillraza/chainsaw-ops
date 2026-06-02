@@ -150,10 +150,61 @@
     </form>
   </div>
 
-  {% if postcode and suburb %}
+  {% if quote %}
+    {% set fam_badge = {'startrack':'bg-orange-100 text-orange-800','auspost':'bg-blue-100 text-blue-800'} %}
+    {# ============ PANEL 2 — NETO Shipping Cost ============ #}
+    <div class="mt-4 rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <i class="fas fa-store text-slate-400"></i> NETO Shipping Cost
+        </h2>
+        <span class="text-xs text-slate-400">{{ product.sku }} × {{ qty }} → {{ suburb }} {{ postcode }}</span>
+      </div>
+      <div class="p-5">
+        <p class="mb-3 text-xs text-slate-500">What Neto would quote the customer — one row per shipping option the item's category routes to, computed from the live shipping config.</p>
+        {% set avail = quote.neto | selectattr('available') | list %}
+        {% if avail %}
+          <div class="space-y-2">
+            {% for q in quote.neto if q.available %}
+              <div class="flex items-center justify-between rounded-md border border-slate-200 px-4 py-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase {{ fam_badge.get(q.carrier_family, 'bg-slate-100 text-slate-600') }}">{{ q.carrier_family or 'other' }}</span>
+                    <span class="truncate text-sm font-medium text-slate-900">{{ q.service }}</span>
+                  </div>
+                  <div class="mt-1 text-xs text-slate-500">
+                    carrier ${{ '%.2f'|format(q.base) }}
+                    {% if q.fuel_pct %}+ fuel {{ q.fuel_pct }}% (${{ '%.2f'|format(q.fuel_line) }}){% endif %}
+                    {% if q.handling %}+ handling ${{ '%.2f'|format(q.handling) }}×{{ q.cartons }} (${{ '%.2f'|format(q.handling_line) }}){% endif %}
+                  </div>
+                </div>
+                <div class="ml-4 text-right">
+                  <div class="text-lg font-semibold text-slate-900">${{ '%.2f'|format(q.total) }}</div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">No Neto quote could be computed for this item/destination.</p>
+        {% endif %}
+
+        {% set unavail = quote.neto | rejectattr('available') | list %}
+        {% if unavail %}
+          <div class="mt-3 text-xs text-slate-400">
+            {% for q in unavail %}<div>• {{ q.service }} — {{ q.message }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        {% if quote.multi_carton %}
+          <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Multi-carton item — quote is an estimate using a single synthesised box matched to the item's total cubic. Per-carton handling on the real cartons may differ.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+
     <div class="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-5 py-4 text-sm text-slate-400">
-      Quoting {{ product.sku }} × {{ qty }} → {{ suburb }} {{ postcode }}.
-      <span class="font-medium text-slate-500">NETO Shipping Cost · Startrack · AusPost</span> panels are next.
+      Next: <span class="font-medium text-slate-500">Startrack</span> · <span class="font-medium text-slate-500">AusPost</span> live-quote panels.
     </div>
   {% endif %}
 {% endif %}

@@ -208,10 +208,16 @@ def st_calculator():
     except (TypeError, ValueError):
         qty = 1
     suburbs = calc.suburbs_for_postcode(postcode) if (product and postcode) else []
+    quote = None
+    if product and postcode and suburb:
+        try:
+            quote = calc.neto_quotes(product, qty, postcode, suburb)
+        except Exception as exc:  # noqa: BLE001
+            error = error or f"Quote failed: {exc}"
     return render_template(
         "services/st_calculator.html",
         sku=sku, product=product, error=error,
-        postcode=postcode, suburb=suburb, qty=qty, suburbs=suburbs,
+        postcode=postcode, suburb=suburb, qty=qty, suburbs=suburbs, quote=quote,
     )
 
 

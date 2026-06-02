@@ -104,6 +104,117 @@ def suburbs_for_postcode(pc: str) -> list[dict]:
     return _pc_map.get((pc or "").strip(), [])
 
 
+def parcel_items(product: dict, qty: int) -> list[dict]:
+    """Build carrier line-items from the product. One (synthetic) box per unit.
+    For multi-carton products we synthesize a box whose volume matches the
+    stored cubic so the carrier's cubic-weight is right (length stays the real
+    primary length so length limits still apply)."""
+    L = (product.get("ship_l_cm") or 0) / 100.0
+    W = (product.get("ship_w_cm") or 0) / 100.0
+    H = (product.get("ship_h_cm") or 0) / 100.0
+    wt = product.get("ship_weight_kg") or 0.1
+    cubic = product.get("cubic_m3")
+    if product.get("multi_carton") and cubic and L > 0 and W > 0:
+        H = cubic / (L * W)
+    item = {
+        "length_cm": round(L * 100, 1) or 1.0,
+        "width_cm": round(W * 100, 1) or 1.0,
+        "height_cm": round(H * 100, 1) or 1.0,
+        "weight_kg": round(wt, 3) or 0.1,
+    }
+    return [dict(item) for _ in range(max(1, int(qty or 1)))]
+
+
+def _service_carrier_product(svc_name: str):
+    """Map a Neto service name to (carrier_family, carrier_product_id)."""
+    n = (svc_name or "").lower()
+    if "startrack" in n or "star track" in n:
+        if "fixed price" in n or "fpp" in n:
+            return ("startrack", "FPP")
+        if "premium" in n:
+            return ("startrack", "PRM")
+        return ("startrack", "EXP")  # Road Freight / default
+    if "auspost" in n or "australia post" in n or "eparcel" in n:
+        if "express" in n:
+            return ("auspost", "7I85")
+        return ("auspost", "7C85")
+    return (None, None)
+
+
+def neto_quotes(product: dict, qty: int, postcode: str, suburb: str) -> dict:
+    """Compute the Neto quote(s) for the item: all services its ShippingCategory
+    routes to, each priced as carrier_base × (1+fuel%) + handling × cartons,
+    using the live neto_shipping config. Also returns the raw carrier quotes."""
+    from app.services import neto_shipping_service as ns
+    from app.services import carrier_quote_service as cq
+
+    items = parcel_items(product, qty)
+    carriers = cq.get_carrier_quotes(items, postcode, suburb)
+
+    snap = ns.get_local() or {}
+    services_cfg = {s.get("name"): s for s in snap.get("services", [])}
+    # service names longest-first, to resolve the clean name from the messy
+    # ship-page cell text ("<service name> <carrier pricing description…>").
+    svc_names = sorted((n for n in services_cfg if n), key=len, reverse=True)
+    cat_name = product.get("shipping_category_name")
+
+    def resolve_service(text):
+        t = (text or "").strip()
+        for n in svc_names:
+            if t.startswith(n):
+                return n
+        for n in svc_names:
+            if n in t:
+                return n
+        return None
+
+    def base_for(fam, pid):
+        r = carriers.get(fam) or {}
+        if not r.get("available"):
+            return None, r.get("message")
+        q = next((x for x in r["quotes"] if x["product_id"] == pid), None) or (r["quotes"][0] if r["quotes"] else None)
+        return (q["total"] if q else None), None
+
+    seen, results = set(), []
+    for m in snap.get("mapping", []):
+        if not m.get("block_active") or (m.get("category") or "") != cat_name:
+            continue
+        svc = resolve_service(m.get("service"))
+        if not svc or svc in seen:
+            continue
+        seen.add(svc)
+        # Skip non-freight (Pickup, Electronic Delivery) and international
+        # services — this is a domestic parcel calculator.
+        fam, pid = _service_carrier_product(svc)
+        if not fam or "international" in svc.lower():
+            continue
+        cfg = services_cfg.get(svc, {})
+        base, msg = base_for(fam, pid)
+        if base is None:
+            results.append({"service": svc, "carrier_family": fam, "available": False, "message": msg})
+            continue
+        fuel = cfg.get("fuel_pct") or 0
+        handling = cfg.get("handling_amt") or 0
+        cartons = max(1, int(qty or 1))
+        fuel_line = round(base * fuel / 100.0, 2)
+        handling_line = round(handling * cartons, 2)
+        total = base + fuel_line + handling_line
+        mn, mx = cfg.get("min_charge"), cfg.get("max_charge")
+        if mn and total < mn:
+            total = mn
+        if mx and total > mx:
+            total = mx
+        results.append({
+            "service": svc, "carrier_family": fam, "carrier_product": pid, "available": True,
+            "base": round(base, 2), "fuel_pct": fuel, "fuel_line": fuel_line,
+            "handling": handling, "cartons": cartons, "handling_line": handling_line,
+            "total": round(total, 2),
+        })
+
+    results.sort(key=lambda r: (not r.get("available"), r.get("total") or 9e9))
+    return {"carriers": carriers, "neto": results, "multi_carton": product.get("multi_carton")}
+
+
 def get_product(sku: str) -> dict | None:
     """Return shipping-relevant fields for one SKU, or None if not found."""
     if not sku or not sku.strip():
