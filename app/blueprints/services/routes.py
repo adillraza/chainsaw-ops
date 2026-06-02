@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 import time
 
-from flask import jsonify, render_template
+from flask import jsonify, render_template, request
 from flask_login import login_required
 
 from app.auth.abilities import require_capability
@@ -58,13 +58,13 @@ SERVICES = [
     },
     {
         "key": "st_calculator",
-        "title": "Startrack Freight Calculator",
-        "description": "Quote a SKU to a postcode against the live Startrack API and "
-                       "compare to how Neto would charge. (Coming soon.)",
+        "title": "Freight Calculator",
+        "description": "Look up an item's shipping details, what Neto would quote, and the "
+                       "live Startrack / AusPost cost — no more manual carrier calculators.",
         "icon": "fa-calculator",
         "endpoint": "services.st_calculator",
         "capability": "services.calculator.view",
-        "available": False,
+        "available": True,
     },
 ]
 
@@ -182,6 +182,26 @@ def _build_flow(snap: dict) -> dict:
         used.add(l["source"]); used.add(l["target"])
     nodes = [{"name": n} for n in sorted(used)]
     return {"nodes": nodes, "links": links}
+
+
+@services_bp.route("/st-calculator")
+@login_required
+@require_capability("services.calculator.view")
+def st_calculator():
+    """Freight Calculator — incremental build. Panel 1: Item Details."""
+    from app.services import st_calculator_service as calc
+
+    sku = (request.args.get("sku") or "").strip()
+    product = None
+    error = None
+    if sku:
+        try:
+            product = calc.get_product(sku)
+            if product is None:
+                error = f"No product found for SKU '{sku}'."
+        except Exception as exc:  # noqa: BLE001
+            error = f"Lookup failed: {exc}"
+    return render_template("services/st_calculator.html", sku=sku, product=product, error=error)
 
 
 @services_bp.route("/neto-shipping/refresh", methods=["POST"])
