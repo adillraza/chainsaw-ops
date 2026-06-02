@@ -110,8 +110,9 @@
   </div>
 
   {# ---- Destination inputs (under Panel 1) ---- #}
+  <script id="dest-init" type="application/json">{{ {'postcode': postcode, 'suburb': suburb, 'qty': qty, 'suburbs': suburbs}|tojson }}</script>
   <div class="mt-4 rounded-lg border border-slate-200 bg-white shadow-sm"
-       x-data="destForm({{ {'postcode': postcode, 'suburb': suburb, 'qty': qty, 'suburbs': suburbs}|tojson }})">
+       x-data="destForm()">
     <div class="border-b border-slate-200 px-5 py-3">
       <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-700"><i class="fas fa-location-dot text-slate-400"></i> Destination</h2>
     </div>
@@ -160,7 +161,9 @@
 
 {% block scripts %}
 <script>
-  function destForm(init) {
+  function destForm() {
+    let init = {};
+    try { init = JSON.parse(document.getElementById('dest-init').textContent || '{}'); } catch (e) {}
     return {
       postcode: init.postcode || '',
       suburb: init.suburb || '',
