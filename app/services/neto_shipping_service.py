@@ -16,6 +16,7 @@ tab is read far more often than the scraper runs.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any
@@ -153,3 +154,60 @@ def service_cost_bands() -> dict[str, dict]:
         return {r["svc"]: {"n": int(r["n"]), "min": r["min_c"],
                            "median": r["median_c"], "max": r["max_c"]} for r in rows}
     return _cached("svc_cost_bands", loader)
+
+
+# ---------------------------------------------------------------------------
+# Enriched payload (config + overlays) + local SQLite mirror
+# ---------------------------------------------------------------------------
+
+def build_payload() -> dict:
+    """Read the latest BQ snapshot + overlays and enrich it into the exact
+    structure the tab renders. Used to (re)build the local mirror."""
+    snap = get_snapshot(active_only=True)
+    cat_counts = category_product_counts()
+    opt_stats = option_order_stats(365)
+    cost_bands = service_cost_bands()
+
+    for c in snap["categories"]:
+        c["product_count"] = cat_counts.get(str(c.get("category_id")), 0)
+    for o in snap["options"]:
+        s = opt_stats.get(o.get("name"))
+        o["orders"] = s["orders"] if s else 0
+        o["total_shipping"] = s["total_shipping"] if s else 0.0
+        o["avg_shipping"] = s["avg_shipping"] if s else 0.0
+    for sv in snap["services"]:
+        sv["cost_band"] = cost_bands.get(sv.get("name"))
+    return snap
+
+
+def mirror_to_local(payload: dict | None = None) -> str | None:
+    """Rebuild the SQLite mirror from BigQuery (or a supplied payload).
+    Always reads fresh (busts the BQ cache first). Returns the snapshot_id."""
+    from app.extensions import db
+    from app.models.neto_shipping import NetoShipMirror
+
+    if payload is None:
+        bust_cache()
+        payload = build_payload()
+
+    meta = payload.get("meta") or {}
+    row = NetoShipMirror(
+        snapshot_id=payload.get("snapshot_id"),
+        scraped_at=str(meta.get("scraped_at") or ""),
+        source=str(meta.get("source") or ""),
+        payload=json.dumps(payload, default=str),
+    )
+    # latest-only mirror: clear old rows, keep this one
+    NetoShipMirror.query.delete()
+    db.session.add(row)
+    db.session.commit()
+    return payload.get("snapshot_id")
+
+
+def get_local() -> dict | None:
+    """Return the enriched snapshot from the SQLite mirror, or None if empty."""
+    from app.models.neto_shipping import NetoShipMirror
+    row = NetoShipMirror.query.order_by(NetoShipMirror.id.desc()).first()
+    if not row:
+        return None
+    return json.loads(row.payload)

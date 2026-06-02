@@ -10,6 +10,8 @@
   'generic':   'bg-slate-100 text-slate-700 border-slate-200',
   'other':     'bg-slate-100 text-slate-600 border-slate-200'
 } %}
+{% set cpanel = "https://www.chainsawspares.com.au/_cpanel" %}
+{% macro neto_link(page, id, text) %}{% if id %}<a href="{{ cpanel }}/{{ page }}/view?id={{ id }}" target="_blank" rel="noopener" class="text-brand-700 hover:underline">{{ text }} <i class="fas fa-arrow-up-right-from-square text-[9px] text-slate-400"></i></a>{% else %}{{ text }}{% endif %}{% endmacro %}
 
 {% block content %}
 <section class="mb-6 flex items-start justify-between gap-4">
@@ -135,6 +137,12 @@
             <div class="text-xs uppercase tracking-wide text-slate-400">Category “<span x-text="cell?.category"></span>” →</div>
             <h3 class="text-base font-semibold text-slate-900" x-text="cell?.service"></h3>
             <div class="text-sm text-slate-500" x-text="cell?.carrier"></div>
+            <a x-show="cell?.cfg?.service_id" x-cloak
+               :href="'{{ cpanel }}/shippingcostmgr/view?id=' + (cell?.cfg?.service_id || '')"
+               target="_blank" rel="noopener"
+               class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
+              Open rate table in Neto <i class="fas fa-arrow-up-right-from-square text-[9px]"></i>
+            </a>
           </div>
           <button type="button" @click="cell=null" class="rounded p-1 text-slate-400 hover:bg-slate-100"><i class="fas fa-xmark"></i></button>
         </div>
@@ -170,7 +178,7 @@
         <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
           <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Type</th><th class="px-3 py-2">Charge type</th><th class="px-3 py-2 text-right">Cubic</th><th class="px-3 py-2 text-center">Tax inc</th><th class="px-3 py-2 text-right">Fuel %</th><th class="px-3 py-2 text-right">Handling</th><th class="px-3 py-2">Actual cost (min/med/max)</th></tr></thead>
           <tbody>{% for s in snap.services|sort(attribute='name') %}<tr>
-            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ s.service_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ s.name }}</td><td class="px-3 py-2 text-slate-600">{{ s.type }}</td><td class="px-3 py-2 text-slate-600">{{ s.charge_type or '—' }}</td><td class="px-3 py-2 text-right">{{ s.cubic_modifier or '—' }}</td>
+            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ s.service_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ neto_link('shippingcostmgr', s.service_id, s.name) }}</td><td class="px-3 py-2 text-slate-600">{{ s.type }}</td><td class="px-3 py-2 text-slate-600">{{ s.charge_type or '—' }}</td><td class="px-3 py-2 text-right">{{ s.cubic_modifier or '—' }}</td>
             <td class="px-3 py-2 text-center">{% if s.tax_inclusive %}<i class="fas fa-check text-emerald-600"></i>{% else %}<span class="text-slate-300">—</span>{% endif %}</td>
             <td class="px-3 py-2 text-right {% if s.fuel_pct is not none and summary.common_fuel is not none and s.fuel_pct != summary.common_fuel %}font-semibold text-amber-700{% endif %}">{{ s.fuel_pct if s.fuel_pct is not none else '—' }}</td>
             <td class="px-3 py-2 text-right {% if s.handling_amt and s.handling_amt > 0 %}font-semibold text-amber-700{% endif %}">{% if s.handling_amt %}${{ '%.2f'|format(s.handling_amt) }}/item{% else %}—{% endif %}</td>
@@ -183,7 +191,7 @@
         <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
           <tr><th class="px-3 py-2">Name</th><th class="px-3 py-2">Routing group</th><th class="px-3 py-2 text-right">Max charge</th><th class="px-3 py-2">Weight range</th><th class="px-3 py-2 text-right">Orders (365d)</th><th class="px-3 py-2 text-right">$ shipped</th><th class="px-3 py-2 text-right">Avg</th></tr></thead>
           <tbody>{% for o in snap.options|sort(attribute='orders', reverse=true) %}<tr>
-            <td class="px-3 py-2 font-medium text-slate-900">{{ o.name }}</td><td class="px-3 py-2 text-slate-600">{{ o.routing_group or '—' }}</td>
+            <td class="px-3 py-2 font-medium text-slate-900">{{ neto_link('shippinggroup', o.option_id, o.name) }}</td><td class="px-3 py-2 text-slate-600">{{ o.routing_group or '—' }}</td>
             <td class="px-3 py-2 text-right">{% if o.max_charge %}${{ '%.2f'|format(o.max_charge) }}{% else %}—{% endif %}</td>
             <td class="px-3 py-2 text-slate-600">{{ o.min_weight_kg or 0 }}–{{ o.max_weight_kg or 0 }} kg</td>
             <td class="px-3 py-2 text-right">{{ '{:,}'.format(o.orders) }}</td><td class="px-3 py-2 text-right">${{ '{:,.2f}'.format(o.total_shipping) }}</td><td class="px-3 py-2 text-right">${{ '%.2f'|format(o.avg_shipping) }}</td>
@@ -195,7 +203,7 @@
         <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
           <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th><th class="px-3 py-2 text-right">Active products</th><th class="px-3 py-2 text-right">In N service mappings</th><th class="px-3 py-2 text-center">Default</th></tr></thead>
           <tbody>{% for c in snap.categories|sort(attribute='product_count', reverse=true) %}{% set nsvc = cat_services.get(c.name, [])|length %}<tr>
-            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ c.category_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ c.name }}</td>
+            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ c.category_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ neto_link('shippingid', c.category_id, c.name) }}</td>
             <td class="px-3 py-2 text-right">{{ '{:,}'.format(c.product_count) }}</td><td class="px-3 py-2 text-right text-slate-600">{{ nsvc }}</td>
             <td class="px-3 py-2 text-center">{% if c.is_default %}<i class="fas fa-star text-amber-500"></i>{% endif %}</td>
           </tr>{% endfor %}</tbody>
@@ -206,7 +214,7 @@
         <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
           <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Location</th><th class="px-3 py-2">Courier zone</th></tr></thead>
           <tbody>{% for c in snap.carriers|sort(attribute='name') %}<tr>
-            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ c.carrier_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ c.name }}</td><td class="px-3 py-2 text-slate-600">{{ c.location or '—' }}</td><td class="px-3 py-2 text-slate-600">{{ c.courier_zone or '—' }}</td>
+            <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ c.carrier_id }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ neto_link('ship_carrier', c.carrier_id, c.name) }}</td><td class="px-3 py-2 text-slate-600">{{ c.location or '—' }}</td><td class="px-3 py-2 text-slate-600">{{ c.courier_zone or '—' }}</td>
           </tr>{% endfor %}</tbody>
         </table>
       </div>

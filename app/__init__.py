@@ -77,6 +77,7 @@ def create_app(config_object: str | None = None) -> Flask:
     from app.models import reviews as _review_models  # noqa: F401
     from app.models import annotations as _annotation_models  # noqa: F401
     from app.models import role as _role_models  # noqa: F401
+    from app.models import neto_shipping as _neto_ship_models  # noqa: F401
 
     @login_manager.user_loader
     def load_user(user_id: str):

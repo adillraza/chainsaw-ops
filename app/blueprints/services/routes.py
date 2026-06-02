@@ -24,7 +24,7 @@ _refresh_state: dict = {"running": False, "message": "", "started_at": None,
                         "finished_at": None, "result": None, "error": None}
 
 
-def _run_refresh():
+def _run_refresh(app):
     from app.services.neto_ship_scraper import runner
     from app.services import neto_shipping_service as ns
 
@@ -33,8 +33,10 @@ def _run_refresh():
 
     try:
         result = runner.run_scrape(progress=progress)
+        progress("mirroring to local store…")
+        with app.app_context():
+            ns.mirror_to_local()  # BQ -> SQLite (busts the BQ cache internally)
         _refresh_state.update(result=result, error=None, message="done")
-        ns.bust_cache()
     except Exception as exc:  # noqa: BLE001
         _refresh_state.update(error=str(exc), message="failed")
     finally:
@@ -84,30 +86,22 @@ def neto_shipping():
 
     error = None
     try:
-        snap = ns.get_snapshot(active_only=True)
-        cat_counts = ns.category_product_counts()
-        opt_stats = ns.option_order_stats(365)
-        cost_bands = ns.service_cost_bands()
+        # Read from the fast local SQLite mirror; on a miss (first load or
+        # cleared mirror), build from BigQuery and seed the mirror.
+        snap = ns.get_local()
+        if snap is None:
+            snap = ns.build_payload()
+            try:
+                ns.mirror_to_local(snap)
+            except Exception:  # noqa: BLE001
+                import logging as _l
+                _l.getLogger(__name__).warning("neto_shipping mirror seed failed", exc_info=True)
     except Exception as exc:  # noqa: BLE001
         return render_template("services/neto_shipping.html", error=str(exc), snap=None)
 
-    # Enrich categories with product counts
-    for c in snap["categories"]:
-        c["product_count"] = cat_counts.get(str(c.get("category_id")), 0)
+    # snap is already enriched (product_count / order stats / cost_band) in build_payload.
 
-    # Enrich options with order volume / $
-    for o in snap["options"]:
-        s = opt_stats.get(o.get("name"))
-        o["orders"] = s["orders"] if s else 0
-        o["total_shipping"] = s["total_shipping"] if s else 0.0
-        o["avg_shipping"] = s["avg_shipping"] if s else 0.0
-
-    # Enrich services with actual carrier cost band
-    for sv in snap["services"]:
-        b = cost_bands.get(sv.get("name"))
-        sv["cost_band"] = b  # {n, min, median, max} or None
-
-    # Which services each category routes to (from the mapping) — flags ambiguity
+    # Which services each category routes to (from the mapping)
     cat_services: dict[str, set] = {}
     for m in snap["mapping"]:
         cat_services.setdefault(m.get("category"), set()).add(m.get("service"))
@@ -200,7 +194,9 @@ def neto_shipping_refresh():
             return jsonify({"status": "already_running", "message": _refresh_state["message"]})
         _refresh_state.update(running=True, message="starting…", started_at=time.time(),
                               finished_at=None, result=None, error=None)
-        threading.Thread(target=_run_refresh, daemon=True).start()
+        from flask import current_app
+        app = current_app._get_current_object()
+        threading.Thread(target=_run_refresh, args=(app,), daemon=True).start()
     return jsonify({"status": "started"})
 
 
