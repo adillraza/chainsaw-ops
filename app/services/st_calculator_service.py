@@ -8,9 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 PROJECT = "chainsawspares-385722"
 log = logging.getLogger(__name__)
+
+# postcode -> [{suburb, state}], built once per process from our shipping
+# history (carrier-validated pairs). Refreshed if older than _PC_TTL.
+_pc_map: dict | None = None
+_pc_built_at: float = 0.0
+_PC_TTL = 12 * 3600
 
 
 def _bq():
@@ -51,6 +58,50 @@ def _category_names() -> dict:
     except Exception:  # noqa: BLE001
         log.warning("could not load category names from neto_shipping mirror", exc_info=True)
     return {}
+
+
+def _build_postcode_map() -> dict:
+    """postcode -> ordered list of {suburb, state} from our shipping history
+    (neto_orders ShipCity + Startrack invoice Receiver_Location). Carrier-
+    validated pairs; most-frequent suburb first."""
+    client = _bq()
+    if client is None:
+        raise RuntimeError("BigQuery client unavailable")
+    sql = f"""
+        SELECT pc, suburb, ANY_VALUE(state) AS state, SUM(freq) AS freq FROM (
+          SELECT ShipPostCode AS pc, UPPER(TRIM(ShipCity)) AS suburb,
+                 UPPER(TRIM(ShipState)) AS state, COUNT(*) AS freq
+          FROM `{PROJECT}.dataform.neto_orders`
+          WHERE ShipPostCode IS NOT NULL AND ShipPostCode != ''
+            AND ShipCity IS NOT NULL AND TRIM(ShipCity) != ''
+            AND ShipCountry IN ('AU','Australia')
+          GROUP BY 1,2,3
+          UNION ALL
+          SELECT LPAD(CAST(Receiver_Postcode AS STRING), 4, '0') AS pc,
+                 UPPER(TRIM(Receiver_Location)) AS suburb, CAST(NULL AS STRING) AS state, COUNT(*) AS freq
+          FROM `{PROJECT}.startrack._all_invoices`
+          WHERE Receiver_Postcode IS NOT NULL
+            AND Receiver_Location IS NOT NULL AND TRIM(Receiver_Location) != ''
+          GROUP BY 1,2
+        )
+        WHERE suburb NOT LIKE '%FUTILE%'
+        GROUP BY pc, suburb
+        ORDER BY pc, freq DESC
+    """
+    out: dict = {}
+    for r in client.query(sql).result():
+        pc = str(r["pc"]).strip()
+        out.setdefault(pc, []).append({"suburb": r["suburb"], "state": r["state"]})
+    return out
+
+
+def suburbs_for_postcode(pc: str) -> list[dict]:
+    """Return [{suburb, state}] for a postcode (most-shipped first)."""
+    global _pc_map, _pc_built_at
+    if _pc_map is None or (time.time() - _pc_built_at) > _PC_TTL:
+        _pc_map = _build_postcode_map()
+        _pc_built_at = time.time()
+    return _pc_map.get((pc or "").strip(), [])
 
 
 def get_product(sku: str) -> dict | None:

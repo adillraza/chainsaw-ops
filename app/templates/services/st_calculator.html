@@ -109,9 +109,79 @@
     </div>
   </div>
 
-  {# placeholders for the panels we're building next #}
-  <div class="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-5 py-4 text-sm text-slate-400">
-    Next: <span class="font-medium text-slate-500">NETO Shipping Cost</span> · Startrack · AusPost — building one at a time.
+  {# ---- Destination inputs (under Panel 1) ---- #}
+  <div class="mt-4 rounded-lg border border-slate-200 bg-white shadow-sm"
+       x-data="destForm({{ {'postcode': postcode, 'suburb': suburb, 'qty': qty, 'suburbs': suburbs}|tojson }})">
+    <div class="border-b border-slate-200 px-5 py-3">
+      <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-700"><i class="fas fa-location-dot text-slate-400"></i> Destination</h2>
+    </div>
+    <form method="get" action="{{ url_for('services.st_calculator') }}" class="flex flex-wrap items-end gap-3 p-5">
+      <input type="hidden" name="sku" value="{{ product.sku }}">
+      <div>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Postcode</label>
+        <input type="text" name="postcode" x-model="postcode" @input.debounce.400ms="loadSuburbs()"
+               inputmode="numeric" maxlength="4" placeholder="4314"
+               class="mt-1 w-28 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Suburb</label>
+        <div class="mt-1 flex items-center gap-2">
+          <select name="suburb" x-model="suburb"
+                  class="w-60 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+            <option value="">— select suburb —</option>
+            <template x-for="s in suburbs" :key="s.suburb">
+              <option :value="s.suburb" x-text="s.suburb + (s.state ? ' (' + s.state + ')' : '')"></option>
+            </template>
+          </select>
+          <span x-show="loading" x-cloak class="text-xs text-slate-400"><i class="fas fa-spinner fa-spin"></i></span>
+          <span x-show="!loading && postcode.length===4 && suburbs.length===0" x-cloak class="text-xs text-amber-600">no known suburbs for this postcode</span>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Qty</label>
+        <input type="number" name="qty" x-model="qty" min="1"
+               class="mt-1 w-20 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+      </div>
+      <button type="submit" :disabled="!suburb"
+              class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+        <i class="fas fa-truck-fast"></i> Get Quotes
+      </button>
+    </form>
   </div>
+
+  {% if postcode and suburb %}
+    <div class="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-5 py-4 text-sm text-slate-400">
+      Quoting {{ product.sku }} × {{ qty }} → {{ suburb }} {{ postcode }}.
+      <span class="font-medium text-slate-500">NETO Shipping Cost · Startrack · AusPost</span> panels are next.
+    </div>
+  {% endif %}
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function destForm(init) {
+    return {
+      postcode: init.postcode || '',
+      suburb: init.suburb || '',
+      qty: init.qty || 1,
+      suburbs: init.suburbs || [],
+      loading: false,
+      async loadSuburbs() {
+        const pc = (this.postcode || '').trim();
+        if (pc.length !== 4) { this.suburbs = []; this.suburb = ''; return; }
+        this.loading = true;
+        try {
+          const r = await fetch(`/services/st-calculator/postcode/${pc}`);
+          const j = await r.json();
+          this.suburbs = j.suburbs || [];
+          if (!this.suburbs.some(s => s.suburb === this.suburb)) {
+            this.suburb = this.suburbs.length ? this.suburbs[0].suburb : '';
+          }
+        } catch (e) { this.suburbs = []; }
+        this.loading = false;
+      }
+    };
+  }
+</script>
 {% endblock %}

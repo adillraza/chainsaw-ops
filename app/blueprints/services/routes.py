@@ -201,7 +201,30 @@ def st_calculator():
                 error = f"No product found for SKU '{sku}'."
         except Exception as exc:  # noqa: BLE001
             error = f"Lookup failed: {exc}"
-    return render_template("services/st_calculator.html", sku=sku, product=product, error=error)
+    postcode = (request.args.get("postcode") or "").strip()
+    suburb = (request.args.get("suburb") or "").strip()
+    try:
+        qty = max(1, int(request.args.get("qty") or 1))
+    except (TypeError, ValueError):
+        qty = 1
+    suburbs = calc.suburbs_for_postcode(postcode) if (product and postcode) else []
+    return render_template(
+        "services/st_calculator.html",
+        sku=sku, product=product, error=error,
+        postcode=postcode, suburb=suburb, qty=qty, suburbs=suburbs,
+    )
+
+
+@services_bp.route("/st-calculator/postcode/<pc>")
+@login_required
+@require_capability("services.calculator.view")
+def st_calculator_postcode(pc):
+    """JSON suburbs for a postcode (for the dependent dropdown)."""
+    from app.services import st_calculator_service as calc
+    try:
+        return jsonify({"postcode": pc, "suburbs": calc.suburbs_for_postcode(pc)})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"postcode": pc, "suburbs": [], "error": str(exc)}), 200
 
 
 @services_bp.route("/neto-shipping/refresh", methods=["POST"])
