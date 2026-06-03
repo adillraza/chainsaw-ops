@@ -57,6 +57,8 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     "Services": [
         ("services.shipping.view",       "See the NETO Shippings tab — visualised Neto shipping configuration (carriers, categories, options, rate tables, routing matrix)"),
         ("services.shipping.refresh",    "Trigger a re-scrape of the Neto shipping configuration from cPanel"),
+        ("services.config.view",         "See the NETO Advanced Config tab — every Neto cPanel configuration variable with its value, type and description"),
+        ("services.config.refresh",      "Trigger a re-scrape of the Neto Advanced Configuration from cPanel"),
         ("services.calculator.view",     "Use the Startrack Freight Calculator (reserved — not built yet)"),
     ],
 }

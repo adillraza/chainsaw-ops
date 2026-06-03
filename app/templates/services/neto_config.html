@@ -1,0 +1,248 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'NETO Advanced Config' %}
+{% block title %}NETO Advanced Config - Chainsawspares Ops{% endblock %}
+
+{% set cpanel = "https://www.chainsawspares.com.au/_cpanel" %}
+
+{% block content %}
+<section class="mb-6 flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-xl font-semibold text-slate-900">NETO Advanced Config</h1>
+    <p class="mt-1 text-sm text-slate-500">
+      Every Neto cPanel configuration variable — value, type, module and description — in one
+      searchable place. Read-only mirror of <span class="font-mono">_cpanel/config</span>; edits still happen in Neto.
+    </p>
+    {% if snap and snap.meta %}
+      <p class="mt-1 text-xs text-slate-400">
+        Snapshot <span class="font-mono">{{ snap.snapshot_id }}</span> · refreshed {{ snap.meta.scraped_at }} · source {{ snap.meta.source }}
+        {% if snap.meta.n_detail_ok is not none %}· {{ snap.meta.n_detail_ok }}/{{ snap.meta.n_vars }} with detail{% endif %}
+      </p>
+    {% endif %}
+  </div>
+  {% if can('services.config.refresh') %}
+  <div x-data="cfgRefresh()" class="text-right">
+    <button type="button" @click="start()" :disabled="running"
+            class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+      <i class="fas" :class="running ? 'fa-spinner fa-spin' : 'fa-rotate'"></i>
+      <span x-text="running ? 'Updating…' : 'Update'"></span>
+    </button>
+    <p x-show="msg" x-cloak class="mt-1 max-w-xs text-xs text-slate-500" x-text="msg"></p>
+    <p class="mt-1 text-[11px] text-slate-400">Re-scrapes all ~1,100 variables — can take 15–20 min.</p>
+  </div>
+  {% endif %}
+</section>
+
+{% if error %}
+  <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Couldn't load config: {{ error }}</div>
+{% elif snap and snap.snapshot_id %}
+
+  {# Summary cards #}
+  <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+    {% for label, value, icon in [
+        ('Variables', snap.summary.total, 'fa-sliders'),
+        ('Modules', snap.summary.modules, 'fa-layer-group'),
+        ('Editable', snap.summary.editable, 'fa-pen'),
+        ('Read-only', snap.summary.readonly, 'fa-lock'),
+        ('Custom', snap.summary.custom, 'fa-wand-magic-sparkles')] %}
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <div class="flex items-center gap-2 text-slate-400"><i class="fas {{ icon }}"></i><span class="text-xs font-medium uppercase tracking-wide">{{ label }}</span></div>
+        <div class="mt-1 text-2xl font-semibold text-slate-900">{{ value }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <script id="config-data" type="application/json">{{ snap.vars | tojson }}</script>
+  <script id="config-modules" type="application/json">{{ snap.module_counts | tojson }}</script>
+
+  <div x-data="configBrowser()" x-init="init()" class="rounded-lg border border-slate-200 bg-white shadow-sm">
+    {# Filter bar #}
+    <div class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+      <div class="flex-1 min-w-[220px]">
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Search</label>
+        <input type="text" x-model="q" @input.debounce.250ms="page=0"
+               placeholder="name, title, value or description…"
+               class="mt-1 w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Module</label>
+        <select x-model="mod" @change="page=0"
+                class="mt-1 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+          <option value="">All modules</option>
+          <template x-for="m in modules" :key="m.module">
+            <option :value="m.module" x-text="m.module + ' (' + m.count + ')'"></option>
+          </template>
+        </select>
+      </div>
+      <label class="inline-flex items-center gap-2 pb-2 text-sm text-slate-600">
+        <input type="checkbox" x-model="editableOnly" @change="page=0" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+        Editable only
+      </label>
+      <div class="pb-2 text-xs text-slate-400" x-text="filtered.length + ' of {{ snap.summary.total }} variables'"></div>
+    </div>
+
+    {# Table #}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-2 text-left font-medium">Module</th>
+            <th class="px-4 py-2 text-left font-medium">Name</th>
+            <th class="px-4 py-2 text-left font-medium">Title</th>
+            <th class="px-4 py-2 text-left font-medium">Value</th>
+            <th class="px-4 py-2 text-left font-medium">Flags</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <template x-for="v in pageRows" :key="v.mod + '||' + v.config_id">
+          <tbody class="divide-y divide-slate-100">
+            <tr class="hover:bg-slate-50 align-top">
+              <td class="px-4 py-2"><span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600" x-text="v.module"></span></td>
+              <td class="px-4 py-2">
+                <a :href="'{{ cpanel }}/config/view?id=' + encodeURIComponent(v.config_id) + '&mod=' + encodeURIComponent(v.mod)"
+                   target="_blank" rel="noopener"
+                   class="font-mono text-[12px] text-brand-700 hover:underline" x-text="v.name"></a>
+              </td>
+              <td class="px-4 py-2 text-slate-700" x-text="v.title"></td>
+              <td class="px-4 py-2 max-w-[280px]">
+                <span class="block truncate font-mono text-[12px] text-slate-800" :title="v.value" x-text="v.value || '—'"></span>
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap">
+                <template x-if="v.is_readonly"><span class="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">read-only</span></template>
+                <template x-if="v.is_custom"><span class="mr-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">custom</span></template>
+                <template x-if="v.is_system && !v.is_custom"><span class="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">system</span></template>
+              </td>
+              <td class="px-4 py-2 text-right">
+                <button type="button" @click="toggle(v)" class="text-slate-400 hover:text-slate-700">
+                  <i class="fas" :class="openKey === (v.mod + '||' + v.config_id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                </button>
+              </td>
+            </tr>
+            <tr x-show="openKey === (v.mod + '||' + v.config_id)" x-cloak class="bg-slate-50">
+              <td colspan="6" class="px-6 py-4">
+                <dl class="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+                  <div class="sm:col-span-2">
+                    <dt class="text-xs uppercase tracking-wide text-slate-400">Description</dt>
+                    <dd class="text-slate-700" x-text="v.description || '— no description —'"></dd>
+                  </div>
+                  <div>
+                    <dt class="text-xs uppercase tracking-wide text-slate-400">Current value</dt>
+                    <dd class="whitespace-pre-wrap break-words font-mono text-[12px] text-slate-800" x-text="v.value || '—'"></dd>
+                  </div>
+                  <div>
+                    <dt class="text-xs uppercase tracking-wide text-slate-400">Data type</dt>
+                    <dd class="text-slate-700" x-text="v.data_type || '—'"></dd>
+                  </div>
+                  <div x-show="v.options && v.options.length" class="sm:col-span-2">
+                    <dt class="text-xs uppercase tracking-wide text-slate-400">Allowed values</dt>
+                    <dd class="mt-1 flex flex-wrap gap-1.5">
+                      <template x-for="o in v.options" :key="o.value">
+                        <span class="rounded border px-1.5 py-0.5 text-[11px]"
+                              :class="o.selected ? 'border-brand-300 bg-brand-50 text-brand-700 font-medium' : 'border-slate-200 text-slate-500'">
+                          <span x-text="o.label"></span><span class="text-slate-400" x-text="' (' + o.value + ')'"></span>
+                        </span>
+                      </template>
+                    </dd>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <a :href="'{{ cpanel }}/config/view?id=' + encodeURIComponent(v.config_id) + '&mod=' + encodeURIComponent(v.mod)"
+                       target="_blank" rel="noopener" class="text-xs text-brand-700 hover:underline">
+                      Open in Neto cPanel <i class="fas fa-arrow-up-right-from-square text-[9px]"></i>
+                    </a>
+                  </div>
+                </dl>
+              </td>
+            </tr>
+          </tbody>
+        </template>
+        <tbody x-show="!filtered.length">
+          <tr>
+            <td colspan="6" class="px-4 py-10 text-center text-slate-400">No variables match your filter.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    {# Pagination #}
+    <div class="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500" x-show="pageCount > 1">
+      <button type="button" @click="page = Math.max(0, page-1)" :disabled="page===0"
+              class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40">Prev</button>
+      <span class="text-xs">Page <span x-text="page+1"></span> of <span x-text="pageCount"></span></span>
+      <button type="button" @click="page = Math.min(pageCount-1, page+1)" :disabled="page>=pageCount-1"
+              class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40">Next</button>
+    </div>
+  </div>
+
+{% else %}
+  <div class="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
+    No config snapshot found yet.
+    {% if can('services.config.refresh') %}Hit <span class="font-medium">Update</span> to scrape <span class="font-mono">_cpanel/config</span>.{% endif %}
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function cfgRefresh() {
+    return {
+      running: false, msg: '',
+      async start() {
+        if (this.running) return;
+        this.running = true; this.msg = 'starting…';
+        try {
+          const r = await fetch('{{ url_for("services.neto_config_refresh") }}', { method: 'POST' });
+          const j = await r.json();
+          if (j.status === 'already_running') this.msg = 'a refresh is already running…';
+        } catch (e) { this.running = false; this.msg = 'could not start: ' + e; return; }
+        this._poll();
+      },
+      _poll() {
+        const url = '{{ url_for("services.neto_config_refresh_status") }}';
+        const tick = async () => {
+          try {
+            const s = await (await fetch(url)).json();
+            this.msg = s.message || '';
+            if (s.running) { setTimeout(tick, 2000); return; }
+            this.running = false;
+            if (s.error) { this.msg = 'Failed: ' + s.error; }
+            else { this.msg = 'Updated — reloading…'; setTimeout(() => location.reload(), 900); }
+          } catch (e) { this.running = false; this.msg = 'status error: ' + e; }
+        };
+        setTimeout(tick, 1500);
+      }
+    };
+  }
+
+  function configBrowser() {
+    return {
+      all: [], modules: [], q: '', mod: '', editableOnly: false,
+      page: 0, perPage: 100, openKey: null,
+      init() {
+        try { this.all = JSON.parse(document.getElementById('config-data').textContent || '[]'); } catch (e) { this.all = []; }
+        try { this.modules = JSON.parse(document.getElementById('config-modules').textContent || '[]'); } catch (e) { this.modules = []; }
+      },
+      get filtered() {
+        const q = this.q.trim().toLowerCase();
+        return this.all.filter(v => {
+          if (this.mod && v.module !== this.mod) return false;
+          if (this.editableOnly && v.is_readonly) return false;
+          if (!q) return true;
+          return (v.name && v.name.toLowerCase().includes(q))
+              || (v.title && v.title.toLowerCase().includes(q))
+              || (v.value && String(v.value).toLowerCase().includes(q))
+              || (v.description && v.description.toLowerCase().includes(q));
+        });
+      },
+      get pageCount() { return Math.max(1, Math.ceil(this.filtered.length / this.perPage)); },
+      get pageRows() {
+        const p = Math.min(this.page, this.pageCount - 1);
+        return this.filtered.slice(p * this.perPage, (p + 1) * this.perPage);
+      },
+      toggle(v) {
+        const k = v.mod + '||' + v.config_id;
+        this.openKey = this.openKey === k ? null : k;
+      }
+    };
+  }
+</script>
+{% endblock %}

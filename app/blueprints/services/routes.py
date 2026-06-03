@@ -43,6 +43,33 @@ def _run_refresh(app):
         _refresh_state.update(running=False, finished_at=time.time())
 
 
+# ---------------------------------------------------------------------------
+# NETO Advanced Config — background re-scrape state
+# ---------------------------------------------------------------------------
+_config_refresh_lock = threading.Lock()
+_config_refresh_state: dict = {"running": False, "message": "", "started_at": None,
+                              "finished_at": None, "result": None, "error": None}
+
+
+def _run_config_refresh(app):
+    from app.services.neto_config_scraper import runner
+    from app.services import neto_config_service as nc
+
+    def progress(msg):
+        _config_refresh_state["message"] = msg
+
+    try:
+        result = runner.run_scrape(progress=progress)
+        progress("mirroring to local store…")
+        with app.app_context():
+            nc.mirror_to_local()  # BQ -> SQLite (busts the BQ cache internally)
+        _config_refresh_state.update(result=result, error=None, message="done")
+    except Exception as exc:  # noqa: BLE001
+        _config_refresh_state.update(error=str(exc), message="failed")
+    finally:
+        _config_refresh_state.update(running=False, finished_at=time.time())
+
+
 # Catalogue of services shown on the landing page. ``capability`` controls
 # whether the card (and its nav entry) is visible to the current user.
 SERVICES = [
@@ -64,6 +91,16 @@ SERVICES = [
         "icon": "fa-calculator",
         "endpoint": "services.st_calculator",
         "capability": "services.calculator.view",
+        "available": True,
+    },
+    {
+        "key": "neto_config",
+        "title": "NETO Advanced Config",
+        "description": "Browse every Neto cPanel configuration variable — value, type, "
+                       "module and description — in one searchable place.",
+        "icon": "fa-sliders",
+        "endpoint": "services.neto_config",
+        "capability": "services.config.view",
         "available": True,
     },
 ]
@@ -231,6 +268,55 @@ def st_calculator_postcode(pc):
         return jsonify({"postcode": pc, "suburbs": calc.suburbs_for_postcode(pc)})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"postcode": pc, "suburbs": [], "error": str(exc)}), 200
+
+
+@services_bp.route("/neto-config")
+@login_required
+@require_capability("services.config.view")
+def neto_config():
+    """NETO Advanced Config tab — searchable list of all cPanel config variables."""
+    from app.services import neto_config_service as nc
+
+    error = None
+    snap = None
+    try:
+        # Fast local SQLite mirror; on a miss build from BigQuery and seed it.
+        snap = nc.get_local()
+        if snap is None:
+            snap = nc.build_payload()
+            if snap.get("snapshot_id"):
+                try:
+                    nc.mirror_to_local(snap)
+                except Exception:  # noqa: BLE001
+                    import logging as _l
+                    _l.getLogger(__name__).warning("neto_config mirror seed failed", exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+
+    return render_template("services/neto_config.html", error=error, snap=snap)
+
+
+@services_bp.route("/neto-config/refresh", methods=["POST"])
+@login_required
+@require_capability("services.config.refresh")
+def neto_config_refresh():
+    """Kick a background re-scrape of the Advanced Configuration (idempotent)."""
+    with _config_refresh_lock:
+        if _config_refresh_state["running"]:
+            return jsonify({"status": "already_running", "message": _config_refresh_state["message"]})
+        _config_refresh_state.update(running=True, message="starting…", started_at=time.time(),
+                                     finished_at=None, result=None, error=None)
+        from flask import current_app
+        app = current_app._get_current_object()
+        threading.Thread(target=_run_config_refresh, args=(app,), daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@services_bp.route("/neto-config/refresh/status")
+@login_required
+@require_capability("services.config.view")
+def neto_config_refresh_status():
+    return jsonify(_config_refresh_state)
 
 
 @services_bp.route("/neto-shipping/refresh", methods=["POST"])

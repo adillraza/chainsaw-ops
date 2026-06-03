@@ -94,13 +94,16 @@
       {{ nav_group('Customer Service', 'fa-headset', support_items, default_open=true) }}
     {% endif %}
 
-    {% if can('services.shipping.view') or can('services.calculator.view') %}
+    {% if can('services.shipping.view') or can('services.calculator.view') or can('services.config.view') %}
       {% set service_items = [] %}
       {% if can('services.calculator.view') %}
         {% set service_items = service_items + [{'label': 'Freight Calculator', 'href': url_for('services.st_calculator'), 'icon': 'fa-calculator'}] %}
       {% endif %}
       {% if can('services.shipping.view') %}
         {% set service_items = service_items + [{'label': 'NETO Shippings', 'href': url_for('services.neto_shipping'), 'icon': 'fa-truck-fast'}] %}
+      {% endif %}
+      {% if can('services.config.view') %}
+        {% set service_items = service_items + [{'label': 'NETO Advanced Config', 'href': url_for('services.neto_config'), 'icon': 'fa-sliders'}] %}
       {% endif %}
       {{ nav_group('Services', 'fa-screwdriver-wrench', service_items, default_open=true) }}
     {% endif %}
