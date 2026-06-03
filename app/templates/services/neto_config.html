@@ -103,7 +103,10 @@
                    target="_blank" rel="noopener"
                    class="font-mono text-[12px] text-brand-700 hover:underline" x-text="v.name"></a>
               </td>
-              <td class="px-4 py-2 text-slate-700" x-text="v.title"></td>
+              <td class="px-4 py-2 max-w-[420px]">
+                <div class="text-slate-700" x-text="v.title"></div>
+                <div class="mt-0.5 text-xs leading-snug text-slate-400" x-show="v.description" x-text="v.description"></div>
+              </td>
               <td class="px-4 py-2 max-w-[280px]">
                 <span class="block truncate font-mono text-[12px] text-slate-800" :title="v.value" x-text="v.value || '—'"></span>
               </td>
