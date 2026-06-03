@@ -125,22 +125,162 @@ def parcel_items(product: dict, qty: int) -> list[dict]:
     return [dict(item) for _ in range(max(1, int(qty or 1)))]
 
 
+# storefront method name -> (carrier family, Startrack product_id for the live base)
+_ST_PRODUCT = {"road": "EXP", "premium": "PRM", "fpp": "FPP"}
+
+
+def _classify_method(method: str):
+    """Map a storefront method name -> (family, tier)."""
+    m = (method or "").lower()
+    if "startrack" in m or "star track" in m:
+        if "fixed" in m or "fpp" in m:
+            return "startrack", "fpp"
+        if "premium" in m:
+            return "startrack", "premium"
+        return "startrack", "road"  # Road Freight / default
+    if "auspost" in m or "australia post" in m:
+        return "auspost", ("express" if "express" in m else "standard")
+    return None, None
+
+
+def _service_matches(name: str, family: str, tier: str) -> bool:
+    n = (name or "").lower()
+    if family == "startrack":
+        if "startrack" not in n and "star track" not in n:
+            return False
+        if tier == "road":
+            return "road" in n and "skid" not in n
+        if tier == "premium":
+            return "premium" in n and "fixed" not in n
+        if tier == "fpp":
+            return "fixed" in n or "fpp" in n
+    if family == "auspost":
+        if not any(k in n for k in ("auspost", "australia post", "ap ")):
+            return False
+        if tier == "express":
+            return "express" in n
+        return "regular" in n or "standard" in n
+    return False
+
+
+def _attach_breakdowns(storefront: dict, carriers: dict, product: dict, qty: int, snap: dict) -> None:
+    """Best-effort explanation of how each scraped Neto quote is composed, from
+    the live shipping config. The scraped price stays authoritative; this just
+    decomposes it (carrier/rate-table base + Neto fuel levy + handling).
+
+    - Startrack services are "Third Party Shipping Rate" — base = the live
+      Startrack API cost, marked up by the rate table's fuel% (+ handling). This
+      reconciles to the cent.
+    - AusPost services here are "Weight / Cubic" — Neto prices from an internal
+      rate table (NOT the live AusPost API), so we can't source the base; we back
+      it out from the scraped price given the configured fuel%/handling, and flag
+      it as a Neto rate-table figure.
+    """
+    if not storefront or not storefront.get("options"):
+        return
+    services_cfg = {s["name"]: s for s in snap.get("services", []) if s.get("name")}
+    svc_names = sorted(services_cfg, key=len, reverse=True)
+    cat = product.get("shipping_category_name")
+
+    def resolve(text):
+        t = (text or "").strip()
+        for n in svc_names:
+            if t.startswith(n):
+                return n
+        for n in svc_names:
+            if n in t:
+                return n
+        return None
+
+    # clean service names routed to this product's category (active blocks)
+    cat_services: list[str] = []
+    for m in snap.get("mapping", []):
+        if m.get("block_active") and (m.get("category") or "") == cat:
+            n = resolve(m.get("service"))
+            if n and n not in cat_services:
+                cat_services.append(n)
+
+    def pick_service(family, tier):
+        for n in cat_services:                      # prefer this category's routing
+            if _service_matches(n, family, tier):
+                return services_cfg.get(n)
+        for n in svc_names:                         # fallback: any matching service
+            if _service_matches(n, family, tier):
+                return services_cfg.get(n)
+        return None
+
+    cartons = max(1, int(qty or 1))
+    for opt in storefront["options"]:
+        family, tier = _classify_method(opt.get("method"))
+        price = opt.get("price")
+        bd = {"family": family, "tier": tier, "price": price}
+        svc = pick_service(family, tier) if family else None
+        if not svc or price is None:
+            opt["breakdown"] = None
+            continue
+        fuel = svc.get("fuel_pct") or 0
+        handling = svc.get("handling_amt") or 0
+        ctype = svc.get("charge_type") or ""
+        handling_line = round(handling * cartons, 2)
+        bd.update({
+            "service": svc.get("name"), "charge_type": ctype,
+            "fuel_pct": fuel, "handling": handling, "cartons": cartons,
+            "handling_line": handling_line,
+        })
+        if ctype == "Third Party Shipping Rate":
+            # base = live carrier quote for the matched product
+            bd["source"] = "carrier_api"
+            r = carriers.get(family) or {}
+            pid = _ST_PRODUCT.get(tier)
+            base = None
+            if r.get("available"):
+                q = next((x for x in r["quotes"] if x["product_id"] == pid), None)
+                base = q["total"] if q else None
+            if base is not None:
+                fuel_line = round(base * fuel / 100.0, 2)
+                recon = round(base + fuel_line + handling_line, 2)
+                bd.update({"base": round(base, 2), "fuel_line": fuel_line,
+                           "recon": recon, "reconciles": abs(recon - price) < 0.02})
+            else:
+                bd.update({"base": None, "fuel_line": None, "recon": None,
+                           "reconciles": False, "base_note": "live carrier base unavailable"})
+        else:
+            # Neto internal weight/cubic rate table — back the base out of the price
+            bd["source"] = "neto_rate_table"
+            base = round((price - handling_line) / (1 + fuel / 100.0), 2) if (1 + fuel / 100.0) else None
+            bd.update({
+                "base": base,
+                "fuel_line": round(base * fuel / 100.0, 2) if base is not None else None,
+                "recon": price, "reconciles": True,
+            })
+        opt["breakdown"] = bd
+
+
 def neto_quotes(product: dict, qty: int, postcode: str, suburb: str) -> dict:
     """Panel data for a destination:
 
     - ``storefront``: the REAL Neto quote, read live from the public product
       page's Calculate Shipping widget (Panel 2). This is what the customer
-      actually sees — no attempt to reconstruct Neto's internal logic.
+      actually sees. Each option is enriched with a best-effort ``breakdown``
+      (which Neto service/rate table, carrier base, fuel levy, handling) so staff
+      can see *how* the price is composed — the scraped price stays authoritative.
     - ``carriers``: live carrier costs (what Startrack / AusPost charge us) for
       Panels 3 & 4.
     """
     from app.services import carrier_quote_service as cq
     from app.services import neto_storefront_service as sf
+    from app.services import neto_shipping_service as ns
 
     items = parcel_items(product, qty)
     carriers = cq.get_carrier_quotes(items, postcode, suburb)
     state = cq.state_from_postcode(postcode)
     storefront = sf.storefront_quotes(product.get("sku"), qty, postcode, suburb, state)
+
+    try:
+        snap = ns.get_local() or {}
+        _attach_breakdowns(storefront, carriers, product, qty, snap)
+    except Exception:  # noqa: BLE001
+        log.warning("storefront breakdown enrichment failed", exc_info=True)
 
     return {
         "carriers": carriers,

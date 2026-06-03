@@ -171,15 +171,55 @@
         {% if sf.available and sf.options %}
           <div class="space-y-2">
             {% for o in sf.options %}
-              <div class="flex items-center justify-between rounded-md border border-slate-200 px-4 py-3">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase {{ fam_badge.get(o.carrier_family, 'bg-slate-100 text-slate-600') }}">{{ o.carrier_family or 'other' }}</span>
-                  <span class="truncate text-sm font-medium text-slate-900">{{ o.method }}</span>
+              {% set b = o.breakdown %}
+              <div class="rounded-md border border-slate-200 px-4 py-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase {{ fam_badge.get(o.carrier_family, 'bg-slate-100 text-slate-600') }}">{{ o.carrier_family or 'other' }}</span>
+                    <span class="truncate text-sm font-medium text-slate-900">{{ o.method }}</span>
+                  </div>
+                  <div class="ml-4 text-lg font-semibold text-slate-900">${{ '%.2f'|format(o.price) }}</div>
                 </div>
-                <div class="ml-4 text-lg font-semibold text-slate-900">${{ '%.2f'|format(o.price) }}</div>
+                {% if b %}
+                  <div class="mt-2 border-t border-dashed border-slate-100 pt-2 text-xs text-slate-500">
+                    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      <span class="text-slate-400">via</span>
+                      <span class="font-medium text-slate-600">{{ b.service }}</span>
+                      {% if b.source == 'carrier_api' %}
+                        <span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500">live carrier rate</span>
+                      {% else %}
+                        <span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500">Neto weight/cubic rate table</span>
+                      {% endif %}
+                    </div>
+                    {% if b.base is not none %}
+                      <div class="mt-1 font-mono text-[11px] text-slate-500">
+                        {% if b.source == 'carrier_api' %}carrier base{% else %}rate-table base{% endif %}
+                        ${{ '%.2f'|format(b.base) }}
+                        {% if b.fuel_pct %}<span class="text-slate-300">+</span> {{ b.fuel_pct }}% fuel ${{ '%.2f'|format(b.fuel_line) }}{% endif %}
+                        {% if b.handling %}<span class="text-slate-300">+</span> handling ${{ '%.2f'|format(b.handling) }}×{{ b.cartons }} = ${{ '%.2f'|format(b.handling_line) }}{% endif %}
+                        <span class="text-slate-300">=</span> <span class="font-semibold text-slate-700">${{ '%.2f'|format(b.recon if b.recon is not none else b.price) }}</span>
+                        {% if b.source == 'carrier_api' %}
+                          {% if b.reconciles %}
+                            <span class="ml-1 text-emerald-600"><i class="fas fa-check"></i> matches website</span>
+                          {% else %}
+                            <span class="ml-1 text-amber-600">≈ website ${{ '%.2f'|format(b.price) }} (Δ ${{ '%.2f'|format(b.price - b.recon) }})</span>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    {% else %}
+                      <div class="mt-1 text-[11px] text-slate-400">
+                        {{ b.fuel_pct }}% fuel{% if b.handling %} + ${{ '%.2f'|format(b.handling) }}/item handling{% endif %} on this service{% if b.base_note %} — {{ b.base_note }}{% endif %}.
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
               </div>
             {% endfor %}
           </div>
+          <p class="mt-3 text-[11px] leading-snug text-slate-400">
+            Breakdown is an estimate reconstructed from the live shipping config — the price above is Neto's actual quote.
+            Startrack uses the live carrier rate ×(1+fuel); AusPost uses a Neto weight/cubic rate table (base backed out), priced on carton weight (kit components excluded).
+          </p>
         {% else %}
           <div class="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <i class="fas fa-circle-exclamation"></i> {{ sf.message or 'No storefront quote available for this item/destination.' }}
