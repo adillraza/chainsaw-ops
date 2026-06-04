@@ -65,6 +65,7 @@
         {'label': 'REX PO Orders',     'href': url_for('purchase_orders.orders'),         'icon': 'fa-shopping-cart'},
         {'label': 'Comparison',        'href': url_for('purchase_orders.comparison'),     'icon': 'fa-balance-scale'},
         {'label': 'Cost Price Check',  'href': url_for('purchase_orders.cost_prices'),    'icon': 'fa-dollar-sign'},
+        {'label': 'Shop Order',        'href': url_for('purchase_orders.shop_order'),     'icon': 'fa-cart-flatbed'},
       ] %}
       {% if can('reviews.retail.view') %}
         {% set po_items = po_items + [{'label': 'Retail Reviews',    'href': url_for('purchase_orders.retail'),    'icon': 'fa-user-check'}] %}

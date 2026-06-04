@@ -75,6 +75,7 @@ def refresh_cache() -> None:
         from app.services.cache import cache_purchase_order_data
         from app.services.customer_cache import cache_customer_360_data
         from app.services.email_cache import cache_email_archive
+        from app.services.shop_order_cache import cache_shop_order_data
 
         failures: list[str] = []
 
@@ -82,6 +83,11 @@ def refresh_cache() -> None:
         click.echo(f"refresh-cache (PO): {message}", err=not success)
         if not success:
             failures.append("PO")
+
+        success, message = cache_shop_order_data()
+        click.echo(f"refresh-cache (shop_order): {message}", err=not success)
+        if not success:
+            failures.append("shop_order")
 
         success, message = cache_customer_360_data()
         click.echo(f"refresh-cache (customer_360): {message}", err=not success)

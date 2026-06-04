@@ -26,6 +26,7 @@ from app.models.purchase_orders import (
     CachedPurchaseOrderSummary,
 )
 from app.models.reviews import OPEN_REVIEW_STATUSES, ItemReview
+from app.models.shop_order import CachedShopOrderMsl, CachedShopOrderSmart
 from app.services.cache import update_cache_with_latest_note
 from app.services.purchase_orders_service import purchase_orders_service
 from app.services.reviews_sync import sync_review_to_bigquery
@@ -1334,4 +1335,81 @@ def changelog_guide():
     return render_template(
         "purchase_orders/changelog_guide.html",
         stages=CHANGE_LOG_GUIDE_STAGES,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shop Order – MSL vs Smart ordering models, tabbed (reads the Shop-Order
+# cache rebuilt every :05/:35 from dataform.po_preview_lines and
+# dataform.rex_po_recommendation). Mirrors the daily preview emails so staff
+# can see the proposed orders any time without firing an email.
+# ---------------------------------------------------------------------------
+
+_SHOP_BUCKET_LABELS = {
+    1: "PO #1 — Engines / Generators / Pumps",
+    2: "PO #2 — Chainsaw Chains & Bars",
+    3: "PO #3 — All Other JONO AND JOHNO",
+}
+_URGENCY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+
+
+@purchase_orders_bp.route("/shop-order")
+@login_required
+@require_capability("po.view")
+def shop_order():
+    active_tab = request.args.get("tab", "msl")
+
+    msl_rows = CachedShopOrderMsl.query.all()
+    smart_rows = CachedShopOrderSmart.query.all()
+
+    # --- MSL: per bucket, split ORDER vs NEEDS_ADJUSTMENT ---
+    msl_buckets = []
+    for b in (1, 2, 3):
+        rows = [r for r in msl_rows if r.bucket == b]
+        orders = sorted(
+            [r for r in rows if (r.line_type or "ORDER") != "NEEDS_ADJUSTMENT"],
+            key=lambda r: (r.product_type_name or "", r.manufacturer_sku or ""),
+        )
+        adjustments = sorted(
+            [r for r in rows if r.line_type == "NEEDS_ADJUSTMENT"],
+            key=lambda r: (r.manufacturer_sku or ""),
+        )
+        msl_buckets.append({
+            "num": b,
+            "label": _SHOP_BUCKET_LABELS[b],
+            "orders": orders,
+            "adjustments": adjustments,
+            "total_value": sum((r.estimated_line_value or 0) for r in orders),
+        })
+
+    # --- Smart: per bucket, ordered by urgency then $ ---
+    smart_buckets = []
+    for b in (1, 2, 3):
+        rows = sorted(
+            [r for r in smart_rows if r.bucket == b],
+            key=lambda r: (_URGENCY_RANK.get(r.urgency, 9), -(r.estimated_line_value or 0)),
+        )
+        smart_buckets.append({
+            "num": b,
+            "label": _SHOP_BUCKET_LABELS[b],
+            "lines": rows,
+            "total_value": sum((r.estimated_line_value or 0) for r in rows),
+            "critical": sum(1 for r in rows if r.urgency == "CRITICAL"),
+        })
+
+    cached_at = None
+    stamps = [r.cached_at for r in (msl_rows + smart_rows) if r.cached_at]
+    if stamps:
+        cached_at = max(stamps)
+
+    return render_template(
+        "purchase_orders/shop_order.html",
+        active_tab=active_tab,
+        msl_buckets=msl_buckets,
+        smart_buckets=smart_buckets,
+        msl_total=sum(b["total_value"] for b in msl_buckets),
+        smart_total=sum(b["total_value"] for b in smart_buckets),
+        msl_lines=sum(len(b["orders"]) for b in msl_buckets),
+        smart_lines=sum(len(b["lines"]) for b in smart_buckets),
+        cached_at=cached_at,
     )

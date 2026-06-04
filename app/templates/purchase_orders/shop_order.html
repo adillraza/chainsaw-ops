@@ -1,0 +1,193 @@
+{% extends "layouts/base.html" %}
+
+{% set page_title = 'Shop Order' %}
+{% block title %}Shop Order - Chainsawspares Ops{% endblock %}
+
+{% macro fmt_money(v) %}{{ '%.2f'|format(v or 0) }}{% endmacro %}
+{% macro num(v) %}{{ v if v is not none else '' }}{% endmacro %}
+
+{% block content %}
+<section class="mb-4" x-data="{ tab: '{{ active_tab }}' }">
+
+  {# ---- header ---- #}
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-2xl font-semibold text-slate-900">Shop Order</h2>
+      <p class="mt-1 text-sm text-slate-600">
+        The two ordering models, refreshed every 30&nbsp;min from BigQuery — same data the daily preview emails send.
+        {% if cached_at %}<span class="text-slate-400">· cached {{ cached_at.strftime('%d %b %Y %H:%M') }} UTC</span>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  {# ---- tab bar ---- #}
+  <div class="mb-5 flex flex-wrap gap-1 border-b border-slate-200">
+    {% set tabs = [
+      ('msl', 'MSL Based', 'fa-list-check'),
+      ('smart', 'Smart Order', 'fa-brain'),
+      ('seasonality', 'Seasonality Index', 'fa-chart-line'),
+      ('weather', 'Weather', 'fa-cloud-sun-rain'),
+      ('logic', 'Smart Logic', 'fa-diagram-project'),
+    ] %}
+    {% for key, label, icon in tabs %}
+      <button type="button" @click="tab='{{ key }}'"
+              class="flex items-center gap-2 rounded-t-md px-4 py-2 text-sm font-medium transition -mb-px border-b-2"
+              :class="tab==='{{ key }}' ? 'border-brand-600 text-brand-700 bg-brand-50' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'">
+        <i class="fas {{ icon }} text-xs"></i>{{ label }}
+      </button>
+    {% endfor %}
+  </div>
+
+  {# ========================== TAB 1 — MSL BASED ========================== #}
+  <div x-show="tab==='msl'" x-cloak>
+    <p class="mb-3 text-sm text-slate-600">
+      <b>{{ msl_lines }}</b> lines across 3 POs · est. <b>${{ fmt_money(msl_total) }}</b>.
+      REX MSL formula + 14-day seasonality bump, carton-rounded.
+    </p>
+    {% for b in msl_buckets %}
+      <h3 class="mt-6 mb-2 text-base font-semibold text-slate-800">{{ b.label }}
+        <span class="ml-2 text-xs font-normal text-slate-500">{{ b.orders|length }} lines · est. ${{ fmt_money(b.total_value) }}</span>
+      </h3>
+      {% if b.orders %}
+      <div class="overflow-x-auto rounded-lg border border-slate-200">
+        <table class="min-w-full text-xs">
+          <thead class="bg-slate-50 text-slate-500">
+            <tr class="text-left">
+              <th class="px-2 py-1.5">SKU</th><th class="px-2 py-1.5">Description</th>
+              <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">MSL</th>
+              <th class="px-2 py-1.5 text-right">OnOrder</th><th class="px-2 py-1.5 text-right">Re-Order</th>
+              <th class="px-2 py-1.5 text-right">Sold 14d</th><th class="px-2 py-1.5 text-right">LY 14d</th>
+              <th class="px-2 py-1.5 text-right">Bump</th><th class="px-2 py-1.5 text-right">Carton</th>
+              <th class="px-2 py-1.5 text-right">Proposed</th><th class="px-2 py-1.5 text-right">Est $</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for r in b.orders %}
+            <tr class="hover:bg-slate-50">
+              <td class="px-2 py-1.5 font-medium text-slate-800">{{ r.manufacturer_sku }}</td>
+              <td class="px-2 py-1.5 text-slate-600">{{ r.short_description }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.available) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.msl) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.on_order) }}</td>
+              <td class="px-2 py-1.5 text-right font-semibold">{{ num(r.re_order_qty) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.sold_last_14_days) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.sold_next_14_days_last_year) }}</td>
+              <td class="px-2 py-1.5 text-right {% if r.seasonal_bump %}text-orange-600{% endif %}">{{ '+' ~ r.seasonal_bump if r.seasonal_bump else '0' }}</td>
+              <td class="px-2 py-1.5 text-right text-slate-400">{{ r.carton_quantity if r.carton_quantity and r.carton_quantity > 1 else '—' }}</td>
+              <td class="px-2 py-1.5 text-right font-bold text-slate-900">{{ num(r.proposed_qty) }}</td>
+              <td class="px-2 py-1.5 text-right">${{ fmt_money(r.estimated_line_value) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-sm italic text-slate-400">No lines proposed.</p>
+      {% endif %}
+
+      {% if b.adjustments %}
+        <p class="mt-3 mb-1 text-sm font-semibold text-orange-700">
+          <i class="fas fa-triangle-exclamation"></i> {{ b.adjustments|length }} item(s) need stock adjustment before next PO
+        </p>
+        <div class="overflow-x-auto rounded-lg border border-orange-200 bg-orange-50/40">
+          <table class="min-w-full text-xs">
+            <thead class="bg-orange-100/60 text-orange-800">
+              <tr class="text-left">
+                <th class="px-2 py-1.5">SKU</th><th class="px-2 py-1.5">Description</th>
+                <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">MSL</th>
+                <th class="px-2 py-1.5 text-right">OnOrder</th><th class="px-2 py-1.5 text-right">Adjust by</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-orange-100">
+              {% for r in b.adjustments %}
+              <tr>
+                <td class="px-2 py-1.5 font-medium text-slate-800">{{ r.manufacturer_sku }}</td>
+                <td class="px-2 py-1.5 text-slate-600">{{ r.short_description }}</td>
+                <td class="px-2 py-1.5 text-right font-semibold text-red-600">{{ num(r.available) }}</td>
+                <td class="px-2 py-1.5 text-right">{{ num(r.msl) }}</td>
+                <td class="px-2 py-1.5 text-right">{{ num(r.on_order) }}</td>
+                <td class="px-2 py-1.5 text-right font-bold text-orange-700">+{{ num(r.adjustment_qty) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {# ========================== TAB 2 — SMART ORDER ========================== #}
+  <div x-show="tab==='smart'" x-cloak>
+    <p class="mb-3 text-sm text-slate-600">
+      <b>{{ smart_lines }}</b> lines across 3 POs · est. <b>${{ fmt_money(smart_total) }}</b>.
+      Velocity + multi-year seasonal index, lead-time-aware, outlier-discounted. Each line shows its reasoning.
+    </p>
+    {% set urgency_color = {'CRITICAL':'text-red-600','HIGH':'text-orange-500','MEDIUM':'text-emerald-600','LOW':'text-slate-400'} %}
+    {% for b in smart_buckets %}
+      <h3 class="mt-6 mb-2 text-base font-semibold text-slate-800">{{ b.label }}
+        <span class="ml-2 text-xs font-normal text-slate-500">{{ b.lines|length }} lines · est. ${{ fmt_money(b.total_value) }}{% if b.critical %} · <span class="text-red-600">{{ b.critical }} critical</span>{% endif %}</span>
+      </h3>
+      {% if b.lines %}
+      <div class="overflow-x-auto rounded-lg border border-slate-200">
+        <table class="min-w-full text-xs">
+          <thead class="bg-slate-50 text-slate-500">
+            <tr class="text-left">
+              <th class="px-2 py-1.5">Urgency</th><th class="px-2 py-1.5">Cat</th>
+              <th class="px-2 py-1.5">SKU</th><th class="px-2 py-1.5">Description</th>
+              <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">MSL</th>
+              <th class="px-2 py-1.5 text-right">OnOrd</th><th class="px-2 py-1.5 text-right">Carton</th>
+              <th class="px-2 py-1.5 text-right">Vel/d</th><th class="px-2 py-1.5 text-right">Seas×</th>
+              <th class="px-2 py-1.5 text-right">Cover</th><th class="px-2 py-1.5 text-right">Fcst30</th>
+              <th class="px-2 py-1.5 text-right">Sold30</th><th class="px-2 py-1.5 text-right">LY30</th>
+              <th class="px-2 py-1.5 text-right">LY2-30</th><th class="px-2 py-1.5 text-right">Qty</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for r in b.lines %}
+            <tr class="hover:bg-slate-50">
+              <td class="px-2 py-1.5 font-semibold {{ urgency_color.get(r.urgency,'text-slate-500') }}">{{ r.urgency }}</td>
+              <td class="px-2 py-1.5 text-slate-500">{{ r.category }}</td>
+              <td class="px-2 py-1.5 font-medium text-slate-800">{{ r.manufacturer_sku }}</td>
+              <td class="px-2 py-1.5 text-slate-600">{{ r.short_description }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.available) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.msl) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.on_order) }}</td>
+              <td class="px-2 py-1.5 text-right text-slate-400">{{ r.carton_quantity if r.carton_quantity and r.carton_quantity > 1 else '—' }}</td>
+              <td class="px-2 py-1.5 text-right">{{ '%.2f'|format(r.daily_velocity or 0) }}</td>
+              <td class="px-2 py-1.5 text-right {% if r.seasonal_factor and (r.seasonal_factor > 1.05 or r.seasonal_factor < 0.95) %}text-orange-600 font-medium{% endif %}">{{ '%.2f'|format(r.seasonal_factor or 1) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.coverage_days) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.forecast_30d) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.s30) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.lyr30) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.yr2_30) }}</td>
+              <td class="px-2 py-1.5 text-right font-bold text-slate-900">{{ num(r.recommended_qty) }}</td>
+            </tr>
+            <tr>
+              <td colspan="16" class="px-2 pb-2 pt-0 text-[11px] italic text-slate-400">↳ {{ r.reasoning }} &nbsp;|&nbsp; est. ${{ fmt_money(r.estimated_line_value) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-sm italic text-slate-400">No recommendations.</p>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {# ===================== TABS 3-5 — placeholders ===================== #}
+  {% for key, label, blurb in [
+      ('seasonality', 'Seasonality Index', 'Per-category monthly seasonal curves (dataform.rex_seasonality_index). Coming next.'),
+      ('weather', 'Weather', 'Ballarat forecast + Victorian fire/flood warnings as a demand-sensing overlay. Coming next.'),
+      ('logic', 'Smart Logic', 'A plain-English walkthrough of how the Smart model decides what and how much to order. Coming next.')
+  ] %}
+    <div x-show="tab==='{{ key }}'" x-cloak
+         class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+      <i class="fas fa-screwdriver-wrench mb-3 text-2xl text-slate-300"></i>
+      <p class="text-sm font-medium text-slate-600">{{ label }}</p>
+      <p class="mx-auto mt-1 max-w-md text-xs text-slate-400">{{ blurb }}</p>
+    </div>
+  {% endfor %}
+
+</section>
+{% endblock %}
