@@ -340,17 +340,167 @@ target_stock    = adj_daily × (lead + horizon)</pre>
     {% endif %}
   </div>
 
-  {# ===================== TAB 5 — placeholder ===================== #}
-  {% for key, label, blurb in [
-      ('logic', 'Smart Logic', 'A plain-English walkthrough of how the Smart model decides what and how much to order. Coming next.')
-  ] %}
-    <div x-show="tab==='{{ key }}'" x-cloak
-         class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-      <i class="fas fa-screwdriver-wrench mb-3 text-2xl text-slate-300"></i>
-      <p class="text-sm font-medium text-slate-600">{{ label }}</p>
-      <p class="mx-auto mt-1 max-w-md text-xs text-slate-400">{{ blurb }}</p>
+  {# ========================== TAB 5 — SMART LOGIC ========================== #}
+  <div x-show="tab==='logic'" x-cloak>
+    <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      <i class="fas fa-triangle-exclamation"></i>
+      This page mirrors <code class="font-mono">dataform/.../rex_po_recommendation.sqlx</code>.
+      <b>If you change the model, update this tab to match.</b> Thresholds and the worked example below are pulled live from the model output where possible.
     </div>
-  {% endfor %}
+
+    {# pipeline overview #}
+    <div class="mb-6 flex flex-wrap items-center gap-1 text-xs font-medium">
+      {% for stage, color in [('Inputs','bg-slate-100 text-slate-600'),('Eligibility gates','bg-red-50 text-red-700'),('Signals','bg-blue-50 text-blue-700'),('Decision','bg-purple-50 text-purple-700'),('Quantity','bg-emerald-50 text-emerald-700'),('Urgency','bg-amber-50 text-amber-700')] %}
+        <span class="rounded-full px-3 py-1 {{ color }}">{{ stage }}</span>
+        {% if not loop.last %}<i class="fas fa-chevron-right text-[10px] text-slate-300"></i>{% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="space-y-4">
+      {# 1. INPUTS #}
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-database text-slate-400"></i> 1 · Inputs</h4>
+        <div class="grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+          <div>• <b>rex_ballarat_inventory</b> — available, MSL, on-order, lead time, supplier, product type</div>
+          <div>• <b>ballaratv2 sales</b> — 7/14/30/90/365-day units, same-window 1&amp;2yr-ago, active sale-days, biggest single order, days-since-last-sale</div>
+          <div>• <b>neto_stock_situation_unkitted</b> — the active+approved "allowed to order" list</div>
+          <div>• <b>rex_seasonality_index</b> — per-category monthly seasonal curve</div>
+          <div>• <b>rex_po_back_order</b> — SKUs already on open back-order</div>
+          <div>• <b>po_bucket_mapping</b> — which of the 3 POs each product type goes to</div>
+        </div>
+      </div>
+      <div class="text-center text-slate-300"><i class="fas fa-arrow-down"></i></div>
+
+      {# 2. GATES #}
+      <div class="rounded-lg border border-red-200 bg-red-50/40 p-4">
+        <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-filter text-red-400"></i> 2 · Eligibility gates <span class="text-xs font-normal text-slate-500">— a SKU must pass ALL six or it never appears</span></h4>
+        <div class="grid gap-x-6 gap-y-1 text-xs text-slate-700 sm:grid-cols-2">
+          <div>① supplier = <b>JONO AND JOHNO</b></div>
+          <div>② <b>available &ge; 0</b> (negatives → reconcile, not order)</div>
+          <div>③ SKU is in the <b>active+approved</b> NETO list</div>
+          <div>④ <b>not disabled</b> in REX</div>
+          <div>⑤ <b>not on back-order</b></div>
+          <div>⑥ product type has a <b>bucket</b> (1/2/3)</div>
+        </div>
+      </div>
+      <div class="text-center text-slate-300"><i class="fas fa-arrow-down"></i></div>
+
+      {# 3. SIGNALS #}
+      <div class="rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+        <h4 class="mb-3 font-semibold text-slate-800"><i class="fas fa-wave-square text-blue-400"></i> 3 · Signals (computed per SKU)</h4>
+        <div class="space-y-3 text-xs">
+          <div>
+            <div class="font-semibold text-slate-700">Velocity (outlier-resistant)</div>
+            <pre class="my-1 overflow-x-auto rounded bg-white p-2 text-[11px] text-slate-700">if one order in 180d &gt; <b>0.5</b> × the 30-day total AND 30d &lt; 90d ÷ 3:
+    daily = sold_90d / 90      ← a one-off bulk sale is discounted
+else:
+    daily = sold_30d / 30</pre>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-700">Seasonal factor (span-weighted)</div>
+            <pre class="my-1 overflow-x-auto rounded bg-white p-2 text-[11px] text-slate-700">seasonal_factor = avg(index over [today … today+lead+horizon]) ÷ index[this month]
+adj_daily       = velocity × seasonal_factor</pre>
+            <p class="text-slate-500">Category curve when its confidence is HIGH/MED, else the store baseline. &gt;1 ramps up before a busy season, &lt;1 trims before a quiet one.</p>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-700">Position &amp; coverage</div>
+            <pre class="my-1 overflow-x-auto rounded bg-white p-2 text-[11px] text-slate-700">net_position  = available + on_order
+coverage_days = available / velocity         ← days to stockout at today's rate
+target_stock  = ceil(adj_daily × (lead + <b>30</b>))   ← cover lead time + 30-day horizon</pre>
+          </div>
+        </div>
+      </div>
+      <div class="text-center text-slate-300"><i class="fas fa-arrow-down"></i></div>
+
+      {# 4. DECISION #}
+      <div class="rounded-lg border border-purple-200 bg-purple-50/40 p-4">
+        <h4 class="mb-3 font-semibold text-slate-800"><i class="fas fa-code-branch text-purple-400"></i> 4 · Decision (first match wins)</h4>
+        <div class="space-y-1.5 text-xs">
+          {% for cond, cat, desc, col in [
+            ('days since last sale &gt; 90', 'DEAD', 'no recent demand → skip', 'text-slate-500'),
+            ('≤ 2 active sale-days in 90d (but did sell)', 'SPIKY', 'lumpy → top up to its biggest-ever single order', 'text-indigo-600'),
+            ('target_stock − net_position ≤ 0', 'COVERED', 'already have enough → skip', 'text-emerald-600'),
+            ('coverage_days &lt; lead time', 'URGENT', 'will stock out before a PO can land → order now', 'text-red-600'),
+            ('otherwise', 'ORDER', 'order the shortfall to target', 'text-blue-600'),
+          ] %}
+          <div class="flex items-center gap-2 rounded bg-white px-2 py-1.5">
+            <span class="font-mono text-slate-500 text-[11px] flex-1">{{ cond|safe }}</span>
+            <i class="fas fa-arrow-right text-[9px] text-slate-300"></i>
+            <span class="w-20 font-bold {{ col }}">{{ cat }}</span>
+            <span class="flex-1 text-slate-500">{{ desc }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="text-center text-slate-300"><i class="fas fa-arrow-down"></i></div>
+
+      {# 5. QUANTITY #}
+      <div class="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+        <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-calculator text-emerald-500"></i> 5 · Quantity</h4>
+        <pre class="overflow-x-auto rounded bg-white p-2 text-[11px] text-slate-700">DEAD / COVERED   → 0
+SPIKY            → max(0, biggest_single_order − net_position)
+URGENT / ORDER   → max(1, target_stock − net_position)
+
+then carton-round → nearest multiple of REX carton qty, min 1 carton</pre>
+      </div>
+      <div class="text-center text-slate-300"><i class="fas fa-arrow-down"></i></div>
+
+      {# 6. URGENCY #}
+      <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+        <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-bell text-amber-500"></i> 6 · Urgency label (triage)</h4>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="rounded px-2 py-1 bg-red-100 text-red-700"><b>CRITICAL</b> · coverage &lt; lead</span>
+          <span class="rounded px-2 py-1 bg-orange-100 text-orange-700"><b>HIGH</b> · coverage &lt; lead + 7d</span>
+          <span class="rounded px-2 py-1 bg-emerald-100 text-emerald-700"><b>MEDIUM</b> · coverage &lt; lead + 30d</span>
+          <span class="rounded px-2 py-1 bg-slate-100 text-slate-600"><b>LOW</b> · comfortable</span>
+        </div>
+      </div>
+    </div>
+
+    {# WORKED EXAMPLE — live #}
+    {% if example_row %}
+    {% set e = example_row %}
+    <div class="mt-8 rounded-lg border-2 border-brand-200 bg-brand-50/30 p-4">
+      <h4 class="mb-3 font-semibold text-brand-800"><i class="fas fa-flask"></i> Worked example (live) — <span class="font-mono">{{ e.manufacturer_sku }}</span></h4>
+      <p class="mb-3 text-xs text-slate-600">{{ e.short_description }}</p>
+      <div class="grid gap-3 text-xs md:grid-cols-3">
+        <div class="rounded bg-white p-3">
+          <div class="mb-1 font-semibold text-blue-700">Signals</div>
+          velocity <b>{{ '%.2f'|format(e.daily_velocity or 0) }}</b>/day<br>
+          seasonal × <b>{{ '%.2f'|format(e.seasonal_factor or 1) }}</b><br>
+          coverage <b>{{ e.coverage_days }}</b> days (lead {{ e.lead_days }})<br>
+          forecast30 <b>{{ e.forecast_30d }}</b>
+        </div>
+        <div class="rounded bg-white p-3">
+          <div class="mb-1 font-semibold text-purple-700">Position</div>
+          available <b>{{ e.available }}</b> + on-order <b>{{ e.on_order }}</b><br>
+          → net position <b>{{ (e.available or 0) + (e.on_order or 0) }}</b><br>
+          category <b class="text-purple-700">{{ e.category }}</b> · urgency <b>{{ e.urgency }}</b>
+        </div>
+        <div class="rounded bg-white p-3">
+          <div class="mb-1 font-semibold text-emerald-700">Result</div>
+          carton {{ e.carton_quantity if e.carton_quantity and e.carton_quantity > 1 else '—' }}<br>
+          → recommend <b class="text-lg text-slate-900">{{ e.recommended_qty }}</b> units<br>
+          est. ${{ '%.2f'|format(e.estimated_line_value or 0) }}
+        </div>
+      </div>
+      <p class="mt-3 rounded bg-white px-2 py-1.5 text-[11px] italic text-slate-500">↳ {{ e.reasoning }}</p>
+    </div>
+    {% endif %}
+
+    {# CONFIG #}
+    <div class="mt-6 rounded-lg border border-slate-200 bg-white p-4 text-xs">
+      <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-sliders text-slate-400"></i> Tunable thresholds <span class="font-normal text-slate-500">(cfg block in the model)</span></h4>
+      <div class="grid gap-x-6 gap-y-1 sm:grid-cols-2 text-slate-600">
+        <div><code>dead_days</code> = <b>90</b> — no sale in N days → DEAD</div>
+        <div><code>default_lead</code> = <b>14</b> — lead days when REX value missing</div>
+        <div><code>horizon_days</code> = <b>30</b> — cover this far beyond lead time</div>
+        <div><code>outlier_frac</code> = <b>0.5</b> — single-order share that triggers 90d-rate fallback</div>
+        <div><code>spiky_days</code> = <b>2</b> — ≤ N active sale-days/90d → SPIKY</div>
+        <div>seasonal index confidence + fallback live in <code>rex_seasonality_index</code></div>
+      </div>
+    </div>
+  </div>
 
 </section>
 {% endblock %}

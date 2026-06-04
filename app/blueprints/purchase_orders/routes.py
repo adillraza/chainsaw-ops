@@ -1490,6 +1490,14 @@ def shop_order():
     )
     alerts_near = sum(1 for a in weather_alerts if (a.distance_km or 9999) <= 50)
 
+    # --- Smart Logic: pick a real line to walk through the pipeline ---
+    all_smart = [r for b in smart_buckets for r in b["lines"]]
+    candidates = [r for r in all_smart if r.category in ("ORDER", "URGENT")]
+    example_row = (
+        max(candidates, key=lambda r: r.estimated_line_value or 0)
+        if candidates else (all_smart[0] if all_smart else None)
+    )
+
     cached_at = None
     stamps = [r.cached_at for r in (msl_rows + smart_rows + season_rows) if r.cached_at]
     if stamps:
@@ -1511,5 +1519,6 @@ def shop_order():
         weather_forecast=weather_forecast,
         weather_alerts=weather_alerts,
         alerts_near=alerts_near,
+        example_row=example_row,
         cached_at=cached_at,
     )
