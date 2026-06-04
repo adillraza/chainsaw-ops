@@ -30,6 +30,9 @@ from app.models.shop_order import (
     CachedSeasonalityIndex,
     CachedShopOrderMsl,
     CachedShopOrderSmart,
+    CachedWeatherAlert,
+    CachedWeatherCurrent,
+    CachedWeatherForecast,
 )
 from app.services.cache import update_cache_with_latest_note
 from app.services.purchase_orders_service import purchase_orders_service
@@ -1473,6 +1476,20 @@ def shop_order():
 
     current_month = datetime.now().month
 
+    # --- Weather & Alerts ---
+    weather_current = (
+        CachedWeatherCurrent.query.order_by(CachedWeatherCurrent.fetched_at.desc()).first()
+    )
+    weather_forecast = (
+        CachedWeatherForecast.query.order_by(CachedWeatherForecast.day_offset).all()
+    )
+    weather_alerts = (
+        CachedWeatherAlert.query
+        .order_by(CachedWeatherAlert.distance_km.asc().nullslast())
+        .all()
+    )
+    alerts_near = sum(1 for a in weather_alerts if (a.distance_km or 9999) <= 50)
+
     cached_at = None
     stamps = [r.cached_at for r in (msl_rows + smart_rows + season_rows) if r.cached_at]
     if stamps:
@@ -1490,5 +1507,9 @@ def shop_order():
         seasonality_rows=seasonality_rows,
         month_labels=_MONTH_LABELS,
         current_month=current_month,
+        weather_current=weather_current,
+        weather_forecast=weather_forecast,
+        weather_alerts=weather_alerts,
+        alerts_near=alerts_near,
         cached_at=cached_at,
     )

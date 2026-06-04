@@ -51,6 +51,53 @@ class CachedSeasonalityIndex(db.Model):
     cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
+class CachedWeatherCurrent(db.Model):
+    """Latest Ballarat current-conditions snapshot (operations.weather_current)."""
+    id = db.Column(db.Integer, primary_key=True)
+    fetched_at = db.Column(db.DateTime, index=True)
+    temp_c = db.Column(db.Float)
+    apparent_c = db.Column(db.Float)
+    precip_mm = db.Column(db.Float)
+    wind_kmh = db.Column(db.Float)
+    weather_label = db.Column(db.String(40))
+    is_day = db.Column(db.Boolean)
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class CachedWeatherForecast(db.Model):
+    """7-day Ballarat forecast from the latest snapshot (operations.weather_forecast)."""
+    id = db.Column(db.Integer, primary_key=True)
+    forecast_date = db.Column(db.String(12))
+    day_offset = db.Column(db.Integer, index=True)
+    temp_min = db.Column(db.Float)
+    temp_max = db.Column(db.Float)
+    precip_mm = db.Column(db.Float)
+    precip_prob_max = db.Column(db.Integer)
+    wind_max_kmh = db.Column(db.Float)
+    weather_label = db.Column(db.String(40))
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class CachedWeatherAlert(db.Model):
+    """Latest record per VicEmergency alert seen in the last 30 days, nearest first."""
+    id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(db.String(40), index=True)
+    feed_type = db.Column(db.String(30))
+    category1 = db.Column(db.String(50), index=True)
+    category2 = db.Column(db.String(50))
+    status = db.Column(db.String(50))
+    headline = db.Column(db.String(300))
+    action = db.Column(db.String(120))
+    location = db.Column(db.String(300))
+    alert_text = db.Column(db.Text)
+    created = db.Column(db.String(40))
+    updated = db.Column(db.String(40))
+    distance_km = db.Column(db.Float, index=True)
+    url = db.Column(db.String(300))
+    fetched_at = db.Column(db.DateTime)
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 class CachedShopOrderSmart(db.Model):
     """One row per rex_po_recommendation line."""
     id = db.Column(db.Integer, primary_key=True)

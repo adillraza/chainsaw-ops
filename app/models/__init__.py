@@ -31,6 +31,9 @@ from app.models.shop_order import (
     CachedSeasonalityIndex,
     CachedShopOrderMsl,
     CachedShopOrderSmart,
+    CachedWeatherAlert,
+    CachedWeatherCurrent,
+    CachedWeatherForecast,
 )
 from app.models.role import Role
 from app.models.user import LoginLog, User
@@ -48,6 +51,9 @@ __all__ = [
     "CachedSeasonalityIndex",
     "CachedShopOrderMsl",
     "CachedShopOrderSmart",
+    "CachedWeatherAlert",
+    "CachedWeatherCurrent",
+    "CachedWeatherForecast",
     "CachedPurchaseOrderComparison",
     "CachedPurchaseOrderItem",
     "CachedPurchaseOrderSummary",
