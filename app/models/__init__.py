@@ -27,7 +27,11 @@ from app.models.reviews import (
     OPEN_REVIEW_STATUSES,
     ItemReview,
 )
-from app.models.shop_order import CachedShopOrderMsl, CachedShopOrderSmart
+from app.models.shop_order import (
+    CachedSeasonalityIndex,
+    CachedShopOrderMsl,
+    CachedShopOrderSmart,
+)
 from app.models.role import Role
 from app.models.user import LoginLog, User
 
@@ -41,6 +45,7 @@ __all__ = [
     "CachedEmailRecipient",
     "CachedNetoProduct",
     "CachedPhoneLookup",
+    "CachedSeasonalityIndex",
     "CachedShopOrderMsl",
     "CachedShopOrderSmart",
     "CachedPurchaseOrderComparison",

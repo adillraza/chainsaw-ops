@@ -26,7 +26,11 @@ from app.models.purchase_orders import (
     CachedPurchaseOrderSummary,
 )
 from app.models.reviews import OPEN_REVIEW_STATUSES, ItemReview
-from app.models.shop_order import CachedShopOrderMsl, CachedShopOrderSmart
+from app.models.shop_order import (
+    CachedSeasonalityIndex,
+    CachedShopOrderMsl,
+    CachedShopOrderSmart,
+)
 from app.services.cache import update_cache_with_latest_note
 from app.services.purchase_orders_service import purchase_orders_service
 from app.services.reviews_sync import sync_review_to_bigquery
@@ -1351,6 +1355,31 @@ _SHOP_BUCKET_LABELS = {
     3: "PO #3 — All Other JONO AND JOHNO",
 }
 _URGENCY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _seasonality_cell(idx):
+    """Diverging heatmap colour for a seasonal index (1.0 = average month).
+
+    >1 (busier) ramps white->orange; <1 (quieter) ramps white->blue. Returns
+    (bg_hex, text_class) so the template just drops them into style/attrs.
+    """
+    if idx is None:
+        return "#f8fafc", "text-slate-300"
+    # how far from neutral, capped at +/-1.0 of index (i.e. 0..2 saturates)
+    if idx >= 1:
+        t = min((idx - 1.0) / 1.0, 1.0)
+        r = round(255 + (234 - 255) * t)   # -> orange 234,88,12
+        g = round(255 + (88 - 255) * t)
+        b = round(255 + (12 - 255) * t)
+    else:
+        t = min((1.0 - idx) / 1.0, 1.0)
+        r = round(255 + (37 - 255) * t)    # -> blue 37,99,235
+        g = round(255 + (99 - 255) * t)
+        b = round(255 + (235 - 255) * t)
+    text = "text-white" if t > 0.55 else "text-slate-800"
+    return f"#{r:02x}{g:02x}{b:02x}", text
 
 
 @purchase_orders_bp.route("/shop-order")
@@ -1397,8 +1426,55 @@ def shop_order():
             "critical": sum(1 for r in rows if r.urgency == "CRITICAL"),
         })
 
+    # --- Seasonality Index: pivot (product_type x month) into a heatmap grid ---
+    season_rows = CachedSeasonalityIndex.query.all()
+    by_type: dict[str, dict] = {}
+    for r in season_rows:
+        d = by_type.setdefault(r.product_type, {
+            "product_type": r.product_type,
+            "confidence": r.confidence,
+            "sample_units": r.sample_units or 0,
+            "by_month": {},
+        })
+        d["by_month"][r.month] = r.seasonal_index
+        # keep the strongest confidence/sample seen for the row label
+        if (r.sample_units or 0) > d["sample_units"]:
+            d["sample_units"] = r.sample_units or 0
+            d["confidence"] = r.confidence
+
+    seasonality_rows = []
+    store_row = None
+    for pt, d in by_type.items():
+        cells = []
+        vals = []
+        for m in range(1, 13):
+            idx = d["by_month"].get(m)
+            bg, text = _seasonality_cell(idx)
+            cells.append({"month": m, "index": idx, "bg": bg, "text": text})
+            if idx is not None:
+                vals.append(idx)
+        swing = (max(vals) - min(vals)) if vals else 0
+        row = {
+            "product_type": "Store baseline (all)" if pt == "_STORE_" else pt,
+            "is_store": pt == "_STORE_",
+            "confidence": d["confidence"],
+            "swing": round(swing, 2),
+            "cells": cells,
+        }
+        if pt == "_STORE_":
+            store_row = row
+        else:
+            seasonality_rows.append(row)
+
+    # most-seasonal categories first; store baseline pinned at the top
+    seasonality_rows.sort(key=lambda r: r["swing"], reverse=True)
+    if store_row:
+        seasonality_rows.insert(0, store_row)
+
+    current_month = datetime.now().month
+
     cached_at = None
-    stamps = [r.cached_at for r in (msl_rows + smart_rows) if r.cached_at]
+    stamps = [r.cached_at for r in (msl_rows + smart_rows + season_rows) if r.cached_at]
     if stamps:
         cached_at = max(stamps)
 
@@ -1411,5 +1487,8 @@ def shop_order():
         smart_total=sum(b["total_value"] for b in smart_buckets),
         msl_lines=sum(len(b["orders"]) for b in msl_buckets),
         smart_lines=sum(len(b["lines"]) for b in smart_buckets),
+        seasonality_rows=seasonality_rows,
+        month_labels=_MONTH_LABELS,
+        current_month=current_month,
         cached_at=cached_at,
     )

@@ -15,7 +15,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.extensions import db
-from app.models.shop_order import CachedShopOrderMsl, CachedShopOrderSmart
+from app.models.shop_order import (
+    CachedSeasonalityIndex,
+    CachedShopOrderMsl,
+    CachedShopOrderSmart,
+)
 from app.services.purchase_orders_service import purchase_orders_service
 
 # SELECT * (not an explicit column list) on purpose: the Dataform production
@@ -24,6 +28,7 @@ from app.services.purchase_orders_service import purchase_orders_service
 # below, a missing column just maps to None instead of crashing the refresh.
 _MSL_SQL = "SELECT * FROM `{project}.dataform.po_preview_lines`"
 _SMART_SQL = "SELECT * FROM `{project}.dataform.rex_po_recommendation`"
+_SEASON_SQL = "SELECT * FROM `{project}.dataform.rex_seasonality_index`"
 
 
 def _i(v):
@@ -55,12 +60,14 @@ def cache_shop_order_data():
     try:
         msl_rows = list(client.query(_MSL_SQL.format(project=project)).result())
         smart_rows = list(client.query(_SMART_SQL.format(project=project)).result())
+        season_rows = list(client.query(_SEASON_SQL.format(project=project)).result())
 
         now = datetime.utcnow()
 
         # Full rebuild — these tables are small (low hundreds of rows each).
         CachedShopOrderMsl.query.delete()
         CachedShopOrderSmart.query.delete()
+        CachedSeasonalityIndex.query.delete()
         db.session.commit()
 
         for r in msl_rows:
@@ -114,8 +121,20 @@ def cache_shop_order_data():
                 cached_at=now,
             ))
 
+        for r in season_rows:
+            db.session.add(CachedSeasonalityIndex(
+                product_type=r.get("product_type"),
+                month=_i(r.get("month")),
+                seasonal_index=_f(r.get("seasonal_index")),
+                sample_units=_i(r.get("sample_units")),
+                years_covered=_i(r.get("years_covered")),
+                confidence=r.get("confidence"),
+                cached_at=now,
+            ))
+
         db.session.commit()
-        return True, f"cached {len(msl_rows)} MSL + {len(smart_rows)} smart lines"
+        return True, (f"cached {len(msl_rows)} MSL + {len(smart_rows)} smart "
+                      f"+ {len(season_rows)} seasonality rows")
     except Exception as exc:  # noqa: BLE001
         db.session.rollback()
         return False, f"shop-order cache failed: {exc}"

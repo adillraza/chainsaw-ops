@@ -39,6 +39,18 @@ class CachedShopOrderMsl(db.Model):
     cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
+class CachedSeasonalityIndex(db.Model):
+    """One row per (product_type x month) from dataform.rex_seasonality_index."""
+    id = db.Column(db.Integer, primary_key=True)
+    product_type = db.Column(db.String(150), index=True)  # '_STORE_' = baseline
+    month = db.Column(db.Integer, index=True)             # 1-12
+    seasonal_index = db.Column(db.Float)                  # 1.0 = average month
+    sample_units = db.Column(db.Integer)
+    years_covered = db.Column(db.Integer)
+    confidence = db.Column(db.String(12))                 # HIGH | MEDIUM | LOW | BASELINE
+    cached_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 class CachedShopOrderSmart(db.Model):
     """One row per rex_po_recommendation line."""
     id = db.Column(db.Integer, primary_key=True)

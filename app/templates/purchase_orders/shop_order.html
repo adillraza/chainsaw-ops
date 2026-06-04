@@ -175,9 +175,90 @@
     {% endfor %}
   </div>
 
-  {# ===================== TABS 3-5 — placeholders ===================== #}
+  {# ========================== TAB 3 — SEASONALITY INDEX ========================== #}
+  <div x-show="tab==='seasonality'" x-cloak>
+    <p class="mb-3 text-sm text-slate-600">
+      How each category's sales rise and fall through the year. <b>1.00 = an average month</b>;
+      <span class="text-orange-600 font-medium">&gt;1 busier</span>,
+      <span class="text-blue-600 font-medium">&lt;1 quieter</span>.
+      Most-seasonal categories first; the current month ({{ month_labels[current_month-1] }}) column is outlined.
+    </p>
+
+    {# legend #}
+    <div class="mb-4 flex items-center gap-3 text-[11px] text-slate-500">
+      <span>Quieter</span>
+      <span class="inline-flex h-3 w-40 rounded"
+            style="background:linear-gradient(to right,#2563eb,#ffffff,#ea580c)"></span>
+      <span>Busier</span>
+      <span class="ml-4">·&nbsp; confidence: HIGH / MEDIUM use the category's own curve; LOW falls back to the store baseline</span>
+    </div>
+
+    {% if seasonality_rows %}
+    <div class="overflow-x-auto rounded-lg border border-slate-200">
+      <table class="min-w-full border-collapse text-[11px]">
+        <thead>
+          <tr class="bg-slate-50 text-slate-500">
+            <th class="sticky left-0 z-10 bg-slate-50 px-2 py-1.5 text-left">Category</th>
+            <th class="px-2 py-1.5 text-right">Conf</th>
+            {% for m in month_labels %}
+              <th class="px-1.5 py-1.5 text-center {% if loop.index == current_month %}rounded-t bg-brand-100 font-bold text-brand-700{% endif %}">{{ m }}</th>
+            {% endfor %}
+            <th class="px-2 py-1.5 text-right" title="peak minus trough index">Swing</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in seasonality_rows %}
+          <tr class="border-t border-slate-100 {% if row.is_store %}bg-slate-50/70 font-medium{% endif %}">
+            <td class="sticky left-0 z-10 {% if row.is_store %}bg-slate-50{% else %}bg-white{% endif %} px-2 py-1 text-left text-slate-700 whitespace-nowrap">{{ row.product_type }}</td>
+            <td class="px-2 py-1 text-right">
+              {% set cc = {'HIGH':'text-emerald-600','MEDIUM':'text-amber-600','LOW':'text-slate-400','BASELINE':'text-slate-400'} %}
+              <span class="{{ cc.get(row.confidence,'text-slate-400') }}">{{ row.confidence[:1] if row.confidence else '' }}</span>
+            </td>
+            {% for c in row.cells %}
+              <td class="px-1.5 py-1 text-center tabular-nums {{ c.text }} {% if c.month == current_month %}ring-1 ring-inset ring-brand-400{% endif %}"
+                  style="background-color:{{ c.bg }}">{{ '%.2f'|format(c.index) if c.index is not none else '—' }}</td>
+            {% endfor %}
+            <td class="px-2 py-1 text-right font-medium text-slate-500">{{ '%.1f'|format(row.swing) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="text-sm italic text-slate-400">Seasonality cache is empty — runs on the next :05/:35 refresh.</p>
+    {% endif %}
+
+    {# explanation #}
+    <div class="mt-6 grid gap-4 md:grid-cols-2">
+      <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-calculator text-slate-400"></i> How it's worked out</h4>
+        <ul class="ml-4 list-disc space-y-1 text-slate-600">
+          <li>Source: <b>3 complete years</b> of Ballarat REX sales (2023–25).</li>
+          <li>Each historical sale's SKU is mapped to its <b>current</b> product type (so a REX taxonomy change doesn't skew the curve).</li>
+          <li><b>Within-year normalisation</b>: each month's share of its own year is taken, then averaged across years and ×12 — this strips year-over-year growth so the number is pure <i>seasonality</i>, not "was that a big year".</li>
+          <li>So <b>index = average month's share × 12</b>. 1.00 = average; 1.50 = sells 50% above its yearly average that month.</li>
+          <li><b>Confidence</b> reflects sample size; thin categories (LOW) fall back to the store-wide baseline so we never trust a noisy curve.</li>
+        </ul>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <h4 class="mb-2 font-semibold text-slate-800"><i class="fas fa-brain text-slate-400"></i> How it factors into Smart Ordering</h4>
+        <p class="text-slate-600">The Smart model scales the <i>current</i> sell-rate by how the order window compares to now:</p>
+        <pre class="my-2 overflow-x-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">seasonal_factor = avg(index over [today … today+lead+horizon])
+                  ÷ index[current month]
+adj_daily       = current_velocity × seasonal_factor
+target_stock    = adj_daily × (lead + horizon)</pre>
+        <ul class="ml-4 list-disc space-y-1 text-slate-600">
+          <li>Ramping <b>into</b> a busy season → factor &gt;1, pre-stocks ahead of the climb.</li>
+          <li>Heading <b>into</b> a quiet season → factor &lt;1, trims before the drop.</li>
+          <li>Mid-plateau (already in season and staying) → factor ≈1, since the live velocity already reflects the season — no double-counting.</li>
+        </ul>
+        <p class="mt-2 text-[11px] text-slate-400">The <b>Seas×</b> column on the Smart Order tab is exactly this factor per SKU.</p>
+      </div>
+    </div>
+  </div>
+
+  {# ===================== TABS 4-5 — placeholders ===================== #}
   {% for key, label, blurb in [
-      ('seasonality', 'Seasonality Index', 'Per-category monthly seasonal curves (dataform.rex_seasonality_index). Coming next.'),
       ('weather', 'Weather', 'Ballarat forecast + Victorian fire/flood warnings as a demand-sensing overlay. Coming next.'),
       ('logic', 'Smart Logic', 'A plain-English walkthrough of how the Smart model decides what and how much to order. Coming next.')
   ] %}
