@@ -26,7 +26,8 @@ from __future__ import annotations
 
 CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     "PO Cross Check – Access": [
-        ("po.view",                  "See the PO Cross Check tabs (REX PO Orders, Comparison, Cost Prices, Change Log)"),
+        ("po.view",                  "See the core PO Cross Check tabs (REX PO Orders, Comparison, Cost Prices, Change Log)"),
+        ("po.shop_order.view",       "See the Shop Order tabs (MSL Based, Smart Order, Seasonality Index, Weather & Alerts, Smart Logic)"),
     ],
     "PO Cross Check – Reviews": [
         ("reviews.flag",             "Flag an item on the Comparison page"),

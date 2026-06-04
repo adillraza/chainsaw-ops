@@ -1387,7 +1387,7 @@ def _seasonality_cell(idx):
 
 @purchase_orders_bp.route("/shop-order")
 @login_required
-@require_capability("po.view")
+@require_capability("po.shop_order.view")
 def shop_order():
     active_tab = request.args.get("tab", "msl")
 
