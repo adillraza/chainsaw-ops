@@ -21,6 +21,7 @@ REFRESH_LOCK = Path("/tmp/chainsaw-ops-refresh.lock")
 def register(app: Flask) -> None:
     app.cli.add_command(refresh_cache)
     app.cli.add_command(reparse_call_events)
+    app.cli.add_command(fetch_weather)
 
 
 def _acquire_lock() -> bool:
@@ -103,6 +104,17 @@ def refresh_cache() -> None:
             raise SystemExit(1)
     finally:
         _release_lock()
+
+
+@click.command("fetch-weather")
+@with_appcontext
+def fetch_weather() -> None:
+    """Fetch Ballarat weather + Victorian alerts into BigQuery (4-hourly timer)."""
+    from app.services.weather_service import ingest_weather_and_alerts
+    success, message = ingest_weather_and_alerts()
+    click.echo(f"fetch-weather: {message}", err=not success)
+    if not success:
+        raise SystemExit(1)
 
 
 @click.command("reparse-call-events")
