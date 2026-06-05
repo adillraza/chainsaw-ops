@@ -56,6 +56,19 @@
           {% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
         </select>
       </div>
+      <div>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Priority</label>
+        <select x-model="priorityFilter" @change="page=0"
+                class="mt-1 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+          <option value="">All priorities</option>
+          <option value="5">★★★★★ (5)</option>
+          <option value="4">★★★★ (4)</option>
+          <option value="3">★★★ (3)</option>
+          <option value="2">★★ (2)</option>
+          <option value="1">★ (1)</option>
+          <option value="none">Unrated</option>
+        </select>
+      </div>
       <div class="pb-2 text-xs text-slate-400" x-text="filtered.length + ' of ' + all.length + ' tasks'"></div>
     </div>
 
@@ -209,7 +222,7 @@
 <script>
   function workDiary() {
     return {
-      all: [], q: '', statusFilter: '', page: 0, perPage: 50, openKey: null,
+      all: [], q: '', statusFilter: '', priorityFilter: '', page: 0, perPage: 50, openKey: null,
       draft: {}, saving: null, commenting: null,
       hoverStar: {}, prioritySaving: null,
       init() {
@@ -227,6 +240,8 @@
         const q = this.q.trim().toLowerCase();
         return this.all.filter(t => {
           if (this.statusFilter && t.status !== this.statusFilter) return false;
+          if (this.priorityFilter === 'none') { if (t.priority) return false; }
+          else if (this.priorityFilter && String(t.priority || '') !== this.priorityFilter) return false;
           if (!q) return true;
           return (t.title && t.title.toLowerCase().includes(q))
               || (t.clean_description && t.clean_description.toLowerCase().includes(q))
