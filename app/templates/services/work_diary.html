@@ -1,0 +1,258 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Adil Work Diary - Chainsawspares Ops{% endblock %}
+
+{% block content %}
+<section class="mb-6">
+  <h1 class="text-xl font-semibold text-slate-900">Adil Work Diary</h1>
+  <p class="mt-1 text-sm text-slate-500">
+    Personal task tracker — tasks pulled from email, cleaned by AI. Most recent on top.
+    Change status or add comments inline; everything is stored in BigQuery.
+  </p>
+</section>
+
+{% if error %}
+  <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Couldn't load tasks: {{ error }}</div>
+{% else %}
+
+<script id="wd-data" type="application/json">{{ tasks | tojson }}</script>
+
+<div x-data="workDiary()" x-init="init()">
+
+  {# Summary cards — counts by status #}
+  <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <div class="flex items-center gap-2 text-slate-400"><i class="fas fa-list-check"></i><span class="text-xs font-medium uppercase tracking-wide">Total</span></div>
+      <div class="mt-1 text-2xl font-semibold text-slate-900" x-text="all.length"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <div class="flex items-center gap-2 text-slate-400"><i class="fas fa-inbox"></i><span class="text-xs font-medium uppercase tracking-wide">Backlog</span></div>
+      <div class="mt-1 text-2xl font-semibold text-slate-700" x-text="countBy('Backlog')"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <div class="flex items-center gap-2 text-amber-400"><i class="fas fa-spinner"></i><span class="text-xs font-medium uppercase tracking-wide">In progress</span></div>
+      <div class="mt-1 text-2xl font-semibold text-amber-700" x-text="countBy('Inprogress')"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <div class="flex items-center gap-2 text-emerald-400"><i class="fas fa-circle-check"></i><span class="text-xs font-medium uppercase tracking-wide">Completed</span></div>
+      <div class="mt-1 text-2xl font-semibold text-emerald-700" x-text="countBy('Completed')"></div>
+    </div>
+  </div>
+
+  <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
+    {# Filter bar #}
+    <div class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+      <div class="flex-1 min-w-[220px]">
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Search</label>
+        <input type="text" x-model="q" @input.debounce.200ms="page=0"
+               placeholder="title, description, subject or sender…"
+               class="mt-1 w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Status</label>
+        <select x-model="statusFilter" @change="page=0"
+                class="mt-1 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
+          <option value="">All statuses</option>
+          {% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="pb-2 text-xs text-slate-400" x-text="filtered.length + ' of ' + all.length + ' tasks'"></div>
+    </div>
+
+    {# Table #}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-2 text-left font-medium">Received</th>
+            <th class="px-4 py-2 text-left font-medium">Task</th>
+            <th class="px-4 py-2 text-left font-medium">Source</th>
+            <th class="px-4 py-2 text-left font-medium">Priority</th>
+            <th class="px-4 py-2 text-left font-medium">Status</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <template x-for="t in pageRows" :key="t.task_id">
+          <tbody class="divide-y divide-slate-100">
+            <tr class="align-top hover:bg-slate-50">
+              <td class="px-4 py-3 whitespace-nowrap text-xs text-slate-500" x-text="t.received_display"></td>
+              <td class="px-4 py-3 max-w-[460px]">
+                <div class="font-medium text-slate-800" x-text="t.title"></div>
+                <div class="mt-0.5 text-xs leading-snug text-slate-500" x-text="t.clean_description"></div>
+                <div class="mt-1 text-[11px] text-slate-400" x-show="t.comments.length">
+                  <i class="fas fa-comment"></i> <span x-text="t.comments.length"></span>
+                </div>
+              </td>
+              <td class="px-4 py-3 max-w-[200px]">
+                <div class="truncate text-slate-600" :title="t.source_subject" x-text="t.source_subject || '—'"></div>
+                <div class="truncate text-[11px] text-slate-400" :title="t.source_sender" x-text="t.source_sender || ''"></div>
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                <span x-show="t.priority" class="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-800" x-text="t.priority"></span>
+                <span x-show="!t.priority" class="text-slate-300">—</span>
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                <span class="rounded px-2 py-0.5 text-[11px] font-medium" :class="statusClass(t.status)" x-text="statusLabel(t.status)"></span>
+              </td>
+              <td class="px-4 py-3 text-right">
+                <button type="button" @click="toggle(t)" class="text-slate-400 hover:text-slate-700">
+                  <i class="fas" :class="openKey === t.task_id ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                </button>
+              </td>
+            </tr>
+
+            {# Expanded drawer: change status, original email, comments #}
+            <tr x-show="openKey === t.task_id" x-cloak class="bg-slate-50">
+              <td colspan="6" class="px-6 py-4">
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+                  {# Left: status control + meta #}
+                  <div class="space-y-4">
+                    <div>
+                      <div class="text-xs uppercase tracking-wide text-slate-400">Status</div>
+                      <div class="mt-1 flex flex-wrap gap-1.5">
+                        {% for s in statuses %}
+                        <button type="button" @click="changeStatus(t, '{{ s }}')" :disabled="saving === t.task_id"
+                                class="rounded px-2 py-1 text-xs font-medium ring-1 ring-inset disabled:opacity-50"
+                                :class="t.status === '{{ s }}' ? statusClass('{{ s }}') + ' ring-transparent' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-100'">
+                          {{ s if s != 'Inprogress' else 'In progress' }}
+                        </button>
+                        {% endfor %}
+                      </div>
+                      <p class="mt-2 text-[11px] text-slate-400">
+                        Changed <span x-text="t.status_changed_display"></span>
+                        <template x-if="t.completed_display && t.completed_display !== '—'">
+                          <span> · completed <span x-text="t.completed_display"></span></span>
+                        </template>
+                      </p>
+                    </div>
+                    <div x-show="t.link_to_email">
+                      <a :href="t.link_to_email" target="_blank" rel="noopener"
+                         class="inline-flex items-center gap-1.5 text-xs text-brand-700 hover:underline">
+                        <i class="fas fa-envelope"></i> Open source email
+                        <i class="fas fa-arrow-up-right-from-square text-[9px]"></i>
+                      </a>
+                    </div>
+                  </div>
+
+                  {# Middle: original email text #}
+                  <div>
+                    <div class="text-xs uppercase tracking-wide text-slate-400">Original email</div>
+                    <div class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-white p-3 text-[12px] leading-snug text-slate-700"
+                         x-text="t.original_text || '— no original text —'"></div>
+                  </div>
+
+                  {# Right: comments #}
+                  <div>
+                    <div class="text-xs uppercase tracking-wide text-slate-400">Comments</div>
+                    <div class="mt-1 space-y-2">
+                      <template x-for="c in t.comments" :key="c.comment_id">
+                        <div class="rounded border border-slate-200 bg-white p-2 text-[12px]">
+                          <div class="text-slate-700" x-text="c.comment"></div>
+                          <div class="mt-1 text-[10px] text-slate-400">
+                            <span x-text="c.username"></span> · <span x-text="c.created_display"></span>
+                          </div>
+                        </div>
+                      </template>
+                      <p x-show="!t.comments.length" class="text-[12px] text-slate-400">No comments yet.</p>
+                    </div>
+                    <div class="mt-2 flex items-start gap-2">
+                      <textarea x-model="draft[t.task_id]" rows="2" placeholder="Add a comment…"
+                                class="flex-1 rounded-md border-slate-300 text-[12px] shadow-sm focus:border-brand-500 focus:ring-brand-500"></textarea>
+                      <button type="button" @click="addComment(t)" :disabled="commenting === t.task_id || !(draft[t.task_id] || '').trim()"
+                              class="rounded-md bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                        <i class="fas" :class="commenting === t.task_id ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </template>
+        <tbody x-show="!filtered.length">
+          <tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">No tasks match your filter.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    {# Pagination #}
+    <div class="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500" x-show="pageCount > 1">
+      <button type="button" @click="page = Math.max(0, page-1)" :disabled="page===0"
+              class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40">Prev</button>
+      <span class="text-xs">Page <span x-text="page+1"></span> of <span x-text="pageCount"></span></span>
+      <button type="button" @click="page = Math.min(pageCount-1, page+1)" :disabled="page>=pageCount-1"
+              class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40">Next</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function workDiary() {
+    return {
+      all: [], q: '', statusFilter: '', page: 0, perPage: 50, openKey: null,
+      draft: {}, saving: null, commenting: null,
+      init() {
+        try { this.all = JSON.parse(document.getElementById('wd-data').textContent || '[]'); }
+        catch (e) { this.all = []; }
+      },
+      countBy(s) { return this.all.filter(t => t.status === s).length; },
+      statusClass(s) {
+        if (s === 'Completed') return 'bg-emerald-100 text-emerald-800';
+        if (s === 'Inprogress') return 'bg-amber-100 text-amber-800';
+        return 'bg-slate-200 text-slate-700';
+      },
+      statusLabel(s) { return s === 'Inprogress' ? 'In progress' : s; },
+      get filtered() {
+        const q = this.q.trim().toLowerCase();
+        return this.all.filter(t => {
+          if (this.statusFilter && t.status !== this.statusFilter) return false;
+          if (!q) return true;
+          return (t.title && t.title.toLowerCase().includes(q))
+              || (t.clean_description && t.clean_description.toLowerCase().includes(q))
+              || (t.source_subject && t.source_subject.toLowerCase().includes(q))
+              || (t.source_sender && t.source_sender.toLowerCase().includes(q));
+        });
+      },
+      get pageCount() { return Math.max(1, Math.ceil(this.filtered.length / this.perPage)); },
+      get pageRows() {
+        const p = Math.min(this.page, this.pageCount - 1);
+        return this.filtered.slice(p * this.perPage, (p + 1) * this.perPage);
+      },
+      toggle(t) { this.openKey = this.openKey === t.task_id ? null : t.task_id; },
+      async changeStatus(t, status) {
+        if (t.status === status || this.saving) return;
+        this.saving = t.task_id;
+        try {
+          const body = new URLSearchParams({ status });
+          const r = await fetch(`/services/work-diary/${encodeURIComponent(t.task_id)}/status`, { method: 'POST', body });
+          const j = await r.json();
+          if (j.ok) {
+            t.status = j.status;
+            t.status_changed_display = j.status_changed_display;
+            t.completed_display = j.completed_display;
+          } else { alert('Could not update status: ' + (j.error || r.status)); }
+        } catch (e) { alert('Could not update status: ' + e); }
+        finally { this.saving = null; }
+      },
+      async addComment(t) {
+        const text = (this.draft[t.task_id] || '').trim();
+        if (!text || this.commenting) return;
+        this.commenting = t.task_id;
+        try {
+          const body = new URLSearchParams({ comment: text });
+          const r = await fetch(`/services/work-diary/${encodeURIComponent(t.task_id)}/comment`, { method: 'POST', body });
+          const j = await r.json();
+          if (j.ok) { t.comments.push(j.comment); this.draft[t.task_id] = ''; }
+          else { alert('Could not add comment: ' + (j.error || r.status)); }
+        } catch (e) { alert('Could not add comment: ' + e); }
+        finally { this.commenting = null; }
+      }
+    };
+  }
+</script>
+{% endblock %}

@@ -10,7 +10,7 @@ import threading
 import time
 
 from flask import jsonify, render_template, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app.auth.abilities import require_capability
 from app.blueprints.services import services_bp
@@ -101,6 +101,16 @@ SERVICES = [
         "icon": "fa-sliders",
         "endpoint": "services.neto_config",
         "capability": "services.config.view",
+        "available": True,
+    },
+    {
+        "key": "work_diary",
+        "title": "Adil Work Diary",
+        "description": "Your personal task tracker — tasks pulled from email, with status, "
+                       "comments and history. Most recent on top.",
+        "icon": "fa-list-check",
+        "endpoint": "services.work_diary",
+        "capability": "services.work_diary.view",
         "available": True,
     },
 ]
@@ -294,6 +304,63 @@ def neto_config():
         error = str(exc)
 
     return render_template("services/neto_config.html", error=error, snap=snap)
+
+
+@services_bp.route("/work-diary")
+@login_required
+@require_capability("services.work_diary.view")
+def work_diary():
+    """Adil Work Diary — task table (newest first) backed by BigQuery."""
+    from app.services import work_diary_service as wd
+
+    error = None
+    tasks = []
+    try:
+        tasks = wd.get_tasks()
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+    return render_template(
+        "services/work_diary.html",
+        error=error, tasks=tasks, statuses=wd.STATUSES,
+    )
+
+
+@services_bp.route("/work-diary/<task_id>/status", methods=["POST"])
+@login_required
+@require_capability("services.work_diary.update")
+def work_diary_status(task_id):
+    """Change a task's status (logs the transition). Returns JSON."""
+    from app.services import work_diary_service as wd
+
+    new_status = (request.form.get("status") or "").strip()
+    try:
+        result = wd.update_status(task_id, new_status, current_user.username)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except LookupError:
+        return jsonify({"ok": False, "error": "task not found"}), 404
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, **result})
+
+
+@services_bp.route("/work-diary/<task_id>/comment", methods=["POST"])
+@login_required
+@require_capability("services.work_diary.update")
+def work_diary_comment(task_id):
+    """Append a comment to a task. Returns the new comment as JSON."""
+    from app.services import work_diary_service as wd
+
+    comment = request.form.get("comment") or ""
+    try:
+        new_comment = wd.add_comment(task_id, comment, current_user.username)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except LookupError:
+        return jsonify({"ok": False, "error": "task not found"}), 404
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "comment": new_comment})
 
 
 @services_bp.route("/neto-config/refresh", methods=["POST"])
