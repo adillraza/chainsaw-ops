@@ -138,6 +138,37 @@ def update_status(task_id: str, new_status: str, username: str) -> dict:
     }
 
 
+def set_priority(task_id: str, priority) -> dict:
+    """Set a task's priority as a 1-5 star rating, or clear it (0/None → NULL)."""
+    if priority in (None, "", "0", 0):
+        value = None
+    else:
+        try:
+            n = int(priority)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid priority {priority!r}")
+        if not 1 <= n <= 5:
+            raise ValueError("priority must be 1-5")
+        value = str(n)
+
+    client = _client()
+    exists = list(client.query(
+        f"SELECT 1 FROM {T_TASKS} WHERE task_id=@id",
+        job_config=_params(("id", "STRING", task_id)),
+    ).result())
+    if not exists:
+        raise LookupError("task not found")
+
+    client.query(f"""
+        UPDATE {T_TASKS}
+        SET priority=@priority, updated_at=CURRENT_TIMESTAMP()
+        WHERE task_id=@id
+    """, job_config=_params(
+        ("priority", "STRING", value), ("id", "STRING", task_id),
+    )).result()
+    return {"priority": value}
+
+
 def add_comment(task_id: str, comment: str, username: str) -> dict:
     """Append a comment to a task. Returns the new comment for the UI."""
     comment = (comment or "").strip()

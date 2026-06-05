@@ -61,8 +61,7 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("services.config.view",         "See the NETO Advanced Config tab — every Neto cPanel configuration variable with its value, type and description"),
         ("services.config.refresh",      "Trigger a re-scrape of the Neto Advanced Configuration from cPanel"),
         ("services.calculator.view",     "Use the Startrack Freight Calculator (reserved — not built yet)"),
-        ("services.work_diary.view",     "See the Adil Work Diary — personal task tracker sourced from email"),
-        ("services.work_diary.update",   "Change task status and add comments in the Adil Work Diary"),
+        ("services.work_diary.view",     "See and edit the Adil Work Diary — personal task tracker sourced from email (status, priority, comments)"),
     ],
 }
 

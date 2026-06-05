@@ -88,11 +88,26 @@
                 <div class="truncate text-[11px] text-slate-400" :title="t.source_sender" x-text="t.source_sender || ''"></div>
               </td>
               <td class="px-4 py-3 whitespace-nowrap">
-                <span x-show="t.priority" class="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-800" x-text="t.priority"></span>
-                <span x-show="!t.priority" class="text-slate-300">—</span>
+                <div class="flex items-center gap-0.5" @mouseleave="hoverStar[t.task_id] = 0">
+                  <template x-for="n in 5" :key="n">
+                    <button type="button" @click="setPriority(t, n)" @mouseenter="hoverStar[t.task_id] = n"
+                            :disabled="prioritySaving === t.task_id"
+                            class="leading-none disabled:opacity-50"
+                            :title="n + (n === 1 ? ' star' : ' stars')">
+                      <i class="fas fa-star text-sm"
+                         :class="n <= (hoverStar[t.task_id] || Number(t.priority || 0)) ? 'text-amber-400' : 'text-slate-300 hover:text-amber-200'"></i>
+                    </button>
+                  </template>
+                </div>
               </td>
               <td class="px-4 py-3 whitespace-nowrap">
-                <span class="rounded px-2 py-0.5 text-[11px] font-medium" :class="statusClass(t.status)" x-text="statusLabel(t.status)"></span>
+                <select @change="changeStatus(t, $event.target.value)" :disabled="saving === t.task_id"
+                        class="rounded-md border-0 py-1 pl-2 pr-7 text-[11px] font-medium ring-1 ring-inset focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
+                        :class="statusClass(t.status) + ' ring-black/5'">
+                  {% for s in statuses %}
+                  <option value="{{ s }}" :selected="t.status === '{{ s }}'">{{ s if s != 'Inprogress' else 'In progress' }}</option>
+                  {% endfor %}
+                </select>
               </td>
               <td class="px-4 py-3 text-right">
                 <button type="button" @click="toggle(t)" class="text-slate-400 hover:text-slate-700">
@@ -196,6 +211,7 @@
     return {
       all: [], q: '', statusFilter: '', page: 0, perPage: 50, openKey: null,
       draft: {}, saving: null, commenting: null,
+      hoverStar: {}, prioritySaving: null,
       init() {
         try { this.all = JSON.parse(document.getElementById('wd-data').textContent || '[]'); }
         catch (e) { this.all = []; }
@@ -224,6 +240,19 @@
         return this.filtered.slice(p * this.perPage, (p + 1) * this.perPage);
       },
       toggle(t) { this.openKey = this.openKey === t.task_id ? null : t.task_id; },
+      async setPriority(t, n) {
+        if (this.prioritySaving) return;
+        const next = (Number(t.priority || 0) === n) ? 0 : n;  // click the current top star to clear
+        this.prioritySaving = t.task_id;
+        try {
+          const body = new URLSearchParams({ priority: String(next) });
+          const r = await fetch(`/services/work-diary/${encodeURIComponent(t.task_id)}/priority`, { method: 'POST', body });
+          const j = await r.json();
+          if (j.ok) { t.priority = j.priority; }
+          else { alert('Could not set priority: ' + (j.error || r.status)); }
+        } catch (e) { alert('Could not set priority: ' + e); }
+        finally { this.prioritySaving = null; this.hoverStar[t.task_id] = 0; }
+      },
       async changeStatus(t, status) {
         if (t.status === status || this.saving) return;
         this.saving = t.task_id;

@@ -325,9 +325,27 @@ def work_diary():
     )
 
 
+@services_bp.route("/work-diary/<task_id>/priority", methods=["POST"])
+@login_required
+@require_capability("services.work_diary.view")
+def work_diary_priority(task_id):
+    """Set a task's 1-5 star priority (0 clears it). Returns JSON."""
+    from app.services import work_diary_service as wd
+
+    try:
+        result = wd.set_priority(task_id, request.form.get("priority"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except LookupError:
+        return jsonify({"ok": False, "error": "task not found"}), 404
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, **result})
+
+
 @services_bp.route("/work-diary/<task_id>/status", methods=["POST"])
 @login_required
-@require_capability("services.work_diary.update")
+@require_capability("services.work_diary.view")
 def work_diary_status(task_id):
     """Change a task's status (logs the transition). Returns JSON."""
     from app.services import work_diary_service as wd
@@ -346,7 +364,7 @@ def work_diary_status(task_id):
 
 @services_bp.route("/work-diary/<task_id>/comment", methods=["POST"])
 @login_required
-@require_capability("services.work_diary.update")
+@require_capability("services.work_diary.view")
 def work_diary_comment(task_id):
     """Append a comment to a task. Returns the new comment as JSON."""
     from app.services import work_diary_service as wd
