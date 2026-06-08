@@ -6,8 +6,9 @@
 <section class="mb-6">
   <h1 class="text-xl font-semibold text-slate-900">Adil Work Diary</h1>
   <p class="mt-1 text-sm text-slate-500">
-    Personal task tracker — tasks pulled from email, cleaned by AI. Most recent on top.
-    Change status or add comments inline; everything is stored in BigQuery.
+    Personal task tracker — tasks pulled from email, cleaned by AI, grouped into
+    In Progress, Backlog and Completed. Change status, priority or comments inline;
+    everything is stored in BigQuery.
   </p>
 </section>
 
@@ -40,25 +41,17 @@
   </div>
 
   <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
-    {# Filter bar #}
-    <div class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+    {# Filter bar (search + priority apply across all three sections) #}
+    <div class="flex flex-wrap items-end gap-3 p-4">
       <div class="flex-1 min-w-[220px]">
         <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Search</label>
-        <input type="text" x-model="q" @input.debounce.200ms="page=0"
+        <input type="text" x-model="q"
                placeholder="title, description, subject or sender…"
                class="mt-1 w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
       </div>
       <div>
-        <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Status</label>
-        <select x-model="statusFilter" @change="page=0"
-                class="mt-1 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
-          <option value="">All statuses</option>
-          {% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-        </select>
-      </div>
-      <div>
         <label class="block text-xs font-medium uppercase tracking-wide text-slate-500">Priority</label>
-        <select x-model="priorityFilter" @change="page=0"
+        <select x-model="priorityFilter"
                 class="mt-1 rounded-md border-slate-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500">
           <option value="">All priorities</option>
           <option value="5">★★★★★ (5)</option>
@@ -71,22 +64,30 @@
       </div>
       <div class="pb-2 text-xs text-slate-400" x-text="filtered.length + ' of ' + all.length + ' tasks'"></div>
     </div>
+  </div>
 
-    {# Table #}
-    <div class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-slate-200 text-sm">
-        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-          <tr>
-            <th class="px-4 py-2 text-left font-medium">Received</th>
-            <th class="px-4 py-2 text-left font-medium">Task</th>
-            <th class="px-4 py-2 text-left font-medium">Source</th>
-            <th class="px-4 py-2 text-left font-medium">Priority</th>
-            <th class="px-4 py-2 text-left font-medium">Status</th>
-            <th class="px-4 py-2"></th>
-          </tr>
-        </thead>
-        <template x-for="t in pageRows" :key="t.task_id">
-          <tbody class="divide-y divide-slate-100">
+  {# Three sections, fixed order: In Progress → Backlog → Completed #}
+  <template x-for="sec in sections" :key="sec.key">
+    <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div class="flex items-center gap-2 border-b px-4 py-3" :class="sec.headClass">
+        <i class="fas" :class="sec.icon"></i>
+        <h2 class="text-sm font-semibold" x-text="sec.label"></h2>
+        <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="sec.badgeClass" x-text="rowsFor(sec.key).length"></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="px-4 py-2 text-left font-medium">Received</th>
+              <th class="px-4 py-2 text-left font-medium">Task</th>
+              <th class="px-4 py-2 text-left font-medium">Source</th>
+              <th class="px-4 py-2 text-left font-medium">Priority</th>
+              <th class="px-4 py-2 text-left font-medium">Status</th>
+              <th class="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <template x-for="t in rowsFor(sec.key)" :key="t.task_id">
+            <tbody class="divide-y divide-slate-100">
             <tr class="align-top hover:bg-slate-50">
               <td class="px-4 py-3 whitespace-nowrap text-xs text-slate-500" x-text="t.received_display"></td>
               <td class="px-4 py-3 max-w-[460px]">
@@ -198,22 +199,14 @@
               </td>
             </tr>
           </tbody>
-        </template>
-        <tbody x-show="!filtered.length">
-          <tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">No tasks match your filter.</td></tr>
-        </tbody>
-      </table>
+          </template>
+          <tbody x-show="!rowsFor(sec.key).length">
+            <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-slate-400">No tasks in this section.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-
-    {# Pagination #}
-    <div class="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500" x-show="pageCount > 1">
-      <button type="button" @click="page = Math.max(0, page-1)" :disabled="page===0"
-              class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40">Prev</button>
-      <span class="text-xs">Page <span x-text="page+1"></span> of <span x-text="pageCount"></span></span>
-      <button type="button" @click="page = Math.min(pageCount-1, page+1)" :disabled="page>=pageCount-1"
-              class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40">Next</button>
-    </div>
-  </div>
+  </template>
 </div>
 {% endif %}
 {% endblock %}
@@ -222,9 +215,20 @@
 <script>
   function workDiary() {
     return {
-      all: [], q: '', statusFilter: '', priorityFilter: '', page: 0, perPage: 50, openKey: null,
+      all: [], q: '', priorityFilter: '', openKey: null,
       draft: {}, saving: null, commenting: null,
       hoverStar: {}, prioritySaving: null,
+      sections: [
+        { key: 'Inprogress', label: 'In Progress', icon: 'fa-spinner',
+          headClass: 'bg-amber-50 text-amber-800 border-amber-200',
+          badgeClass: 'bg-amber-100 text-amber-800' },
+        { key: 'Backlog', label: 'Backlog', icon: 'fa-inbox',
+          headClass: 'bg-slate-50 text-slate-700 border-slate-200',
+          badgeClass: 'bg-slate-200 text-slate-700' },
+        { key: 'Completed', label: 'Completed', icon: 'fa-circle-check',
+          headClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          badgeClass: 'bg-emerald-100 text-emerald-800' },
+      ],
       init() {
         try { this.all = JSON.parse(document.getElementById('wd-data').textContent || '[]'); }
         catch (e) { this.all = []; }
@@ -239,7 +243,6 @@
       get filtered() {
         const q = this.q.trim().toLowerCase();
         return this.all.filter(t => {
-          if (this.statusFilter && t.status !== this.statusFilter) return false;
           if (this.priorityFilter === 'none') { if (t.priority) return false; }
           else if (this.priorityFilter && String(t.priority || '') !== this.priorityFilter) return false;
           if (!q) return true;
@@ -249,11 +252,7 @@
               || (t.source_sender && t.source_sender.toLowerCase().includes(q));
         });
       },
-      get pageCount() { return Math.max(1, Math.ceil(this.filtered.length / this.perPage)); },
-      get pageRows() {
-        const p = Math.min(this.page, this.pageCount - 1);
-        return this.filtered.slice(p * this.perPage, (p + 1) * this.perPage);
-      },
+      rowsFor(status) { return this.filtered.filter(t => t.status === status); },
       toggle(t) { this.openKey = this.openKey === t.task_id ? null : t.task_id; },
       async setPriority(t, n) {
         if (this.prioritySaving) return;
