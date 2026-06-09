@@ -27,8 +27,16 @@ from __future__ import annotations
 CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     "PO Cross Check – Access": [
         ("po.view",                  "See the core PO Cross Check tabs (REX PO Orders, Comparison, Cost Prices, Change Log)"),
-        ("po.shop_order.view",       "See the Shop Order tabs (MSL Based, Smart Order, Seasonality Index, Weather & Alerts, Smart Logic)"),
-        ("stock.view",               "Use the REX Stock explorer — search a SKU for its full movement history + reconstructed stock balance"),
+    ],
+    "Shop Order": [
+        ("shop_order.msl.view",          "Shop Order — MSL Based"),
+        ("shop_order.smart.view",        "Shop Order — Smart Order"),
+        ("shop_order.seasonality.view",  "Shop Order — Seasonality Index"),
+        ("shop_order.weather.view",      "Shop Order — Weather & Alerts"),
+        ("shop_order.logic.view",        "Shop Order — Smart Logic"),
+        ("stock.view",                   "Shop Order — REX Stock explorer (search a SKU for its full movement history + reconstructed stock balance)"),
+        ("validation.view",              "Shop Order — MSL Changes (proposed minimum-stock-level changes)"),
+        ("validation.msl.approve",       "Approve MSL (minimum stock level) changes"),
     ],
     "PO Cross Check – Reviews": [
         ("reviews.flag",             "Flag an item on the Comparison page"),
@@ -41,10 +49,6 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     "PO Cross Check – Notes": [
         ("notes.add",                "Add notes to POs and items"),
         ("notes.delete_any",         "Delete any user's note (not just your own)"),
-    ],
-    "Validation": [
-        ("validation.view",          "See the Validation section"),
-        ("validation.msl.approve",   "Approve MSL (minimum stock level) changes"),
     ],
     "Administration": [
         ("users.manage",             "Create users, reset passwords, assign roles"),

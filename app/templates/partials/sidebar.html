@@ -60,7 +60,7 @@
        customer-service-only roles (e.g. cs_agent, viewer) won't see
        these in the sidebar at all. Retail / Warehouse-Review entries
        layer on top with their own sub-capability checks. #}
-    {% if can('po.view') or can('po.shop_order.view') %}
+    {% if can('po.view') %}
       {% set po_items = [] %}
       {% if can('po.view') %}
         {% set po_items = po_items + [
@@ -68,9 +68,6 @@
           {'label': 'Comparison',        'href': url_for('purchase_orders.comparison'),     'icon': 'fa-balance-scale'},
           {'label': 'Cost Price Check',  'href': url_for('purchase_orders.cost_prices'),    'icon': 'fa-dollar-sign'},
         ] %}
-      {% endif %}
-      {% if can('po.shop_order.view') %}
-        {% set po_items = po_items + [{'label': 'Shop Order',  'href': url_for('purchase_orders.shop_order'), 'icon': 'fa-cart-flatbed'}] %}
       {% endif %}
       {% if can('reviews.retail.view') %}
         {% set po_items = po_items + [{'label': 'Retail Reviews',    'href': url_for('purchase_orders.retail'),    'icon': 'fa-user-check'}] %}
@@ -84,15 +81,32 @@
       {{ nav_group('PO Cross Check', 'fa-clipboard-check', po_items, default_open=true) }}
     {% endif %}
 
-    {% if can('stock.view') %}
-      {{ nav_item('stock.index', 'REX Stock', 'fa-boxes-stacked') }}
-    {% endif %}
-
-    {% if can('validation.view') %}
-      {% set validation_items = [
-        {'label': 'MSL Changes', 'href': url_for('validation.msl_changes'), 'icon': 'fa-shield-halved'},
-      ] %}
-      {{ nav_group('Validation', 'fa-circle-check', validation_items, default_open=true) }}
+    {# Shop Order — its own section; each view is an individually
+       role-assignable item. #}
+    {% if can('shop_order.msl.view') or can('shop_order.smart.view') or can('shop_order.seasonality.view') or can('shop_order.weather.view') or can('shop_order.logic.view') or can('stock.view') or can('validation.view') %}
+      {% set shop_items = [] %}
+      {% if can('shop_order.msl.view') %}
+        {% set shop_items = shop_items + [{'label': 'MSL Based',         'href': url_for('purchase_orders.shop_order', tab='msl'),         'icon': 'fa-list-check'}] %}
+      {% endif %}
+      {% if can('shop_order.smart.view') %}
+        {% set shop_items = shop_items + [{'label': 'Smart Order',       'href': url_for('purchase_orders.shop_order', tab='smart'),       'icon': 'fa-brain'}] %}
+      {% endif %}
+      {% if can('shop_order.seasonality.view') %}
+        {% set shop_items = shop_items + [{'label': 'Seasonality Index', 'href': url_for('purchase_orders.shop_order', tab='seasonality'), 'icon': 'fa-chart-line'}] %}
+      {% endif %}
+      {% if can('shop_order.weather.view') %}
+        {% set shop_items = shop_items + [{'label': 'Weather & Alerts',  'href': url_for('purchase_orders.shop_order', tab='weather'),     'icon': 'fa-cloud-sun-rain'}] %}
+      {% endif %}
+      {% if can('shop_order.logic.view') %}
+        {% set shop_items = shop_items + [{'label': 'Smart Logic',       'href': url_for('purchase_orders.shop_order', tab='logic'),       'icon': 'fa-diagram-project'}] %}
+      {% endif %}
+      {% if can('stock.view') %}
+        {% set shop_items = shop_items + [{'label': 'REX Stock',         'href': url_for('stock.index'),                                   'icon': 'fa-boxes-stacked'}] %}
+      {% endif %}
+      {% if can('validation.view') %}
+        {% set shop_items = shop_items + [{'label': 'MSL Changes',       'href': url_for('validation.msl_changes'),                        'icon': 'fa-shield-halved'}] %}
+      {% endif %}
+      {{ nav_group('Shop Order', 'fa-cart-flatbed', shop_items, default_open=true) }}
     {% endif %}
 
     {% if can('support.calls.view') or can('kb.view') %}

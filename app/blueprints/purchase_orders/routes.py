@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from flask import abort, jsonify, render_template, request
+from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import or_
 
@@ -1358,6 +1358,16 @@ _SHOP_BUCKET_LABELS = {
     3: "PO #3 — All Other JONO AND JOHNO",
 }
 _URGENCY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+
+# Each Shop Order tab is its own sidebar item + capability, individually assignable.
+_SHOP_TAB_ORDER = ["msl", "smart", "seasonality", "weather", "logic"]
+_SHOP_TAB_CAPS = {
+    "msl":         "shop_order.msl.view",
+    "smart":       "shop_order.smart.view",
+    "seasonality": "shop_order.seasonality.view",
+    "weather":     "shop_order.weather.view",
+    "logic":       "shop_order.logic.view",
+}
 _MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -1387,12 +1397,24 @@ def _seasonality_cell(idx):
 
 @purchase_orders_bp.route("/shop-order")
 @login_required
-@require_capability("po.shop_order.view")
 def shop_order():
-    active_tab = request.args.get("tab", "msl")
+    # Each tab is individually role-assignable; the page shows only the tabs
+    # the user is permitted, and loads only those tabs' data.
+    from app.auth.abilities import user_can
+    allowed_tabs = [t for t in _SHOP_TAB_ORDER if user_can(current_user, _SHOP_TAB_CAPS[t])]
+    if not allowed_tabs:
+        flash("You don't have permission to view Shop Order.", "error")
+        return redirect(url_for("dashboard.dashboard"))
+    requested = request.args.get("tab")
+    active_tab = requested if requested in allowed_tabs else allowed_tabs[0]
 
-    msl_rows = CachedShopOrderMsl.query.all()
-    smart_rows = CachedShopOrderSmart.query.all()
+    load_msl     = "msl" in allowed_tabs
+    load_smart   = ("smart" in allowed_tabs) or ("logic" in allowed_tabs)  # logic tab needs a smart example
+    load_season  = "seasonality" in allowed_tabs
+    load_weather = "weather" in allowed_tabs
+
+    msl_rows = CachedShopOrderMsl.query.all() if load_msl else []
+    smart_rows = CachedShopOrderSmart.query.all() if load_smart else []
 
     # --- MSL: per bucket, split ORDER vs NEEDS_ADJUSTMENT ---
     msl_buckets = []
@@ -1430,7 +1452,7 @@ def shop_order():
         })
 
     # --- Seasonality Index: pivot (product_type x month) into a heatmap grid ---
-    season_rows = CachedSeasonalityIndex.query.all()
+    season_rows = CachedSeasonalityIndex.query.all() if load_season else []
     by_type: dict[str, dict] = {}
     for r in season_rows:
         d = by_type.setdefault(r.product_type, {
@@ -1477,18 +1499,17 @@ def shop_order():
     current_month = datetime.now().month
 
     # --- Weather & Alerts ---
-    weather_current = (
-        CachedWeatherCurrent.query.order_by(CachedWeatherCurrent.fetched_at.desc()).first()
-    )
-    weather_forecast = (
-        CachedWeatherForecast.query.order_by(CachedWeatherForecast.day_offset).all()
-    )
-    weather_alerts = (
-        CachedWeatherAlert.query
-        .order_by(CachedWeatherAlert.distance_km.asc().nullslast())
-        .all()
-    )
-    alerts_near = sum(1 for a in weather_alerts if (a.distance_km or 9999) <= 50)
+    weather_current = None
+    weather_forecast = []
+    weather_alerts = []
+    alerts_near = 0
+    if load_weather:
+        weather_current = CachedWeatherCurrent.query.order_by(CachedWeatherCurrent.fetched_at.desc()).first()
+        weather_forecast = CachedWeatherForecast.query.order_by(CachedWeatherForecast.day_offset).all()
+        weather_alerts = (
+            CachedWeatherAlert.query.order_by(CachedWeatherAlert.distance_km.asc().nullslast()).all()
+        )
+        alerts_near = sum(1 for a in weather_alerts if (a.distance_km or 9999) <= 50)
 
     # --- Smart Logic: pick a real line to walk through the pipeline ---
     all_smart = [r for b in smart_buckets for r in b["lines"]]
@@ -1506,6 +1527,7 @@ def shop_order():
     return render_template(
         "purchase_orders/shop_order.html",
         active_tab=active_tab,
+        allowed_tabs=allowed_tabs,
         msl_buckets=msl_buckets,
         smart_buckets=smart_buckets,
         msl_total=sum(b["total_value"] for b in msl_buckets),
