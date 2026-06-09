@@ -99,6 +99,7 @@ def create_app(config_object: str | None = None) -> Flask:
     from app.blueprints.customer_360 import customer_360_bp
     from app.blueprints.knowledge_base import knowledge_base_bp
     from app.blueprints.services import services_bp
+    from app.blueprints.stock import stock_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -112,6 +113,7 @@ def create_app(config_object: str | None = None) -> Flask:
     app.register_blueprint(customer_360_bp)
     app.register_blueprint(knowledge_base_bp)
     app.register_blueprint(services_bp)
+    app.register_blueprint(stock_bp)
 
     return app
 

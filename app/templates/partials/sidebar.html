@@ -84,6 +84,10 @@
       {{ nav_group('PO Cross Check', 'fa-clipboard-check', po_items, default_open=true) }}
     {% endif %}
 
+    {% if can('stock.view') %}
+      {{ nav_item('stock.index', 'REX Stock', 'fa-boxes-stacked') }}
+    {% endif %}
+
     {% if can('validation.view') %}
       {% set validation_items = [
         {'label': 'MSL Changes', 'href': url_for('validation.msl_changes'), 'icon': 'fa-shield-halved'},
