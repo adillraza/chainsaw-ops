@@ -1408,10 +1408,11 @@ def shop_order():
     requested = request.args.get("tab")
     active_tab = requested if requested in allowed_tabs else allowed_tabs[0]
 
-    load_msl     = "msl" in allowed_tabs
-    load_smart   = ("smart" in allowed_tabs) or ("logic" in allowed_tabs)  # logic tab needs a smart example
-    load_season  = "seasonality" in allowed_tabs
-    load_weather = "weather" in allowed_tabs
+    # Each view is its own page now — load only the active view's data.
+    load_msl     = active_tab == "msl"
+    load_smart   = active_tab in ("smart", "logic")  # logic page needs a smart example
+    load_season  = active_tab == "seasonality"
+    load_weather = active_tab == "weather"
 
     msl_rows = CachedShopOrderMsl.query.all() if load_msl else []
     smart_rows = CachedShopOrderSmart.query.all() if load_smart else []
