@@ -491,7 +491,10 @@ target_stock  = ceil(adj_daily × (lead + <b>30</b>))   ← cover lead time + 30
 SPIKY            → max(0, biggest_single_order − net_position)
 URGENT / ORDER   → max(1, target_stock − net_position)
 
-then carton-round → nearest multiple of REX carton qty, min 1 carton</pre>
+then carton-round (carton qty &gt; 1):
+  shortfall &lt; ½ carton  → 0   ← don't buy a whole carton for a trickle
+  otherwise             → nearest carton multiple (≥ 1 carton)</pre>
+        <p class="mt-2 text-[11px] text-slate-500">The ½-carton floor (<span class="font-mono">carton_floor_frac = 0.5</span>) stops the model ordering a full carton to cover a tiny gap when stock-on-hand + on-order already suffices.</p>
       </div>
       <div class="text-center text-slate-300"><i class="fas fa-arrow-down"></i></div>
 
