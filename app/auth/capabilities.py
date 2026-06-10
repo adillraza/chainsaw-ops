@@ -34,6 +34,7 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("shop_order.seasonality.view",  "Shop Order — Seasonality Index"),
         ("shop_order.weather.view",      "Shop Order — Weather & Alerts"),
         ("shop_order.logic.view",        "Shop Order — Smart Logic"),
+        ("shop_order.capacity.view",     "Shop Order — Capacity Validation (set per-SKU holding capacity that gates the Final List)"),
         ("stock.view",                   "Shop Order — REX Stock explorer (search a SKU for its full movement history + reconstructed stock balance)"),
         ("validation.view",              "Shop Order — MSL Changes (proposed minimum-stock-level changes)"),
         ("validation.msl.approve",       "Approve MSL (minimum stock level) changes"),

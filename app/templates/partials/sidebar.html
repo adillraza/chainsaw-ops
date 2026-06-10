@@ -100,6 +100,9 @@
       {% if can('shop_order.logic.view') %}
         {% set shop_items = shop_items + [{'label': 'Smart Logic',       'href': url_for('purchase_orders.shop_order', tab='logic'),       'icon': 'fa-diagram-project'}] %}
       {% endif %}
+      {% if can('shop_order.capacity.view') %}
+        {% set shop_items = shop_items + [{'label': 'Capacity Validation', 'href': url_for('purchase_orders.capacity_validation'),           'icon': 'fa-warehouse'}] %}
+      {% endif %}
       {% if can('stock.view') %}
         {% set shop_items = shop_items + [{'label': 'REX Stock',         'href': url_for('stock.index'),                                   'icon': 'fa-boxes-stacked'}] %}
       {% endif %}

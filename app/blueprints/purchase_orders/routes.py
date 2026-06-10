@@ -1545,3 +1545,119 @@ def shop_order():
         example_row=example_row,
         cached_at=cached_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Capacity Validation — staff sign-off on per-SKU holding capacity
+# ---------------------------------------------------------------------------
+# Drives the Final List model (rex_po_final): the Smart model may want to top up
+# qty or add new SKUs, but it can only do so up to a staff-set "capacity" (max
+# total units the store can hold). This page surfaces Smart lines that need a
+# capacity decision and writes each submission to operations.sku_capacity.
+
+@purchase_orders_bp.route("/capacity")
+@login_required
+@require_capability("shop_order.capacity.view")
+def capacity_validation():
+    from app.services.capacity_service import get_capacity_map
+
+    show_all = request.args.get("all") == "1"
+    cap_map = get_capacity_map()
+
+    smart_rows = (
+        CachedShopOrderSmart.query
+        .order_by(CachedShopOrderSmart.bucket, CachedShopOrderSmart.manufacturer_sku)
+        .all()
+    )
+
+    lines = []
+    for r in smart_rows:
+        avail = r.available or 0
+        onord = r.on_order or 0
+        prop = r.recommended_qty or 0
+        total_qty = avail + onord + prop                       # ending stock after fulfilment
+        stored = cap_map.get(r.manufacturer_sku)
+        if stored is None:
+            status, stored_cap = "NEW", None                   # never validated
+        elif total_qty > (stored.get("capacity") or 0):
+            status, stored_cap = "OVER", stored.get("capacity")  # proposal exceeds stored cap -> re-validate
+        else:
+            status, stored_cap = "OK", stored.get("capacity")   # within capacity, no action needed
+        lines.append({
+            "bucket": r.bucket,
+            "sku": r.manufacturer_sku,
+            "description": r.short_description,
+            "available": avail,
+            "on_order": onord,
+            "proposed": prop,
+            "total_qty": total_qty,
+            "stored_capacity": stored_cap,
+            "default_capacity": stored_cap if stored_cap is not None else total_qty,
+            "has_space": bool(stored.get("has_space")) if stored else False,
+            "status": status,
+            "validated_by": stored.get("validated_by") if stored else None,
+        })
+
+    actionable = [l for l in lines if l["status"] in ("NEW", "OVER")]
+    visible = lines if show_all else actionable
+
+    buckets = {}
+    for l in visible:
+        buckets.setdefault(l["bucket"], []).append(l)
+    bucket_groups = [
+        {"bucket": b, "label": _SHOP_BUCKET_LABELS.get(b, f"Bucket {b}"), "lines": buckets[b]}
+        for b in sorted(k for k in buckets.keys() if k is not None)
+    ]
+
+    counts = {
+        "new": sum(1 for l in lines if l["status"] == "NEW"),
+        "over": sum(1 for l in lines if l["status"] == "OVER"),
+        "ok": sum(1 for l in lines if l["status"] == "OK"),
+        "total_smart": len(smart_rows),
+    }
+
+    cached_at = None
+    stamps = [r.cached_at for r in smart_rows if r.cached_at]
+    if stamps:
+        cached_at = max(stamps)
+
+    return render_template(
+        "purchase_orders/capacity_validation.html",
+        bucket_groups=bucket_groups,
+        counts=counts,
+        show_all=show_all,
+        cached_at=cached_at,
+    )
+
+
+@purchase_orders_bp.route("/capacity/submit", methods=["POST"])
+@login_required
+@require_capability("shop_order.capacity.view")
+def capacity_submit():
+    from app.services.capacity_service import insert_capacity
+
+    data = request.get_json(silent=True) or {}
+    sku = (data.get("sku") or "").strip()
+    if not sku:
+        return jsonify(ok=False, error="missing sku"), 400
+    try:
+        capacity = int(data.get("capacity"))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="invalid capacity"), 400
+    if capacity < 0:
+        return jsonify(ok=False, error="capacity must be >= 0"), 400
+
+    ok, msg = insert_capacity(
+        sku=sku,
+        capacity=capacity,
+        has_space=bool(data.get("has_space")),
+        available=data.get("available"),
+        on_order=data.get("on_order"),
+        proposed=data.get("proposed"),
+        bucket=data.get("bucket"),
+        short_description=data.get("description"),
+        validated_by=getattr(current_user, "username", None),
+    )
+    if not ok:
+        return jsonify(ok=False, error=msg), 500
+    return jsonify(ok=True, sku=sku, capacity=capacity)
