@@ -31,6 +31,7 @@ CAPABILITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     "Shop Order": [
         ("shop_order.msl.view",          "Shop Order — MSL Based"),
         ("shop_order.smart.view",        "Shop Order — Smart Order"),
+        ("shop_order.final.view",        "Shop Order — Final List (what will actually be ordered: MSL + capacity-gated Smart top-up)"),
         ("shop_order.seasonality.view",  "Shop Order — Seasonality Index"),
         ("shop_order.weather.view",      "Shop Order — Weather & Alerts"),
         ("shop_order.logic.view",        "Shop Order — Smart Logic"),

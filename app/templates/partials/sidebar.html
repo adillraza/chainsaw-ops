@@ -91,6 +91,9 @@
       {% if can('shop_order.smart.view') %}
         {% set shop_items = shop_items + [{'label': 'Smart Order',       'href': url_for('purchase_orders.shop_order', tab='smart'),       'icon': 'fa-brain'}] %}
       {% endif %}
+      {% if can('shop_order.final.view') %}
+        {% set shop_items = shop_items + [{'label': 'Final List',        'href': url_for('purchase_orders.shop_order', tab='final'),       'icon': 'fa-clipboard-list'}] %}
+      {% endif %}
       {% if can('shop_order.seasonality.view') %}
         {% set shop_items = shop_items + [{'label': 'Seasonality Index', 'href': url_for('purchase_orders.shop_order', tab='seasonality'), 'icon': 'fa-chart-line'}] %}
       {% endif %}

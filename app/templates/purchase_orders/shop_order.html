@@ -7,7 +7,7 @@
 {% macro num(v) %}{{ v if v is not none else '' }}{% endmacro %}
 
 {% block content %}
-{% set tab_labels = {'msl': 'MSL Based', 'smart': 'Smart Order', 'seasonality': 'Seasonality Index', 'weather': 'Weather & Alerts', 'logic': 'Smart Logic'} %}
+{% set tab_labels = {'msl': 'MSL Based', 'smart': 'Smart Order', 'final': 'Final List', 'seasonality': 'Seasonality Index', 'weather': 'Weather & Alerts', 'logic': 'Smart Logic'} %}
 <section class="mb-4">
 
   {# ---- header (each view is its own page — no in-page tab bar) ---- #}
@@ -162,6 +162,64 @@
   </div>
 
   {% endif %}
+  {# ========================== FINAL LIST — what actually gets ordered ========================== #}
+  {% if active_tab == 'final' %}
+  <div>
+    <p class="mb-3 text-sm text-slate-600">
+      <b>{{ final_lines }}</b> lines · est. <b>${{ fmt_money(final_total) }}</b>.
+      This is what will actually be ordered: the REX/MSL base plus Smart top-ups for staff-validated SKUs (capped at capacity).
+      {% if final_held %}<span class="text-orange-600">{{ final_topups }} top-up{{ '' if final_topups == 1 else 's' }} applied · {{ final_held }} held pending capacity validation.</span>
+      {% else %}{{ final_topups }} Smart top-up{{ '' if final_topups == 1 else 's' }} applied.{% endif %}
+    </p>
+    {% for b in final_buckets %}
+      {% if b.lines %}
+      <h3 class="mt-6 mb-2 text-base font-semibold text-slate-800">{{ b.label }}
+        <span class="ml-2 text-xs font-normal text-slate-500">{{ b.lines|length }} line{{ '' if b.lines|length == 1 else 's' }} · est. ${{ fmt_money(b.total_value) }}</span>
+      </h3>
+      <div class="overflow-x-auto rounded-lg border border-slate-200">
+        <table class="min-w-full text-xs">
+          <thead class="bg-slate-50 text-slate-500">
+            <tr class="text-left">
+              <th class="px-2 py-1.5">SKU</th><th class="px-2 py-1.5">Description</th>
+              <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">OnOrder</th>
+              <th class="px-2 py-1.5 text-right">MSL</th><th class="px-2 py-1.5 text-right">Smart</th>
+              <th class="px-2 py-1.5 text-right">Capacity</th>
+              <th class="px-2 py-1.5 text-right">Final</th><th class="px-2 py-1.5 text-right">Total after</th>
+              <th class="px-2 py-1.5 text-center">Decision</th><th class="px-2 py-1.5 text-right">Est $</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for r in b.lines %}
+            <tr class="hover:bg-slate-50">
+              <td class="px-2 py-1.5 font-medium text-slate-800">{{ r.manufacturer_sku }}</td>
+              <td class="px-2 py-1.5 text-slate-600">{{ r.short_description }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.available) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.on_order) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.msl_qty) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.smart_qty) }}</td>
+              <td class="px-2 py-1.5 text-right text-slate-400">{{ num(r.capacity) if r.capacity is not none else '—' }}</td>
+              <td class="px-2 py-1.5 text-right font-bold text-slate-900">{{ num(r.final_qty) }}</td>
+              <td class="px-2 py-1.5 text-right">{{ num(r.total_after) }}</td>
+              <td class="px-2 py-1.5 text-center">
+                {% if r.decision == 'SMART_TOPUP' %}<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">Smart +{{ r.final_qty - r.msl_qty }}</span>
+                {% elif r.decision == 'CAPPED' %}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="Limited by capacity {{ r.capacity }}">capped</span>
+                {% elif r.decision == 'SMART_HELD' %}<span class="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700" title="Smart wants {{ r.held_qty }} more — validate capacity to release">held +{{ r.held_qty }}</span>
+                {% else %}<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">MSL</span>{% endif %}
+              </td>
+              <td class="px-2 py-1.5 text-right">${{ fmt_money(r.estimated_line_value) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <h3 class="mt-6 mb-2 text-base font-semibold text-slate-800">{{ b.label }}</h3>
+      <p class="mb-2 text-sm italic text-slate-400">No lines.</p>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {# ========================== TAB 3 — SEASONALITY INDEX ========================== #}
   {% if active_tab == 'seasonality' %}
   <div>

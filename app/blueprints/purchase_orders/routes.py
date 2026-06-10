@@ -1360,10 +1360,11 @@ _SHOP_BUCKET_LABELS = {
 _URGENCY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
 # Each Shop Order tab is its own sidebar item + capability, individually assignable.
-_SHOP_TAB_ORDER = ["msl", "smart", "seasonality", "weather", "logic"]
+_SHOP_TAB_ORDER = ["msl", "smart", "final", "seasonality", "weather", "logic"]
 _SHOP_TAB_CAPS = {
     "msl":         "shop_order.msl.view",
     "smart":       "shop_order.smart.view",
+    "final":       "shop_order.final.view",
     "seasonality": "shop_order.seasonality.view",
     "weather":     "shop_order.weather.view",
     "logic":       "shop_order.logic.view",
@@ -1395,6 +1396,31 @@ def _seasonality_cell(idx):
     return f"#{r:02x}{g:02x}{b:02x}", text
 
 
+def _load_final_rows():
+    """Live-read the Final List (dataform.rex_po_final) from BigQuery.
+
+    Small, read-only table — queried live so the page always reflects the most
+    recent model run (no SQLite cache / migration needed).
+    """
+    from app.services.purchase_orders_service import purchase_orders_service
+    client = getattr(purchase_orders_service, "client", None)
+    project = getattr(purchase_orders_service, "project_id", None)
+    if not client or not project:
+        return []
+    sql = f"""
+        SELECT bucket, manufacturer_sku, short_description, available, on_order,
+               msl_qty, smart_qty, capacity, has_space, validated, in_msl, in_smart,
+               final_qty, total_after, held_qty, decision,
+               supplier_buy_ex, estimated_line_value
+        FROM `{project}.dataform.rex_po_final`
+        ORDER BY bucket, estimated_line_value DESC
+    """
+    try:
+        return [dict(r) for r in client.query(sql).result()]
+    except Exception:
+        return []
+
+
 @purchase_orders_bp.route("/shop-order")
 @login_required
 def shop_order():
@@ -1411,6 +1437,7 @@ def shop_order():
     # Each view is its own page now — load only the active view's data.
     load_msl     = active_tab == "msl"
     load_smart   = active_tab in ("smart", "logic")  # logic page needs a smart example
+    load_final   = active_tab == "final"
     load_season  = active_tab == "seasonality"
     load_weather = active_tab == "weather"
 
@@ -1450,6 +1477,23 @@ def shop_order():
             "lines": rows,
             "total_value": sum((r.estimated_line_value or 0) for r in rows),
             "critical": sum(1 for r in rows if r.urgency == "CRITICAL"),
+        })
+
+    # --- Final List: live-read rex_po_final, grouped per bucket ---
+    final_rows = _load_final_rows() if load_final else []
+    final_buckets = []
+    for b in (1, 2, 3):
+        rows = sorted(
+            [r for r in final_rows if r.get("bucket") == b],
+            key=lambda r: -(r.get("estimated_line_value") or 0),
+        )
+        final_buckets.append({
+            "num": b,
+            "label": _SHOP_BUCKET_LABELS[b],
+            "lines": rows,
+            "total_value": sum((r.get("estimated_line_value") or 0) for r in rows),
+            "topups": sum(1 for r in rows if r.get("decision") in ("SMART_TOPUP", "CAPPED")),
+            "held": sum(1 for r in rows if r.get("decision") == "SMART_HELD"),
         })
 
     # --- Seasonality Index: pivot (product_type x month) into a heatmap grid ---
@@ -1535,6 +1579,11 @@ def shop_order():
         smart_total=sum(b["total_value"] for b in smart_buckets),
         msl_lines=sum(len(b["orders"]) for b in msl_buckets),
         smart_lines=sum(len(b["lines"]) for b in smart_buckets),
+        final_buckets=final_buckets,
+        final_total=sum(b["total_value"] for b in final_buckets),
+        final_lines=sum(len(b["lines"]) for b in final_buckets),
+        final_held=sum(b["held"] for b in final_buckets),
+        final_topups=sum(b["topups"] for b in final_buckets),
         seasonality_rows=seasonality_rows,
         month_labels=_MONTH_LABELS,
         current_month=current_month,
