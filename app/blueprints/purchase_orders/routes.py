@@ -1619,17 +1619,28 @@ def capacity_validation():
         .all()
     )
 
+    # MSL re-order qty per SKU (ORDER lines) — shown next to Smart so staff see
+    # the base restock vs the proposed top-up. Capacity is sized against the
+    # LARGER of the two, since that's what the Final List would actually order.
+    msl_map = {
+        m.manufacturer_sku: (m.proposed_qty or 0)
+        for m in CachedShopOrderMsl.query.all()
+        if m.manufacturer_sku and (m.line_type or "ORDER") != "NEEDS_ADJUSTMENT"
+    }
+
     lines = []
     for r in smart_rows:
         avail = r.available or 0
         onord = r.on_order or 0
-        prop = r.recommended_qty or 0
-        total_qty = avail + onord + prop                       # ending stock after fulfilment
+        smart_qty = r.recommended_qty or 0
+        msl_qty = msl_map.get(r.manufacturer_sku, 0)
+        effective = max(msl_qty, smart_qty)                    # what the Final List would order
+        total_qty = avail + onord + effective                  # ending stock if approved
         stored = cap_map.get(r.manufacturer_sku)
         if stored is None:
             status, stored_cap = "NEW", None                   # never validated
         elif total_qty > (stored.get("capacity") or 0):
-            status, stored_cap = "OVER", stored.get("capacity")  # proposal exceeds stored cap -> re-validate
+            status, stored_cap = "OVER", stored.get("capacity")  # order exceeds stored cap -> re-validate
         else:
             status, stored_cap = "OK", stored.get("capacity")   # within capacity, no action needed
         lines.append({
@@ -1638,7 +1649,9 @@ def capacity_validation():
             "description": r.short_description,
             "available": avail,
             "on_order": onord,
-            "proposed": prop,
+            "msl_qty": msl_qty,
+            "smart_qty": smart_qty,
+            "proposed": effective,
             "total_qty": total_qty,
             "stored_capacity": stored_cap,
             "default_capacity": stored_cap if stored_cap is not None else total_qty,

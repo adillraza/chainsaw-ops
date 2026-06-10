@@ -14,7 +14,8 @@
       <h2 class="text-2xl font-semibold text-slate-900">Capacity Validation</h2>
       <p class="mt-1 max-w-3xl text-sm text-slate-600">
         The Smart model wants to top up quantities or add new items. Before the Final List can act on
-        them, confirm how many units the store can physically hold. <b>Total Qty</b> = available + on&#8209;order + proposed
+        them, confirm how many units the store can physically hold. <b>MSL</b> is the normal REX restock and
+        <b>Smart</b> is the proposed order; <b>Total Qty</b> = available + on&#8209;order + the larger of the two
         (what you'll end up with). Set <b>Capacity</b> to the most you can hold for that SKU, then submit.
         {% if cached_at %}<span class="text-slate-400">· Smart data cached {{ cached_at.strftime('%d %b %Y %H:%M') }} UTC</span>{% endif %}
       </p>
@@ -52,7 +53,7 @@
           <tr class="text-left">
             <th class="px-2 py-1.5">SKU</th><th class="px-2 py-1.5">Description</th>
             <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">OnOrder</th>
-            <th class="px-2 py-1.5 text-right">Proposed</th><th class="px-2 py-1.5 text-right">Total Qty</th>
+            <th class="px-2 py-1.5 text-right">MSL</th><th class="px-2 py-1.5 text-right">Smart</th><th class="px-2 py-1.5 text-right">Total Qty</th>
             <th class="px-2 py-1.5 text-center">Status</th>
             <th class="px-2 py-1.5 text-center">Have space?</th>
             <th class="px-2 py-1.5 text-right">Capacity</th>
@@ -70,7 +71,8 @@
             <td class="px-2 py-1.5 text-slate-600">{{ l.description }}</td>
             <td class="px-2 py-1.5 text-right">{{ num(l.available) }}</td>
             <td class="px-2 py-1.5 text-right">{{ num(l.on_order) }}</td>
-            <td class="px-2 py-1.5 text-right font-semibold">{{ num(l.proposed) }}</td>
+            <td class="px-2 py-1.5 text-right text-slate-500">{{ num(l.msl_qty) }}</td>
+            <td class="px-2 py-1.5 text-right font-semibold">{{ num(l.smart_qty) }}</td>
             <td class="px-2 py-1.5 text-right font-bold text-slate-900" x-text="total"></td>
             <td class="px-2 py-1.5 text-center">
               {% if l.status == 'NEW' %}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">needs capacity</span>
