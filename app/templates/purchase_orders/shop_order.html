@@ -26,7 +26,8 @@
   <div>
     <p class="mb-3 text-sm text-slate-600">
       <b>{{ msl_lines }}</b> lines across 3 POs · est. <b>${{ fmt_money(msl_total) }}</b>.
-      REX MSL formula + 14-day seasonality bump, carton-rounded.
+      Faithful REX MSL formula — tops up everything below MSL, carton-rounded. No demand
+      filter and no seasonal bump (that lives in Smart Order). Sold 14d / LY 14d shown for context only.
     </p>
     {% for b in msl_buckets %}
       <h3 class="mt-6 mb-2 text-base font-semibold text-slate-800">{{ b.label }}
@@ -41,7 +42,7 @@
               <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">MSL</th>
               <th class="px-2 py-1.5 text-right">OnOrder</th><th class="px-2 py-1.5 text-right">Re-Order</th>
               <th class="px-2 py-1.5 text-right">Sold 14d</th><th class="px-2 py-1.5 text-right">LY 14d</th>
-              <th class="px-2 py-1.5 text-right">Bump</th><th class="px-2 py-1.5 text-right">Carton</th>
+              <th class="px-2 py-1.5 text-right">Carton</th>
               <th class="px-2 py-1.5 text-right">Proposed</th><th class="px-2 py-1.5 text-right">Est $</th>
             </tr>
           </thead>
@@ -56,7 +57,6 @@
               <td class="px-2 py-1.5 text-right font-semibold">{{ num(r.re_order_qty) }}</td>
               <td class="px-2 py-1.5 text-right">{{ num(r.sold_last_14_days) }}</td>
               <td class="px-2 py-1.5 text-right">{{ num(r.sold_next_14_days_last_year) }}</td>
-              <td class="px-2 py-1.5 text-right {% if r.seasonal_bump %}text-orange-600{% endif %}">{{ '+' ~ r.seasonal_bump if r.seasonal_bump else '0' }}</td>
               <td class="px-2 py-1.5 text-right text-slate-400">{{ r.carton_quantity if r.carton_quantity and r.carton_quantity > 1 else '—' }}</td>
               <td class="px-2 py-1.5 text-right font-bold text-slate-900">{{ num(r.proposed_qty) }}</td>
               <td class="px-2 py-1.5 text-right">${{ fmt_money(r.estimated_line_value) }}</td>
