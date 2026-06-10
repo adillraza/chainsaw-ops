@@ -1690,6 +1690,7 @@ def capacity_validation():
         "purchase_orders/capacity_validation.html",
         bucket_groups=bucket_groups,
         counts=counts,
+        visible_count=len(visible),
         show_all=show_all,
         cached_at=cached_at,
     )

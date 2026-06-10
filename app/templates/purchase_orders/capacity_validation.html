@@ -66,7 +66,8 @@
                       'avail': l.available, 'onord': l.on_order, 'proposed': l.proposed,
                       'total': l.total_qty, 'hasSpace': l.has_space, 'capacity': l.default_capacity,
                       'status': l.status} %}
-          <tr class="hover:bg-slate-50" x-data='capacityRow({{ d|tojson }})'>
+          <tr class="hover:bg-slate-50" x-data='capacityRow({{ d|tojson }})'
+              @capacity-submit-all.window="if (!saved && !saving) submit()">
             <td class="px-2 py-1.5 font-medium text-slate-800">{{ l.sku }}</td>
             <td class="px-2 py-1.5 text-slate-600">{{ l.description }}</td>
             <td class="px-2 py-1.5 text-right">{{ num(l.available) }}</td>
@@ -102,6 +103,22 @@
       </table>
     </div>
   {% endfor %}
+
+  {% if bucket_groups %}
+  {# ---- bulk action bar ---- #}
+  <div x-data="{ flash: false }"
+       class="sticky bottom-0 z-10 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-t-lg border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] backdrop-blur">
+    <span class="text-xs text-slate-500">
+      Submit rows one at a time, or all at once. Rows turn green as they save — re-running <b>Submit&nbsp;All</b> only retries rows that haven't saved yet.
+    </span>
+    <button type="button"
+            @click="if (confirm('Submit all {{ visible_count }} listed row(s) with their current Have-space / Capacity values?')) { flash = true; window.dispatchEvent(new CustomEvent('capacity-submit-all')); setTimeout(() => flash = false, 2500); }"
+            class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+      <span x-show="!flash">Submit All ({{ visible_count }})</span>
+      <span x-show="flash" x-cloak>Submitting…</span>
+    </button>
+  </div>
+  {% endif %}
 
 </section>
 
