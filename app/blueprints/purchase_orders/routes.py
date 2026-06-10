@@ -1655,7 +1655,10 @@ def capacity_validation():
             "total_qty": total_qty,
             "stored_capacity": stored_cap,
             "default_capacity": stored_cap if stored_cap is not None else total_qty,
-            "has_space": bool(stored.get("has_space")) if stored else False,
+            # Default Yes for un-validated rows so the common path is one click
+            # (Submit = accept the full proposal, capacity already = Total Qty).
+            # Previously-validated rows keep whatever staff last chose.
+            "has_space": bool(stored.get("has_space")) if stored else True,
             "status": status,
             "validated_by": stored.get("validated_by") if stored else None,
         })
