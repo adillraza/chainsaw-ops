@@ -18,7 +18,7 @@ from app.services.purchase_orders_service import purchase_orders_service
 _TABLE = "{project}.operations.sku_capacity"
 
 _LATEST_SQL = """
-SELECT sku, capacity, has_space, total_qty_at, validated_by, validated_at
+SELECT sku, capacity, has_space, proposed_at, total_qty_at, validated_by, validated_at
 FROM (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY sku ORDER BY validated_at DESC) AS rn
   FROM `{project}.operations.sku_capacity`
@@ -48,6 +48,7 @@ def get_capacity_map() -> dict:
             r["sku"]: {
                 "capacity": r["capacity"],
                 "has_space": r["has_space"],
+                "proposed_at": r["proposed_at"],
                 "total_qty_at": r["total_qty_at"],
                 "validated_by": r["validated_by"],
                 "validated_at": r["validated_at"],

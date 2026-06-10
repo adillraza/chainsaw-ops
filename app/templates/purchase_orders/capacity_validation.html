@@ -77,8 +77,9 @@
             <td class="px-2 py-1.5 text-right font-bold text-slate-900" x-text="total"></td>
             <td class="px-2 py-1.5 text-center">
               {% if l.status == 'NEW' %}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">needs capacity</span>
-              {% elif l.status == 'OVER' %}<span class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700" title="Proposed total {{ l.total_qty }} exceeds stored capacity {{ l.stored_capacity }}">over cap ({{ l.stored_capacity }})</span>
-              {% else %}<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">cap {{ l.stored_capacity }}</span>{% endif %}
+              {% elif l.status == 'OVER' %}<span class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700" title="Smart now proposes {{ l.proposed }} — you last validated against {{ l.last_proposed }}. Re-check.">Smart&nbsp;↑ (was {{ l.last_proposed }})</span>
+              {% elif l.has_space %}<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700" title="Validated — capacity {{ l.stored_capacity }}">✓ cap {{ l.stored_capacity }}</span>
+              {% else %}<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500" title="Marked no space — Smart top-up declined">declined</span>{% endif %}
             </td>
             <td class="px-2 py-1.5 text-center">
               <button type="button" @click="toggle()"

@@ -1637,12 +1637,17 @@ def capacity_validation():
         effective = max(msl_qty, smart_qty)                    # what the Final List would order
         total_qty = avail + onord + effective                  # ending stock if approved
         stored = cap_map.get(r.manufacturer_sku)
+        last_proposed = stored.get("proposed_at") if stored else None
+        # Re-surface only when Smart now proposes MORE than what staff last
+        # validated against (proposed_at). Any submit updates that baseline, so a
+        # "No"/declined decision parks the SKU until the proposal genuinely grows
+        # — it no longer pops up every refresh just because capacity is low.
         if stored is None:
-            status, stored_cap = "NEW", None                   # never validated
-        elif total_qty > (stored.get("capacity") or 0):
-            status, stored_cap = "OVER", stored.get("capacity")  # order exceeds stored cap -> re-validate
+            status, stored_cap = "NEW", None                    # never validated
+        elif last_proposed is None or effective > last_proposed:
+            status, stored_cap = "OVER", stored.get("capacity")  # Smart wants more than last decided -> re-validate
         else:
-            status, stored_cap = "OK", stored.get("capacity")   # within capacity, no action needed
+            status, stored_cap = "OK", stored.get("capacity")    # decision still stands -> parked
         lines.append({
             "bucket": r.bucket,
             "sku": r.manufacturer_sku,
@@ -1654,6 +1659,7 @@ def capacity_validation():
             "proposed": effective,
             "total_qty": total_qty,
             "stored_capacity": stored_cap,
+            "last_proposed": last_proposed,
             "default_capacity": stored_cap if stored_cap is not None else total_qty,
             # Default Yes for un-validated rows so the common path is one click
             # (Submit = accept the full proposal, capacity already = Total Qty).
