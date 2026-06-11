@@ -468,7 +468,7 @@ target_stock  = ceil(adj_daily × (lead + <b>30</b>))   ← cover lead time + 30
         <div class="space-y-1.5 text-xs">
           {% for cond, cat, desc, col in [
             ('days since last sale &gt; 90', 'DEAD', 'no recent demand → skip', 'text-slate-500'),
-            ('≤ 2 active sale-days in 90d (but did sell)', 'SPIKY', 'lumpy → top up to its biggest-ever single order', 'text-indigo-600'),
+            ('≤ 2 sale-days in 90d AND sold in last 30d', 'SPIKY', 'lumpy but recent → buffer to its biggest single sale (dormant one-offs are skipped)', 'text-indigo-600'),
             ('target_stock − net_position ≤ 0', 'COVERED', 'already have enough → skip', 'text-emerald-600'),
             ('coverage_days &lt; lead time', 'URGENT', 'will stock out before a PO can land → order now', 'text-red-600'),
             ('otherwise', 'ORDER', 'order the shortfall to target', 'text-blue-600'),
@@ -550,6 +550,8 @@ then carton-round (carton qty &gt; 1):
         <div><code>horizon_days</code> = <b>30</b> — cover this far beyond lead time</div>
         <div><code>outlier_frac</code> = <b>0.5</b> — single-order share that triggers 90d-rate fallback</div>
         <div><code>spiky_days</code> = <b>2</b> — ≤ N active sale-days/90d → SPIKY</div>
+        <div><code>spiky_recency_days</code> = <b>30</b> — a SPIKY item only buffers if it sold within N days (else dropped as dormant)</div>
+        <div><code>carton_floor_frac</code> = <b>0.5</b> — shortfall &lt; ½ carton → order 0 (no full carton for a trickle)</div>
         <div>seasonal index confidence + fallback live in <code>rex_seasonality_index</code></div>
       </div>
     </div>
