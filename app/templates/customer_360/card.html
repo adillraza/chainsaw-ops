@@ -288,6 +288,133 @@
     </section>
   {% endif %}
 
+  {# Small helper — pill label per match signal. Used by both related-
+     account boxes below. #}
+  {% macro match_pill(mt) %}
+    {%- if mt == 'email' -%}
+      <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-envelope mr-1 text-[9px]"></i>same email</span>
+    {%- elif mt == 'secondary_email' -%}
+      <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-envelope mr-1 text-[9px]"></i>same 2nd email</span>
+    {%- elif mt == 'cross_email' -%}
+      <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-right-left mr-1 text-[9px]"></i>email &harr; 2nd email</span>
+    {%- elif mt == 'address' -%}
+      <span class="inline-flex items-center rounded-full bg-sky-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-sky-900"><i class="fas fa-house mr-1 text-[9px]"></i>same address</span>
+    {%- endif -%}
+  {% endmacro %}
+
+  {# ----------------------------------------------------------------- #}
+  {# EMAIL-MATCHED ACCOUNTS — second identity box. Same amber family   #}
+  {# as the phone box (it means "probably the same person") but its    #}
+  {# own panel so agents see WHICH signal produced the link. Always    #}
+  {# expanded — these are rare and high-value.                         #}
+  {# ----------------------------------------------------------------- #}
+  {% if c.related_by_email %}
+    <section class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+      <p class="font-medium text-amber-900">
+        <i class="fas fa-envelope mr-1.5 text-amber-600"></i>
+        {{ c.related_by_email|length }} other Neto account{{ 's' if c.related_by_email|length != 1 }} share{{ '' if c.related_by_email|length != 1 else 's' }} an email with this customer
+      </p>
+      <p class="mt-1 text-amber-800">Likely the same person under another account — not matched by phone, so they won't appear in this card's totals.</p>
+      <ul class="mt-2 space-y-1.5">
+        {% for item in c.related_by_email %}
+          {% set rc = item.customer %}
+          {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
+          {% set cu_url = neto_url('customer', item.username) %}
+          <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
+            {% if cu_url %}
+              <a href="{{ cu_url }}" target="_blank" rel="noopener"
+                 class="font-medium text-amber-900 hover:underline"
+                 title="Open {{ item.username }} in Neto cpanel ↗">
+                {{ rc_name }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-amber-600"></i>
+              </a>
+            {% else %}
+              <span class="font-medium text-amber-900">{{ rc_name }}</span>
+            {% endif %}
+            {% for mt in item.match_types %}{{ match_pill(mt) }}{% endfor %}
+            <span class="text-amber-800">
+              {{ (rc.email if rc else None) or '(no email)' }}
+              {% if rc %} - ${{ '%.0f' % (rc.lifetime_value | to_float) }} lifetime - {{ rc.lifetime_order_count or 0 }} orders{% endif %}
+            </span>
+            {% if rc_phone %}
+              <a href="{{ url_for('customer_360.card', phone=rc_phone) }}"
+                 class="ml-auto inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200"
+                 title="Open this account's Customer 360">
+                View 360 <i class="fas fa-chevron-right ml-1 text-[9px]"></i>
+              </a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# ----------------------------------------------------------------- #}
+  {# ADDRESS-MATCHED ACCOUNTS — third box, deliberately different.     #}
+  {# Sky-blue (not amber) + collapsed by default: same address is a    #}
+  {# WEAKER claim — could be a household member, a previous occupant   #}
+  {# of the address, or entirely unrelated. Valuable context, not an   #}
+  {# assertion of identity. Shows ALL matches when expanded (clusters  #}
+  {# are nearly always small — 91% are pairs).                         #}
+  {# ----------------------------------------------------------------- #}
+  {% if c.related_by_address %}
+    <section class="mb-6 rounded-lg border border-sky-200 bg-sky-50 text-sm"
+             x-data="{ open: false }">
+      <button type="button" @click="open = !open"
+              class="flex w-full items-center justify-between gap-3 p-4 text-left">
+        <span>
+          <span class="font-medium text-sky-900">
+            <i class="fas fa-house mr-1.5 text-sky-600"></i>
+            {{ c.related_by_address|length }} other Neto account{{ 's' if c.related_by_address|length != 1 }} use{{ '' if c.related_by_address|length != 1 else 's' }} this billing address
+          </span>
+          <span class="ml-2 text-sky-700">may be a household member, a previous occupant, or unrelated — verify before linking</span>
+        </span>
+        <i class="fas text-xs text-sky-500" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+      <div x-show="open" x-cloak class="border-t border-sky-200 px-4 pb-4">
+        <ul class="mt-3 space-y-1.5">
+          {% for item in c.related_by_address %}
+            {% set rc = item.customer %}
+            {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
+            {% set cu_url = neto_url('customer', item.username) %}
+            <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
+              {% if cu_url %}
+                <a href="{{ cu_url }}" target="_blank" rel="noopener"
+                   class="font-medium text-sky-900 hover:underline"
+                   title="Open {{ item.username }} in Neto cpanel ↗">
+                  {{ rc_name }}<i class="fas fa-arrow-up-right-from-square ml-1 text-[10px] text-sky-600"></i>
+                </a>
+              {% else %}
+                <span class="font-medium text-sky-900">{{ rc_name }}</span>
+              {% endif %}
+              <span class="text-sky-800">
+                {{ (rc.email if rc else None) or '(no email)' }}
+                {% if rc_phone %} - <span class="font-mono text-[12px]">{{ rc_phone }}</span>{% endif %}
+                {% if rc %} - ${{ '%.0f' % (rc.lifetime_value | to_float) }} lifetime
+                  {%- if rc.last_order_date %} - last order {{ rc.last_order_date }}{% endif %}
+                {% endif %}
+              </span>
+              {% if rc_phone %}
+                <a href="{{ url_for('customer_360.card', phone=rc_phone) }}"
+                   class="ml-auto inline-flex items-center rounded-md bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-200"
+                   title="Open this account's Customer 360">
+                  View 360 <i class="fas fa-chevron-right ml-1 text-[9px]"></i>
+                </a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+        {% set addr_val = (c.related_by_address[0].match_values or {}).get('address') %}
+        {% if addr_val %}
+          <p class="mt-3 text-[11px] text-sky-600">
+            <i class="fas fa-location-dot mr-1"></i>Matched on billing address: {{ addr_val }}
+          </p>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
   {# ----------------------------------------------------------------- #}
   {# QUICK STATS — full-width strip, sits between header and grid     #}
   {# ----------------------------------------------------------------- #}

@@ -74,6 +74,21 @@ class CachedNetoProduct(db.Model):
     cached_at  = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class CachedRelatedAccounts(db.Model):
+    """Mirror of ``dataform.customer_related_accounts`` — per-Username list
+    of OTHER usernames sharing an identity signal (same primary email,
+    same secondary email, primary↔secondary cross-match, or same billing
+    address). ``related_json`` is the JSON-encoded array of
+    ``{related_username, match_type, match_value}`` structs. Phone-based
+    matching is NOT in here — that stays in CachedPhoneLookup."""
+    __tablename__ = "cached_related_accounts"
+
+    Username      = db.Column(db.String(150), primary_key=True)
+    related_json  = db.Column(db.Text, nullable=False)
+    related_count = db.Column(db.Integer)
+    cached_at     = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class CacheWatermark(db.Model):
     """Per-table sync watermarks for incremental cache refresh.
 

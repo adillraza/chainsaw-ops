@@ -26,6 +26,7 @@ from app.models.customer_cache import (
     CachedCustomer360,
     CachedNetoProduct,
     CachedPhoneLookup,
+    CachedRelatedAccounts,
 )
 from app.services.purchase_orders_service import purchase_orders_service
 
@@ -183,6 +184,41 @@ def _load_phone_lookup(client) -> int:
         if skipped:
             print(f"  phone_lookup dedupe: skipped {skipped:,} duplicate phones")
     return _bulk_replace(CachedPhoneLookup, gen(), "phone_lookup")
+
+
+def _load_related_accounts(client) -> int:
+    """Mirror ``customer_related_accounts`` (email + address identity links).
+
+    Wrapped so a missing BQ table (Dataform release not yet run) skips
+    with a warning instead of failing the entire refresh — the service
+    read path treats an empty cache as "no related accounts", which
+    degrades cleanly.
+    """
+    sql = (f"SELECT Username, TO_JSON_STRING(related) AS related_json, "
+           f"related_count FROM `{PROJECT}.{DATASET}.customer_related_accounts`")
+
+    def gen():
+        seen: set[str] = set()
+        for r in client.query(sql).result():
+            uname = r.Username
+            if not uname or uname in seen:
+                continue
+            seen.add(uname)
+            yield {
+                "Username":      uname,
+                "related_json":  r.related_json,
+                "related_count": r.related_count,
+                "cached_at":     datetime.utcnow(),
+            }
+
+    try:
+        return _bulk_replace(CachedRelatedAccounts, gen(), "related_accounts")
+    except Exception as exc:
+        # google.api_core NotFound or any transient BQ failure — don't
+        # block the other five tables.
+        print(f"  related_accounts: skipped ({exc})")
+        db.session.rollback()
+        return 0
 
 
 def _load_customer_360(client) -> int:
@@ -369,6 +405,7 @@ def cache_customer_360_data() -> tuple[bool, str]:
             total += _load_call_history(client)
             total += _load_call_behavior(client)
             total += _load_neto_product(client)
+            total += _load_related_accounts(client)
             total += _load_customer_360(client)
             secs = time.perf_counter() - t0
             return True, f"customer_360 cache refreshed: {total:,} rows in {secs:.1f}s"

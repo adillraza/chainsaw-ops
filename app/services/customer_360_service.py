@@ -37,6 +37,7 @@ from app.models.customer_cache import (
     CachedEmailRecipient,
     CachedNetoProduct,
     CachedPhoneLookup,
+    CachedRelatedAccounts,
 )
 from app.services.purchase_orders_service import purchase_orders_service
 
@@ -163,6 +164,8 @@ class Customer360Service:
             "customers": [],         # list of customer_360 rows (one per matching username)
             "call_history": None,    # call_history_360 row, or None
             "call_behavior": None,   # call_behavior_360 row, or None
+            "related_by_email": [],   # other accounts sharing an email signal
+            "related_by_address": [], # other accounts sharing the billing address
             "error": None,
         }
         if not phone:
@@ -205,6 +208,13 @@ class Customer360Service:
         # this as one bulk lookup rather than per-line. Cheap (~30 SKUs max
         # per card, single equality scan on neto_product_list).
         empty["product_id_by_sku"] = self._fetch_product_ids(self._collect_skus(empty["customers"]))
+
+        # --- Related accounts beyond the phone match: other usernames
+        # sharing an email signal (probably the same person) or the same
+        # billing address (possibly a household member / previous
+        # occupant — softer claim, rendered in its own panel).
+        empty["related_by_email"], empty["related_by_address"] = (
+            self._fetch_related_accounts(empty["usernames"]))
 
         # --- Live-merge: pull today's call_event rows for this phone and
         # blend them into the BQ-derived call_history snapshot, so a
@@ -767,6 +777,111 @@ class Customer360Service:
             "history":  _row_to_dict(row.calls),
             "behavior": _row_to_dict(row.insights),
         }
+
+    def _fetch_related_accounts(self, usernames: list[str]) -> tuple[list[dict], list[dict]]:
+        """Related Neto accounts for the card — beyond phone matching.
+
+        Reads the ``customer_related_accounts`` mirror (Dataform model of
+        the same name): per-username arrays of OTHER usernames that share
+        a primary email, secondary email, primary↔secondary cross-match,
+        or billing address (street + postcode).
+
+        Returns ``(related_by_email, related_by_address)``:
+
+        * accounts already on the card (the phone-matched set) are
+          dropped — they're shown in the phone-match banner instead
+        * one item per related username, with ALL its match signals
+          (``match_types`` list + ``match_values`` per type)
+        * an account matching on both an email signal AND address goes
+          in ``related_by_email`` only (stronger claim wins; the card
+          still shows its address pill)
+        * each item is hydrated with the related account's customer_360
+          row under ``customer`` so the template can render name /
+          email / lifetime / last order / phones without extra lookups
+        * both lists sorted by lifetime value, descending
+        """
+        if not usernames:
+            return [], []
+
+        uname_set = set(usernames)
+        entries: list[dict] = []
+
+        if _cache_table_ready(CachedRelatedAccounts, CachedRelatedAccounts.Username):
+            rows = (db.session.query(CachedRelatedAccounts)
+                    .filter(CachedRelatedAccounts.Username.in_(usernames))
+                    .all())
+            for r in rows:
+                try:
+                    entries.extend(json.loads(r.related_json) or [])
+                except (TypeError, ValueError):
+                    continue
+        elif self.client is not None:
+            # Cache not populated yet (first deploy window) — fall back
+            # to BQ. Soft-fail to "no related accounts" if the Dataform
+            # model hasn't been released either.
+            sql = f"""
+            SELECT rel.related_username, rel.match_type, rel.match_value
+            FROM `{PROJECT}.{DATASET}.customer_related_accounts`,
+                 UNNEST(related) AS rel
+            WHERE Username IN UNNEST(@usernames)
+            """
+            try:
+                job = self.client.query(
+                    sql,
+                    job_config=bigquery.QueryJobConfig(query_parameters=[
+                        bigquery.ArrayQueryParameter("usernames", "STRING", usernames),
+                    ]),
+                )
+                entries = [{"related_username": r.related_username,
+                            "match_type":       r.match_type,
+                            "match_value":      r.match_value}
+                           for r in job.result()]
+            except Exception as exc:
+                log.debug("related-accounts BQ fallback unavailable: %s", exc)
+                entries = []
+
+        if not entries:
+            return [], []
+
+        # Group the flat (related_username, match_type, match_value)
+        # entries by username. The same related account can be linked
+        # from several of OUR usernames and by several signals.
+        grouped: dict[str, dict] = {}
+        for e in entries:
+            ru = e.get("related_username")
+            if not ru or ru in uname_set:
+                continue
+            g = grouped.setdefault(ru, {"match_types": set(), "match_values": {}})
+            mt = e.get("match_type") or "unknown"
+            g["match_types"].add(mt)
+            g["match_values"].setdefault(mt, e.get("match_value"))
+
+        if not grouped:
+            return [], []
+
+        profiles = {c.get("Username"): c
+                    for c in self._fetch_customers(list(grouped))}
+
+        EMAIL_TYPES = {"email", "secondary_email", "cross_email"}
+        by_email: list[dict] = []
+        by_address: list[dict] = []
+        for ru, g in grouped.items():
+            item = {
+                "username":     ru,
+                "customer":     profiles.get(ru),
+                "match_types":  sorted(g["match_types"]),
+                "match_values": g["match_values"],
+            }
+            if g["match_types"] & EMAIL_TYPES:
+                by_email.append(item)
+            else:
+                by_address.append(item)
+
+        def _lv(item: dict) -> float:
+            return _lifetime_value_key(item.get("customer") or {})
+        by_email.sort(key=_lv, reverse=True)
+        by_address.sort(key=_lv, reverse=True)
+        return by_email, by_address
 
     def _fetch_customers(self, usernames: list[str]) -> list[dict]:
         if not usernames:
