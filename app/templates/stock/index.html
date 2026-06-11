@@ -62,37 +62,100 @@
   {% endfor %}
 </div>
 
-{# reconstruction vs available — the "why" callout #}
-{% set gap = sm.get('soh_vs_available_gap') %}
-<div class="mb-4 rounded-lg border {% if gap and gap != 0 %}border-amber-300 bg-amber-50{% else %}border-emerald-200 bg-emerald-50/40{% endif %} p-3 text-sm">
-  <b>Reconstructed stock-on-hand:</b> {{ sm.get('reconstructed_soh') if sm.get('reconstructed_soh') is not none else '—' }}
-  &nbsp;vs&nbsp; <b>REX available:</b> {{ sm.get('available') if sm.get('available') is not none else '—' }}.
-  {% if gap and gap != 0 %}
-    <span class="text-amber-800">Gap of {{ signed(gap) }} — usually allocated/picked stock, or an incomplete log baseline. The timeline below shows every change.</span>
-  {% else %}
-    <span class="text-emerald-700">On-hand reconstruction matches available.</span>
-  {% endif %}
-</div>
+{# ===== Stock reconciliation — date-scoped, recomputed on the fly ===== #}
+<div x-data="stockRecon()">
 
-{# lifetime summary #}
-<div class="mb-5 grid gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
-  {% for label, val, cls in [
-      ('Movements', sm.get('events'), 'text-slate-800'),
-      ('Total in', sm.get('total_in'), 'text-emerald-600'),
-      ('Total out', sm.get('total_out'), 'text-red-600'),
-      ('Manual adj.', (sm.get('manual_adjustments')|string) ~ ' (' ~ signed(sm.get('net_manual_adjustment')) ~ ')', 'text-amber-600'),
-      ('Stock takes', (sm.get('stock_takes')|string) ~ ' (' ~ signed(sm.get('net_stock_take')) ~ ')', 'text-blue-600'),
-      ('Last adjusted', dt(sm.get('last_adjustment')), 'text-slate-600'),
-  ] %}
-    <div class="rounded-lg border border-slate-200 bg-white p-3">
-      <div class="text-[11px] uppercase tracking-wide text-slate-400">{{ label }}</div>
-      <div class="mt-0.5 font-semibold {{ cls }}">{{ val if val not in (none, 'None') else '—' }}</div>
+  <div class="mb-4 rounded-xl border p-4 transition-colors"
+       :class="matches ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-300 bg-amber-50'">
+    {# header: title + verdict chip + date picker #}
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <i class="fas fa-scale-balanced" :class="matches ? 'text-emerald-500' : 'text-amber-500'"></i>
+        <span class="font-semibold text-slate-800">Stock reconciliation</span>
+        <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              :class="matches ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-200 text-amber-800'"
+              x-text="matches ? 'Matches ✓' : ('Gap ' + signed(gap))"></span>
+      </div>
+      <label class="flex items-center gap-2 text-xs font-medium text-slate-600">
+        <i class="fas fa-calendar-day text-slate-400"></i> Reconcile from
+        <input type="date" x-model="fromDate"
+               class="rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+      </label>
     </div>
-  {% endfor %}
-</div>
+
+    {# flow:  opening  +in  −out  =  on-hand   vs   REX available   →  gap #}
+    <div class="flex flex-wrap items-end gap-x-1.5 gap-y-3">
+      <div class="px-2 text-center">
+        <div class="text-[10px] uppercase tracking-wide text-slate-400">Opening</div>
+        <div class="text-2xl font-bold text-slate-700" x-text="opening"></div>
+        <div class="text-[10px] text-slate-400" x-text="fmtDate(fromDate)"></div>
+      </div>
+      <div class="pb-5 text-lg font-semibold text-emerald-600">+</div>
+      <div class="px-2 text-center">
+        <div class="text-[10px] uppercase tracking-wide text-slate-400">In</div>
+        <div class="text-2xl font-bold text-emerald-600" x-text="periodIn"></div>
+        <div class="text-[10px] text-slate-400">received</div>
+      </div>
+      <div class="pb-5 text-lg font-semibold text-red-500">−</div>
+      <div class="px-2 text-center">
+        <div class="text-[10px] uppercase tracking-wide text-slate-400">Out</div>
+        <div class="text-2xl font-bold text-red-600" x-text="Math.abs(periodOut)"></div>
+        <div class="text-[10px] text-slate-400">sold/removed</div>
+      </div>
+      <div class="pb-5 text-lg font-semibold text-slate-400">=</div>
+      <div class="rounded-lg bg-white/70 px-3 py-1 text-center">
+        <div class="text-[10px] uppercase tracking-wide text-slate-400">On-hand</div>
+        <div class="text-2xl font-extrabold text-slate-900" x-text="reconstructed"></div>
+        <div class="text-[10px] text-slate-400">our log</div>
+      </div>
+      <div class="pb-5 text-lg font-semibold text-slate-400">vs</div>
+      <div class="rounded-lg bg-white/70 px-3 py-1 text-center">
+        <div class="text-[10px] uppercase tracking-wide text-slate-400">REX avail</div>
+        <div class="text-2xl font-extrabold text-slate-900" x-text="available === null ? '—' : available"></div>
+        <div class="text-[10px] text-slate-400">live</div>
+      </div>
+      <div class="pb-5 text-lg font-semibold text-slate-400">→</div>
+      <div class="px-2 text-center">
+        <div class="text-[10px] uppercase tracking-wide text-slate-400">Gap</div>
+        <div class="text-2xl font-extrabold" :class="matches ? 'text-emerald-600' : 'text-amber-700'"
+             x-text="matches ? '0' : signed(gap)"></div>
+      </div>
+    </div>
+
+    <p class="mt-3 text-xs" :class="matches ? 'text-emerald-700' : 'text-amber-800'">
+      <span x-show="matches">On-hand reconstruction matches REX available.</span>
+      <span x-show="!matches">Gap of <span x-text="signed(gap)"></span> — usually allocated/picked stock, or a movement before this window. Opening is carried from the full log; the gap is on-hand vs REX <b>now</b>, so changing the date won't move it.</span>
+    </p>
+  </div>
+
+  {# period summary — recomputed from the selected date #}
+  <div class="mb-5 grid gap-2 text-xs sm:grid-cols-3 lg:grid-cols-5">
+    <div class="rounded-lg border border-slate-200 bg-white p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Movements</div>
+      <div class="mt-0.5 font-semibold text-slate-800" x-text="periodCount"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Total in</div>
+      <div class="mt-0.5 font-semibold text-emerald-600" x-text="'+' + periodIn"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Total out</div>
+      <div class="mt-0.5 font-semibold text-red-600" x-text="periodOut"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Manual adj.</div>
+      <div class="mt-0.5 font-semibold text-amber-600" x-text="periodManualCount + ' (' + signed(periodManualAdj) + ')'"></div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Stock takes</div>
+      <div class="mt-0.5 font-semibold text-blue-600" x-text="periodTakeCount + ' (' + signed(periodTakes) + ')'"></div>
+    </div>
+  </div>
 
 {# movement timeline #}
-<h3 class="mb-2 text-base font-semibold text-slate-800">Movement history <span class="text-xs font-normal text-slate-500">(most recent first, up to 500)</span></h3>
+<h3 class="mb-2 text-base font-semibold text-slate-800">Movement history
+  <span class="text-xs font-normal text-slate-500">— <span x-text="periodCount"></span> from <span x-text="fmtDate(fromDate)"></span> (newest first)</span>
+</h3>
 <div class="overflow-x-auto rounded-lg border border-slate-200">
   <table class="min-w-full text-xs">
     <thead class="bg-slate-50 text-slate-500">
@@ -105,7 +168,8 @@
     <tbody class="divide-y divide-slate-100">
       {% for m in picture.movements %}
       {% set style = type_style.get(m.movement_type, ('', 'text-slate-600')) %}
-      <tr class="hover:bg-slate-50 {% if m.movement_type == 'Manual Adjustment' %}bg-amber-50/40{% elif m.movement_type == 'Stock Take' %}bg-blue-50/30{% endif %}">
+      <tr x-show="'{{ m.created_on_aest.strftime('%Y-%m-%d') if m.created_on_aest else '' }}' >= fromDate"
+          class="hover:bg-slate-50 {% if m.movement_type == 'Manual Adjustment' %}bg-amber-50/40{% elif m.movement_type == 'Stock Take' %}bg-blue-50/30{% endif %}">
         <td class="px-2 py-1.5 whitespace-nowrap text-slate-500">{{ dt(m.created_on_aest) }}</td>
         <td class="px-2 py-1.5 whitespace-nowrap font-medium {{ style[1] }}">{{ m.movement_type }}</td>
         <td class="px-2 py-1.5 whitespace-nowrap text-slate-500">{{ m.created_by or '' }}</td>
@@ -120,5 +184,32 @@
 <p class="mt-2 text-[11px] text-slate-400">
   Running stock = cumulative sum of stock-on-hand changes (newest row = latest). Every <span class="text-amber-600 font-medium">Manual Adjustment</span> is a correction — a point where REX's count was wrong and was fixed by hand.
 </p>
+</div>{# /stockRecon #}
+
+<script>
+const STOCK_MOVES = [{% for m in picture.movements %}{ts:{{ (m.created_on_aest.strftime('%Y-%m-%d %H:%M') if m.created_on_aest else '')|tojson }},d:{{ m.soh_delta or 0 }},r:{{ m.running_soh or 0 }},t:{{ (m.movement_type or '')|tojson }}}{{ ',' if not loop.last }}{% endfor %}];
+const STOCK_AVAILABLE = {{ s.available if s.available is not none else 'null' }};
+function stockRecon(){
+  return {
+    moves: STOCK_MOVES,
+    available: STOCK_AVAILABLE,
+    fromDate: '2026-01-01',
+    get inPeriod(){ return this.moves.filter(m => m.ts.slice(0,10) >= this.fromDate); },
+    get reconstructed(){ return this.moves.length ? this.moves[0].r : 0; },
+    get opening(){ const ip=this.inPeriod; if(!ip.length) return this.reconstructed; const e=ip[ip.length-1]; return e.r - e.d; },
+    get periodIn(){ return this.inPeriod.reduce((a,m)=>a+(m.d>0?m.d:0),0); },
+    get periodOut(){ return this.inPeriod.reduce((a,m)=>a+(m.d<0?m.d:0),0); },
+    get periodCount(){ return this.inPeriod.length; },
+    get periodManualAdj(){ return this.inPeriod.filter(m=>m.t==='Manual Adjustment').reduce((a,m)=>a+m.d,0); },
+    get periodManualCount(){ return this.inPeriod.filter(m=>m.t==='Manual Adjustment').length; },
+    get periodTakes(){ return this.inPeriod.filter(m=>m.t==='Stock Take').reduce((a,m)=>a+m.d,0); },
+    get periodTakeCount(){ return this.inPeriod.filter(m=>m.t==='Stock Take').length; },
+    get gap(){ return (this.reconstructed!==null && this.available!==null) ? this.reconstructed - this.available : null; },
+    get matches(){ return this.gap===0; },
+    signed(n){ return n>0 ? '+'+n : (''+n); },
+    fmtDate(s){ if(!s) return ''; const p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}); }
+  };
+}
+</script>
 {% endif %}
 {% endblock %}
