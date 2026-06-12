@@ -130,14 +130,18 @@ def _cache_table_ready(model, key_col) -> bool:
 def normalize_phone(raw: str) -> str:
     """Match the normalisation used by the Dataform models.
 
-    Strips whitespace/parens/dashes, converts AU ``+61…`` E.164 to local
-    ``0…``, leaves anything else alone. Returns "" on empty/None input.
+    Strips whitespace/parens/dashes, converts AU ``+61…`` E.164 AND the
+    bare-country-code form ``61XXXXXXXXX`` (no plus — common data-entry
+    variant; 977 split identities found 2026-06-12) to local ``0…``,
+    leaves anything else alone. Returns "" on empty/None input.
     """
     if not raw:
         return ""
     cleaned = re.sub(r"[\s()\-]", "", raw)
     if cleaned.startswith("+61"):
         return "0" + cleaned[3:]
+    if re.fullmatch(r"61[2-9]\d{8}", cleaned):
+        return "0" + cleaned[2:]
     return cleaned
 
 
