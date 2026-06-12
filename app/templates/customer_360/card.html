@@ -284,6 +284,7 @@
               </a>
             {% else %}
               <span class="font-medium text-amber-900">{{ cu.name_first }} {{ cu.name_last }}</span>
+              {% if (cu.Username or '').startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists">guest stub</span>{% endif %}
             {% endif %}
             - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value | to_float) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
           </li>
