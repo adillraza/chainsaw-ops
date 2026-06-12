@@ -750,6 +750,9 @@ class Customer360Service:
         if pl_ready and c360_ready:
             pl = db.session.query(CachedPhoneLookup).filter_by(phone=phone).first()
             if not pl:
+                # Phone-lookup table is small and reloads atomically-fast;
+                # a miss here is a genuinely unknown caller. Don't burn a
+                # BQ query per drawer poll on those.
                 return None
             usernames = json.loads(pl.usernames_json)
             if not usernames:
@@ -758,13 +761,18 @@ class Customer360Service:
                     .filter(CachedCustomer360.Username.in_(usernames))
                     .all())
             customers = [json.loads(r.payload_json) for r in rows]
-            if not customers:
-                return None
-            customers.sort(key=_lifetime_value_key, reverse=True)
-            top = customers[0]
-            full = ((top.get("name_first") or "") + " "
-                    + (top.get("name_last") or "")).strip()
-            return full or None
+            if customers:
+                customers.sort(key=_lifetime_value_key, reverse=True)
+                top = customers[0]
+                full = ((top.get("name_first") or "") + " "
+                        + (top.get("name_last") or "")).strip()
+                return full or None
+            # Cache knows the username(s) but has none of their customer
+            # rows — that's a partially-populated customer_360 cache
+            # (mid full-reload). Fall through to BQ instead of returning
+            # a wrong None that the lru_cache would then pin until the
+            # next service restart (live incident 2026-06-12: the whole
+            # Today's Calls panel went 'No Name').
         if self.client is None:
             return None
         sql = f"""
