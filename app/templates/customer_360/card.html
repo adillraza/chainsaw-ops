@@ -440,8 +440,8 @@
                 </a>
               {% else %}
                 <span class="font-medium text-sky-900">{{ rc_name }}</span>
-                {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists; use View 360">guest stub</span>{% endif %}
               {% endif %}
+              {{ origin_chip(rc.origin if rc else None) }}
               <span class="text-sky-800">
                 {{ (rc.email if rc else None) or '(no email)' }}
                 {% if rc_phone %} - <span class="font-mono text-[12px]">{{ rc_phone }}</span>{% endif %}
