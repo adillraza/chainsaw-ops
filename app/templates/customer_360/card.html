@@ -37,6 +37,24 @@
   {%- endif -%}
 {% endmacro %}
 
+{# Account-origin chip — how this Neto record came to exist. Driven by
+   the derived ``origin`` field on customer_360 (profile SalesChannel →
+   dominant order channel → username pattern). Hidden when unknown/missing
+   so older cached payloads degrade silently. #}
+{% macro origin_chip(origin) %}
+  {%- if origin == 'registered' -%}
+    <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700" title="Self-registered website account — has a login, can self-serve"><i class="fas fa-user-check mr-1 text-[9px]"></i>registered</span>
+  {%- elif origin == 'website guest' -%}
+    <span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700" title="Checked out on the website as a guest — no login exists"><i class="fas fa-cart-shopping mr-1 text-[9px]"></i>website guest</span>
+  {%- elif origin in ('eBay', 'Catch', 'Amazon AU') -%}
+    <span class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700" title="Record created by a {{ origin }} order import — no website login exists"><i class="fas fa-store mr-1 text-[9px]"></i>{{ origin }}</span>
+  {%- elif origin == 'staff-created' -%}
+    <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700" title="Created by JJ staff (phone / manual order) — no website login exists"><i class="fas fa-headset mr-1 text-[9px]"></i>staff-created</span>
+  {%- elif origin == 'guest checkout' -%}
+    <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600" title="Started a guest checkout; channel unknown (no completed orders)"><i class="fas fa-cart-shopping mr-1 text-[9px]"></i>guest checkout</span>
+  {%- endif -%}
+{% endmacro %}
+
 {% block content %}
   {# ----------------------------------------------------------------- #}
   {# Recently-searched ledger — every visit to /customer/<phone>      #}
@@ -217,6 +235,7 @@
             <span class="inline-flex items-center rounded-full bg-{{ badge_color }}-100 px-2.5 py-0.5 text-xs font-medium text-{{ badge_color }}-800">
               {{ badge_label }}
             </span>
+            {{ origin_chip(primary.origin) }}
             <h2 class="text-2xl font-semibold text-slate-900">
               {# g-… usernames DO resolve in cpanel once the guest has
                  completed an order (Neto shows them as 'Prospect').
@@ -321,6 +340,7 @@
                pills make "definitely the same person" rows stand out
                from phone-only co-matches (housemate / typo'd number). #}
             {% for mt in (c.on_card_signals or {}).get(cu.Username, []) %}{{ match_pill(mt) }}{% endfor %}
+            {{ origin_chip(cu.origin) }}
             - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value | to_float) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
           </li>
         {% endfor %}
@@ -363,6 +383,7 @@
               {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists; use View 360">guest stub</span>{% endif %}
             {% endif %}
             {% for mt in item.match_types %}{{ match_pill(mt) }}{% endfor %}
+            {{ origin_chip(rc.origin if rc else None) }}
             <span class="text-amber-800">
               {{ (rc.email if rc else None) or '(no email)' }}
               {% if rc %} - ${{ '%.0f' % (rc.lifetime_value | to_float) }} lifetime - {{ rc.lifetime_order_count or 0 }} orders{% endif %}
@@ -464,7 +485,7 @@
             <i class="fas fa-cart-shopping mr-1.5 text-slate-400"></i>
             {{ c.guest_stubs|length }} abandoned guest checkout{{ 's' if c.guest_stubs|length != 1 }} linked to this customer
           </span>
-          <span class="ml-2 text-slate-500">incomplete checkouts — not real Neto profiles, kept for their contact history</span>
+          <span class="ml-2 text-slate-500">checkout records that never completed an order — not real Neto profiles, kept for their contact history</span>
         </span>
         <i class="fas text-xs text-slate-400" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
       </button>
@@ -481,6 +502,7 @@
                   <span class="inline-flex items-center rounded-full bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"><i class="fas fa-phone mr-1 text-[9px]"></i>same phone</span>
                 {%- else -%}{{ match_pill(mt) }}{%- endif -%}
               {% endfor %}
+              {{ origin_chip(rc.origin if rc else None) }}
               <span class="text-slate-600">
                 {{ (rc.email if rc else None) or '(no email)' }}
                 {% if rc and rc.customer_since %} - created {{ rc.customer_since }}{% endif %}
