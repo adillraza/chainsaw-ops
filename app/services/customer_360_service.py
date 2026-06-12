@@ -166,6 +166,7 @@ class Customer360Service:
             "call_behavior": None,   # call_behavior_360 row, or None
             "related_by_email": [],   # other accounts sharing an email signal
             "related_by_address": [], # other accounts sharing the billing address
+            "other_phone_calls": [],  # call activity on the customer's other numbers
             "error": None,
         }
         if not phone:
@@ -215,6 +216,12 @@ class Customer360Service:
         # occupant — softer claim, rendered in its own panel).
         empty["related_by_email"], empty["related_by_address"] = (
             self._fetch_related_accounts(empty["usernames"]))
+
+        # --- Cross-number call context: the customer's other phones that
+        # have call history, so the call panel can hint "23 calls from
+        # their other number" instead of a bare "no prior calls".
+        empty["other_phone_calls"] = self._fetch_other_phone_calls(
+            phone, empty["customers"])
 
         # --- Live-merge: pull today's call_event rows for this phone and
         # blend them into the BQ-derived call_history snapshot, so a
@@ -777,6 +784,70 @@ class Customer360Service:
             "history":  _row_to_dict(row.calls),
             "behavior": _row_to_dict(row.insights),
         }
+
+    def _fetch_other_phone_calls(self, current_phone: str,
+                                 customers: list[dict]) -> list[dict]:
+        """Call activity on the customer's OTHER known phone numbers.
+
+        The call-history panel is keyed by the URL phone ("has this
+        number called us"), which is right for live-call context but
+        confusing when a customer has several numbers — the card for
+        their old/fax number shows "no prior calls" even though they've
+        called us dozens of times from their current number. This
+        gathers every other phone across the matched customer records
+        and returns the ones with call history, so the panel can render
+        a cross-number hint with jump links.
+
+        Returns ``[{phone, total_calls, last_call_date}]`` sorted by
+        call count, descending. Cache-first; single-query BQ fallback.
+        """
+        phones: list[str] = []
+        seen = {current_phone}
+        for cu in customers or []:
+            for p in (cu.get("phones") or []):
+                ph = (p.get("phone") or "").strip() if isinstance(p, dict) else ""
+                if ph and ph not in seen:
+                    seen.add(ph)
+                    phones.append(ph)
+        if not phones:
+            return []
+
+        out: list[dict] = []
+        if _cache_table_ready(CachedCallHistory, CachedCallHistory.phone):
+            rows = (db.session.query(CachedCallHistory)
+                    .filter(CachedCallHistory.phone.in_(phones))
+                    .all())
+            for r in rows:
+                try:
+                    d = json.loads(r.payload_json)
+                except (TypeError, ValueError):
+                    continue
+                tc = d.get("total_calls") or 0
+                if tc:
+                    out.append({"phone":          r.phone,
+                                "total_calls":    tc,
+                                "last_call_date": d.get("last_call_date")})
+        elif self.client is not None:
+            sql = f"""
+            SELECT phone, total_calls, last_call_date
+            FROM `{PROJECT}.{DATASET}.call_history_360`
+            WHERE phone IN UNNEST(@phones) AND total_calls > 0
+            """
+            try:
+                job = self.client.query(
+                    sql,
+                    job_config=bigquery.QueryJobConfig(query_parameters=[
+                        bigquery.ArrayQueryParameter("phones", "STRING", phones),
+                    ]),
+                )
+                out = [{"phone": r.phone, "total_calls": r.total_calls,
+                        "last_call_date": str(r.last_call_date or "")}
+                       for r in job.result()]
+            except Exception as exc:
+                log.debug("other-phone-calls BQ fallback unavailable: %s", exc)
+
+        out.sort(key=lambda x: x.get("total_calls") or 0, reverse=True)
+        return out
 
     def _fetch_related_accounts(self, usernames: list[str]) -> tuple[list[dict], list[dict]]:
         """Related Neto accounts for the card — beyond phone matching.

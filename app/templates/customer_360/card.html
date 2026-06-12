@@ -246,6 +246,21 @@
       <div class="text-right">
         <div class="text-xs uppercase tracking-wide text-slate-500">Phone</div>
         <div class="font-mono text-xl text-slate-900">{{ c.phone or c.raw_phone }}</div>
+        {# Other numbers on file for this customer — each is a valid
+           Customer 360 entry point (the lookup matches any number the
+           customer ever used on an order or their profile). #}
+        {% if primary and primary.phones %}
+          {% set other_phones = primary.phones | map(attribute='phone') | select() | reject('equalto', c.phone) | list | unique | list %}
+          {% if other_phones %}
+            <div class="mt-1 text-[11px] text-slate-500">
+              also:
+              {% for op in other_phones %}
+                <a href="{{ url_for('customer_360.card', phone=op) }}"
+                   class="font-mono text-brand-700 hover:underline">{{ op }}</a>{% if not loop.last %} · {% endif %}
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endif %}
         {% if c.is_international %}
           <span class="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
             <i class="fas fa-globe text-[10px] mr-1"></i> International / non-AU
@@ -666,6 +681,19 @@
             {% endfor %}
           </div>
 
+          {% if c.other_phone_calls %}
+            <div class="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
+              {% for opc in c.other_phone_calls %}
+                <span class="{% if not loop.first %}ml-3{% endif %}">
+                  <i class="fas fa-phone text-[9px] text-slate-400"></i>
+                  also {{ opc.total_calls }} call{{ 's' if opc.total_calls != 1 }} from
+                  <a href="{{ url_for('customer_360.card', phone=opc.phone) }}"
+                     class="font-mono text-brand-700 hover:underline">{{ opc.phone }}</a>
+                </span>
+              {% endfor %}
+            </div>
+          {% endif %}
+
           {# Calls list — `recent_calls` is the new field (cap 100). The
              ``last_5_calls`` fallback keeps the panel rendering on the
              couple of customers whose snapshot was built before the model
@@ -721,6 +749,21 @@
       {% else %}
         <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
           No prior call history from this number.
+          {% if c.other_phone_calls %}
+            <div class="mt-2 space-y-1">
+              {% for opc in c.other_phone_calls %}
+                <div class="text-slate-600">
+                  <i class="fas fa-phone text-[10px] text-slate-400 mr-1"></i>
+                  <strong>{{ opc.total_calls }}</strong> call{{ 's' if opc.total_calls != 1 }} from their other number
+                  <a href="{{ url_for('customer_360.card', phone=opc.phone) }}"
+                     class="font-mono text-brand-700 hover:underline">{{ opc.phone }}</a>
+                  {% if opc.last_call_date %}<span class="text-slate-400">· last {{ opc.last_call_date }}</span>{% endif %}
+                  <a href="{{ url_for('customer_360.card', phone=opc.phone) }}"
+                     class="ml-1 text-brand-700 hover:underline">view <i class="fas fa-chevron-right text-[9px]"></i></a>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
         </div>
       {% endif %}
 
