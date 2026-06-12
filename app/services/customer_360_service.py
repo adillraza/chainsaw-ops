@@ -269,7 +269,10 @@ class Customer360Service:
         empty["customers"].sort(key=_is_guest_stub)  # stable: real first
         stubs: list[dict] = []
         stub_usernames: list[str] = []
-        for cu in empty["customers"]:
+        # customers[1:] — when the card's ONLY record is a stub it IS the
+        # primary (header already shows it unlinked with its origin chip);
+        # listing it in its own "linked stubs" panel would be circular.
+        for cu in empty["customers"][1:]:
             if _is_guest_stub(cu):
                 uname = cu.get("Username") or ""
                 stub_usernames.append(uname)
