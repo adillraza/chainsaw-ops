@@ -1058,14 +1058,32 @@ class Customer360Service:
                     .filter(CachedCustomer360.Username.in_(usernames))
                     .all())
             customers = [json.loads(r.payload_json) for r in rows]
+            # Top up any usernames the cache is missing from BQ. During a
+            # full reload the cache is PARTIALLY populated for minutes —
+            # an all-or-nothing fallback isn't enough: a 3-username card
+            # with 2 cache hits silently dropped the third account (live
+            # 2026-06-12: Manuel Bogiatzis vanished from Dane Graham's
+            # banner mid-reload). Genuine misses (username with no
+            # customer_360 row) shouldn't exist — every neto_customers
+            # row produces one — so this BQ top-up is rare outside
+            # reload windows.
+            found = {c.get("Username") for c in customers}
+            missing = [u for u in usernames if u not in found]
+            if missing and self.client is not None:
+                try:
+                    job = self.client.query(
+                        f"""
+                        SELECT * FROM `{PROJECT}.{DATASET}.customer_360`
+                        WHERE Username IN UNNEST(@usernames)
+                        """,
+                        job_config=bigquery.QueryJobConfig(query_parameters=[
+                            bigquery.ArrayQueryParameter("usernames", "STRING", missing)
+                        ]),
+                    )
+                    customers.extend(_row_to_dict(r) for r in job.result())
+                except Exception as exc:
+                    log.debug("customer top-up from BQ failed: %s", exc)
             customers.sort(key=_lifetime_value_key, reverse=True)
-            # Fall through to BQ when the cache has NONE of the requested
-            # usernames. A partially-populated cache (mid full-reload, or
-            # a reload that died) would otherwise return a confident
-            # empty answer and the card renders 'No matching Neto
-            # customer' for a real customer (seen live 2026-06-12 when a
-            # gutted reload left 281k of 368k rows). Cost: unknown-caller
-            # cards now always pay one BQ query — correctness wins.
             if customers:
                 return customers
         if self.client is None:
