@@ -204,7 +204,11 @@
               {{ badge_label }}
             </span>
             <h2 class="text-2xl font-semibold text-slate-900">
-              {% set cust_url = neto_url('customer', primary.Username) if not (primary.Username or '').startswith('g-') else None %}
+              {# g-… usernames DO resolve in cpanel once the guest has
+                 completed an order (Neto shows them as 'Prospect').
+                 Only abandoned-checkout stubs (g- + zero orders) have
+                 no page — verified empirically 2026-06-12. #}
+              {% set cust_url = neto_url('customer', primary.Username) if (not (primary.Username or '').startswith('g-') or (primary.lifetime_order_count or 0) | to_float > 0) else None %}
               {% if cust_url %}
                 <a href="{{ cust_url }}" target="_blank" rel="noopener"
                    class="hover:text-brand-700 hover:underline"
@@ -270,7 +274,7 @@
       </div>
       <ul class="mt-2 list-disc pl-5 text-amber-800">
         {% for cu in c.customers[1:] %}
-          {% set cu_url = neto_url('customer', cu.Username) if not (cu.Username or '').startswith('g-') else None %}
+          {% set cu_url = neto_url('customer', cu.Username) if (not (cu.Username or '').startswith('g-') or (cu.lifetime_order_count or 0) | to_float > 0) else None %}
           <li class="truncate">
             {% if cu_url %}
               <a href="{{ cu_url }}" target="_blank" rel="noopener"
@@ -319,11 +323,11 @@
         {% for item in c.related_by_email %}
           {% set rc = item.customer %}
           {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
-          {# Guest-checkout records (g-… usernames) have no cpanel
-             account page — customer/view?id=g-… lands on the blank
-             Add New Customer form. Suppress the link; View 360 still
-             works and their orders deep-link into cpanel fine. #}
-          {% set cu_url = neto_url('customer', item.username) if not item.username.startswith('g-') else None %}
+          {# g-… guest records resolve in cpanel by username ONCE they
+             have a completed order (Neto 'Prospect'). Abandoned-checkout
+             stubs (g- + zero orders) have no page — suppress only those. #}
+          {% set rc_has_orders = rc and ((rc.lifetime_order_count or 0) | to_float > 0) %}
+          {% set cu_url = neto_url('customer', item.username) if (not item.username.startswith('g-') or rc_has_orders) else None %}
           <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
             {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
             {% if cu_url %}
@@ -334,7 +338,7 @@
               </a>
             {% else %}
               <span class="font-medium text-amber-900">{{ rc_name }}</span>
-              {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Guest checkout — no Neto account page; use View 360">guest</span>{% endif %}
+              {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists; use View 360">guest stub</span>{% endif %}
             {% endif %}
             {% for mt in item.match_types %}{{ match_pill(mt) }}{% endfor %}
             <span class="text-amber-800">
@@ -381,7 +385,8 @@
           {% for item in c.related_by_address %}
             {% set rc = item.customer %}
             {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
-            {% set cu_url = neto_url('customer', item.username) if not item.username.startswith('g-') else None %}
+            {% set rc_has_orders = rc and ((rc.lifetime_order_count or 0) | to_float > 0) %}
+            {% set cu_url = neto_url('customer', item.username) if (not item.username.startswith('g-') or rc_has_orders) else None %}
             <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
               {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
               {% if cu_url %}
@@ -392,7 +397,7 @@
                 </a>
               {% else %}
                 <span class="font-medium text-sky-900">{{ rc_name }}</span>
-                {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Guest checkout — no Neto account page; use View 360">guest</span>{% endif %}
+                {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists; use View 360">guest stub</span>{% endif %}
               {% endif %}
               <span class="text-sky-800">
                 {{ (rc.email if rc else None) or '(no email)' }}
