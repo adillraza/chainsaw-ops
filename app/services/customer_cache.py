@@ -399,6 +399,16 @@ def cache_customer_360_data() -> tuple[bool, str]:
             return False, "BigQuery client not available"
         try:
             t0 = time.perf_counter()
+            # The refresh shares instance/users.db with the live web
+            # service (webhook writes land every few seconds during
+            # business hours). SQLite allows one writer; the default
+            # ~5s busy timeout made the big full-reload DELETE+INSERT
+            # die with 'database is locked' whenever a webhook write
+            # held the file at the wrong moment (observed 2026-06-12,
+            # left the cache gutted at 9.5k of 368k rows). Wait up to
+            # 60s for the lock instead.
+            from sqlalchemy import text as _text
+            db.session.execute(_text("PRAGMA busy_timeout = 60000"))
             print("Refreshing Customer 360 cache from BigQuery...")
             total = 0
             total += _load_phone_lookup(client)
