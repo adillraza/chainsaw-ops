@@ -167,6 +167,7 @@ class Customer360Service:
             "related_by_email": [],   # other accounts sharing an email signal
             "related_by_address": [], # other accounts sharing the billing address
             "other_phone_calls": [],  # call activity on the customer's other numbers
+            "on_card_signals": {},    # extra match signals between on-card accounts
             "error": None,
         }
         if not phone:
@@ -214,7 +215,8 @@ class Customer360Service:
         # sharing an email signal (probably the same person) or the same
         # billing address (possibly a household member / previous
         # occupant — softer claim, rendered in its own panel).
-        empty["related_by_email"], empty["related_by_address"] = (
+        (empty["related_by_email"], empty["related_by_address"],
+         empty["on_card_signals"]) = (
             self._fetch_related_accounts(empty["usernames"]))
 
         # --- Cross-number call context: the customer's other phones that
@@ -849,7 +851,7 @@ class Customer360Service:
         out.sort(key=lambda x: x.get("total_calls") or 0, reverse=True)
         return out
 
-    def _fetch_related_accounts(self, usernames: list[str]) -> tuple[list[dict], list[dict]]:
+    def _fetch_related_accounts(self, usernames: list[str]) -> tuple[list[dict], list[dict], dict]:
         """Related Neto accounts for the card — beyond phone matching.
 
         Reads the ``customer_related_accounts`` mirror (Dataform model of
@@ -857,7 +859,9 @@ class Customer360Service:
         a primary email, secondary email, primary↔secondary cross-match,
         or billing address (street + postcode).
 
-        Returns ``(related_by_email, related_by_address)``:
+        Returns ``(related_by_email, related_by_address, on_card_signals)``
+        where ``on_card_signals`` maps already-on-card usernames to the
+        extra match signals linking them to other on-card accounts:
 
         * accounts already on the card (the phone-matched set) are
           dropped — they're shown in the phone-match banner instead
@@ -872,7 +876,7 @@ class Customer360Service:
         * both lists sorted by lifetime value, descending
         """
         if not usernames:
-            return [], []
+            return [], [], {}
 
         uname_set = set(usernames)
         entries: list[dict] = []
@@ -912,23 +916,38 @@ class Customer360Service:
                 entries = []
 
         if not entries:
-            return [], []
+            return [], [], {}
 
         # Group the flat (related_username, match_type, match_value)
         # entries by username. The same related account can be linked
         # from several of OUR usernames and by several signals.
+        # Accounts ALREADY on the card (the phone-matched set) don't go
+        # to the panels — but their extra signals are kept in
+        # ``on_card_signals`` so the phone banner can show why-pills on
+        # rows that also match by email/address (e.g. two accounts
+        # sharing both the phone AND an email are near-certainly the
+        # same person; a phone-only co-match might be a housemate).
         grouped: dict[str, dict] = {}
+        on_card_signals: dict[str, list] = {}
         for e in entries:
             ru = e.get("related_username")
-            if not ru or ru in uname_set:
+            if not ru:
+                continue
+            mt = e.get("match_type") or "unknown"
+            if ru in uname_set:
+                sig = on_card_signals.setdefault(ru, [])
+                if mt not in sig:
+                    sig.append(mt)
                 continue
             g = grouped.setdefault(ru, {"match_types": set(), "match_values": {}})
-            mt = e.get("match_type") or "unknown"
             g["match_types"].add(mt)
             g["match_values"].setdefault(mt, e.get("match_value"))
 
+        for sig in on_card_signals.values():
+            sig.sort()
+
         if not grouped:
-            return [], []
+            return [], [], on_card_signals
 
         profiles = {c.get("Username"): c
                     for c in self._fetch_customers(list(grouped))}
@@ -952,7 +971,7 @@ class Customer360Service:
             return _lifetime_value_key(item.get("customer") or {})
         by_email.sort(key=_lv, reverse=True)
         by_address.sort(key=_lv, reverse=True)
-        return by_email, by_address
+        return by_email, by_address, on_card_signals
 
     def _fetch_customers(self, usernames: list[str]) -> list[dict]:
         if not usernames:

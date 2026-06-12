@@ -23,6 +23,20 @@
   {% endif %}
 {% endmacro %}
 
+{# Pill label per match signal — used by the phone banner (extra signals
+   between on-card accounts) and the email/address related panels. #}
+{% macro match_pill(mt) %}
+  {%- if mt == 'email' -%}
+    <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-envelope mr-1 text-[9px]"></i>same email</span>
+  {%- elif mt == 'secondary_email' -%}
+    <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-envelope mr-1 text-[9px]"></i>same 2nd email</span>
+  {%- elif mt == 'cross_email' -%}
+    <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-right-left mr-1 text-[9px]"></i>email &harr; 2nd email</span>
+  {%- elif mt == 'address' -%}
+    <span class="inline-flex items-center rounded-full bg-sky-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-sky-900"><i class="fas fa-house mr-1 text-[9px]"></i>same address</span>
+  {%- endif -%}
+{% endmacro %}
+
 {% block content %}
   {# ----------------------------------------------------------------- #}
   {# Recently-searched ledger — every visit to /customer/<phone>      #}
@@ -301,26 +315,16 @@
               <span class="font-medium text-amber-900">{{ cu.name_first }} {{ cu.name_last }}</span>
               {% if (cu.Username or '').startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists">guest stub</span>{% endif %}
             {% endif %}
+            {# Extra signals beyond the shared phone — same email/address
+               pills make "definitely the same person" rows stand out
+               from phone-only co-matches (housemate / typo'd number). #}
+            {% for mt in (c.on_card_signals or {}).get(cu.Username, []) %}{{ match_pill(mt) }}{% endfor %}
             - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value | to_float) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
           </li>
         {% endfor %}
       </ul>
     </section>
   {% endif %}
-
-  {# Small helper — pill label per match signal. Used by both related-
-     account boxes below. #}
-  {% macro match_pill(mt) %}
-    {%- if mt == 'email' -%}
-      <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-envelope mr-1 text-[9px]"></i>same email</span>
-    {%- elif mt == 'secondary_email' -%}
-      <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-envelope mr-1 text-[9px]"></i>same 2nd email</span>
-    {%- elif mt == 'cross_email' -%}
-      <span class="inline-flex items-center rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"><i class="fas fa-right-left mr-1 text-[9px]"></i>email &harr; 2nd email</span>
-    {%- elif mt == 'address' -%}
-      <span class="inline-flex items-center rounded-full bg-sky-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-sky-900"><i class="fas fa-house mr-1 text-[9px]"></i>same address</span>
-    {%- endif -%}
-  {% endmacro %}
 
   {# ----------------------------------------------------------------- #}
   {# EMAIL-MATCHED ACCOUNTS — second identity box. Same amber family   #}
