@@ -284,12 +284,15 @@
     </div>
   </section>
 
-  {# Multi-match disambiguation chooser ------------------------------- #}
-  {% if c.customers|length > 1 %}
+  {# Multi-match disambiguation chooser. Guest-checkout stubs are
+     excluded here — they're not real profiles and render in their own
+     panel below. #}
+  {% set banner_accounts = c.customers[1:] | rejectattr('Username', 'in', c.stub_usernames or []) | list %}
+  {% if banner_accounts %}
     <section class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="font-medium text-amber-900">This phone matches {{ c.customers|length }} Neto customer records</p>
+          <p class="font-medium text-amber-900">This phone matches {{ banner_accounts|length + 1 }} Neto customer records</p>
           <p class="mt-1 text-amber-800">Likely the same person registered as guest multiple times. Top match (by lifetime value) shown above; others below.</p>
         </div>
         {# "Merge in Neto" stub button — will be wired up to either deep-link
@@ -302,7 +305,7 @@
         </span>
       </div>
       <ul class="mt-2 list-disc pl-5 text-amber-800">
-        {% for cu in c.customers[1:] %}
+        {% for cu in banner_accounts %}
           {% set cu_url = neto_url('customer', cu.Username) if (not (cu.Username or '').startswith('g-') or (cu.lifetime_order_count or 0) | to_float > 0) else None %}
           <li class="truncate">
             {% if cu_url %}
@@ -313,7 +316,6 @@
               </a>
             {% else %}
               <span class="font-medium text-amber-900">{{ cu.name_first }} {{ cu.name_last }}</span>
-              {% if (cu.Username or '').startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Abandoned guest checkout (no completed orders) — no Neto page exists">guest stub</span>{% endif %}
             {% endif %}
             {# Extra signals beyond the shared phone — same email/address
                pills make "definitely the same person" rows stand out
@@ -442,6 +444,57 @@
             <i class="fas fa-location-dot mr-1"></i>Matched on billing address: {{ addr_val }}
           </p>
         {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  {# ----------------------------------------------------------------- #}
+  {# GUEST CHECKOUT STUBS — abandoned checkouts linked to this card.   #}
+  {# Not real Neto profiles (no cpanel page exists), so they're kept   #}
+  {# apart from real accounts: slate styling, no Neto link, collapsed. #}
+  {# Their value is contact-detail history (alternate emails/phones).  #}
+  {# ----------------------------------------------------------------- #}
+  {% if c.guest_stubs %}
+    <section class="mb-6 rounded-lg border border-slate-200 bg-slate-50 text-sm"
+             x-data="{ open: false }">
+      <button type="button" @click="open = !open"
+              class="flex w-full items-center justify-between gap-3 p-4 text-left">
+        <span>
+          <span class="font-medium text-slate-700">
+            <i class="fas fa-cart-shopping mr-1.5 text-slate-400"></i>
+            {{ c.guest_stubs|length }} abandoned guest checkout{{ 's' if c.guest_stubs|length != 1 }} linked to this customer
+          </span>
+          <span class="ml-2 text-slate-500">incomplete checkouts — not real Neto profiles, kept for their contact history</span>
+        </span>
+        <i class="fas text-xs text-slate-400" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+      <div x-show="open" x-cloak class="border-t border-slate-200 px-4 pb-4">
+        <ul class="mt-3 space-y-1.5">
+          {% for item in c.guest_stubs %}
+            {% set rc = item.customer %}
+            {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
+            {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
+            <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="font-medium text-slate-700">{{ rc_name }}</span>
+              {% for mt in item.match_types %}
+                {%- if mt == 'phone' -%}
+                  <span class="inline-flex items-center rounded-full bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"><i class="fas fa-phone mr-1 text-[9px]"></i>same phone</span>
+                {%- else -%}{{ match_pill(mt) }}{%- endif -%}
+              {% endfor %}
+              <span class="text-slate-600">
+                {{ (rc.email if rc else None) or '(no email)' }}
+                {% if rc and rc.customer_since %} - created {{ rc.customer_since }}{% endif %}
+              </span>
+              {% if rc_phone %}
+                <a href="{{ url_for('customer_360.card', phone=rc_phone) }}"
+                   class="ml-auto inline-flex items-center rounded-md bg-slate-200/70 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-300/70"
+                   title="Open this stub's Customer 360 (contact history)">
+                  View 360 <i class="fas fa-chevron-right ml-1 text-[9px]"></i>
+                </a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
       </div>
     </section>
   {% endif %}

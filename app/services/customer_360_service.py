@@ -86,6 +86,33 @@ def _lifetime_value_key(customer: dict) -> float:
         return 0.0
 
 
+def _is_guest_stub(cu: dict | None) -> bool:
+    """True when a customer record is an abandoned guest-checkout stub.
+
+    Stubs are records Neto creates the moment a checkout captures
+    contact details, that never became real profiles: created via the
+    checkout pathway (``g-…`` username, new style, or
+    ``SalesChannel = 'Checkout'``, old style) AND zero completed
+    orders. No cpanel profile page exists for them — verified
+    empirically 2026-06-12 (g-7e0783f81ebbd, admin1158121704 → blank
+    Add New Customer form; every record with completed orders loads).
+    They still carry valuable contact history (alternate emails /
+    phones), so the card shows them — in their own panel, unlinked.
+    """
+    if not cu:
+        return False
+    uname = (cu.get("Username") or "")
+    chan = (cu.get("sales_channel") or "").strip()
+    created_by_checkout = uname.startswith("g-") or chan == "Checkout"
+    if not created_by_checkout:
+        return False
+    try:
+        orders = float(cu.get("lifetime_order_count") or 0)
+    except (TypeError, ValueError):
+        orders = 0.0
+    return orders == 0
+
+
 def _cache_table_ready(model, key_col) -> bool:
     state = _CACHE_READY_FLAGS.setdefault(model.__tablename__,
                                           {"value": False, "checked_at": 0.0})
@@ -168,6 +195,8 @@ class Customer360Service:
             "related_by_address": [], # other accounts sharing the billing address
             "other_phone_calls": [],  # call activity on the customer's other numbers
             "on_card_signals": {},    # extra match signals between on-card accounts
+            "guest_stubs": [],        # abandoned checkout stubs (own panel, unlinked)
+            "stub_usernames": [],     # usernames of the above, for template filters
             "error": None,
         }
         if not phone:
@@ -224,6 +253,43 @@ class Customer360Service:
         # their other number" instead of a bare "no prior calls".
         empty["other_phone_calls"] = self._fetch_other_phone_calls(
             phone, empty["customers"])
+
+        # --- Guest-stub extraction. Abandoned checkout stubs aren't real
+        # Neto profiles, so they don't belong alongside real accounts in
+        # the phone banner or the email/address panels. Pull them out
+        # into ``guest_stubs`` (rendered in their own panel, unlinked),
+        # keeping every match signal as pills.
+        #   * stable re-sort keeps real accounts above stubs so a $0
+        #     stub can never become the card's primary when a real
+        #     account exists for the same phone
+        #   * phone-matched stubs carry signal 'phone' plus any
+        #     on-card extra signals (email/address)
+        #   * stub items in the email/address panels move over with
+        #     their match_types
+        empty["customers"].sort(key=_is_guest_stub)  # stable: real first
+        stubs: list[dict] = []
+        stub_usernames: list[str] = []
+        for cu in empty["customers"]:
+            if _is_guest_stub(cu):
+                uname = cu.get("Username") or ""
+                stub_usernames.append(uname)
+                stubs.append({
+                    "username":     uname,
+                    "customer":     cu,
+                    "match_types":  ["phone"] + (empty["on_card_signals"] or {}).get(uname, []),
+                    "match_values": {},
+                })
+        for key in ("related_by_email", "related_by_address"):
+            kept: list[dict] = []
+            for item in empty[key]:
+                if _is_guest_stub(item.get("customer")):
+                    stub_usernames.append(item["username"])
+                    stubs.append(item)
+                else:
+                    kept.append(item)
+            empty[key] = kept
+        empty["guest_stubs"] = stubs
+        empty["stub_usernames"] = stub_usernames
 
         # --- Live-merge: pull today's call_event rows for this phone and
         # blend them into the BQ-derived call_history snapshot, so a
