@@ -1048,7 +1048,15 @@ class Customer360Service:
                     .all())
             customers = [json.loads(r.payload_json) for r in rows]
             customers.sort(key=_lifetime_value_key, reverse=True)
-            return customers
+            # Fall through to BQ when the cache has NONE of the requested
+            # usernames. A partially-populated cache (mid full-reload, or
+            # a reload that died) would otherwise return a confident
+            # empty answer and the card renders 'No matching Neto
+            # customer' for a real customer (seen live 2026-06-12 when a
+            # gutted reload left 281k of 368k rows). Cost: unknown-caller
+            # cards now always pay one BQ query — correctness wins.
+            if customers:
+                return customers
         if self.client is None:
             return []
         sql = f"""
