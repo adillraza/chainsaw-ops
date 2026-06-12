@@ -336,9 +336,12 @@
             {% else %}
               <span class="font-medium text-amber-900">{{ cu.name_first }} {{ cu.name_last }}</span>
             {% endif %}
-            {# Extra signals beyond the shared phone — same email/address
-               pills make "definitely the same person" rows stand out
-               from phone-only co-matches (housemate / typo'd number). #}
+            {# Match basis, always explicit: every banner row shares the
+               phone by definition (slate pill), plus any extra signals
+               (email/address pills) that make "definitely the same
+               person" rows stand out from phone-only co-matches
+               (employee / mate / typo'd number). #}
+            <span class="inline-flex items-center rounded-full bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"><i class="fas fa-phone mr-1 text-[9px]"></i>same phone</span>
             {% for mt in (c.on_card_signals or {}).get(cu.Username, []) %}{{ match_pill(mt) }}{% endfor %}
             {{ origin_chip(cu.origin) }}
             - {{ cu.email or '(no email)' }} - ${{ '%.0f' % (cu.lifetime_value | to_float) }} lifetime - {{ cu.lifetime_order_count or 0 }} orders
