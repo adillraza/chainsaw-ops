@@ -29,6 +29,18 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Engine-wide SQLite busy timeout (seconds). One file serves both the
+    # live web service (webhook writes every few seconds) and the bulk
+    # cache refresh (full reload deletes/inserts 368k rows). SQLite is
+    # single-writer; with the default ~5s timeout whichever side lost
+    # the race died with 'database is locked' (2026-06-12: three failed
+    # refreshes, cache left partial). A per-session PRAGMA isn't enough —
+    # it only covers one pooled connection — so set it on connect for
+    # every connection.
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "connect_args": {"timeout": 60},
+    }
+
     # BigQuery
     GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     BIGQUERY_PROJECT_ID = os.environ.get("BIGQUERY_PROJECT_ID", "chainsawspares-385722")
