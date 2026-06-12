@@ -10,6 +10,6 @@ WorkingDirectory=/opt/chainsaw-ops
 Environment=FLASK_APP=wsgi.py
 Environment=PATH=/opt/chainsaw-ops/venv/bin
 ExecStart=/opt/chainsaw-ops/venv/bin/flask refresh-cache
-TimeoutStartSec=15min
+TimeoutStartSec=45min
 StandardOutput=journal
 StandardError=journal
