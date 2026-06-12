@@ -204,7 +204,7 @@
               {{ badge_label }}
             </span>
             <h2 class="text-2xl font-semibold text-slate-900">
-              {% set cust_url = neto_url('customer', primary.Username) %}
+              {% set cust_url = neto_url('customer', primary.Username) if not (primary.Username or '').startswith('g-') else None %}
               {% if cust_url %}
                 <a href="{{ cust_url }}" target="_blank" rel="noopener"
                    class="hover:text-brand-700 hover:underline"
@@ -270,7 +270,7 @@
       </div>
       <ul class="mt-2 list-disc pl-5 text-amber-800">
         {% for cu in c.customers[1:] %}
-          {% set cu_url = neto_url('customer', cu.Username) %}
+          {% set cu_url = neto_url('customer', cu.Username) if not (cu.Username or '').startswith('g-') else None %}
           <li class="truncate">
             {% if cu_url %}
               <a href="{{ cu_url }}" target="_blank" rel="noopener"
@@ -319,7 +319,11 @@
         {% for item in c.related_by_email %}
           {% set rc = item.customer %}
           {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
-          {% set cu_url = neto_url('customer', item.username) %}
+          {# Guest-checkout records (g-… usernames) have no cpanel
+             account page — customer/view?id=g-… lands on the blank
+             Add New Customer form. Suppress the link; View 360 still
+             works and their orders deep-link into cpanel fine. #}
+          {% set cu_url = neto_url('customer', item.username) if not item.username.startswith('g-') else None %}
           <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
             {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
             {% if cu_url %}
@@ -330,6 +334,7 @@
               </a>
             {% else %}
               <span class="font-medium text-amber-900">{{ rc_name }}</span>
+              {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Guest checkout — no Neto account page; use View 360">guest</span>{% endif %}
             {% endif %}
             {% for mt in item.match_types %}{{ match_pill(mt) }}{% endfor %}
             <span class="text-amber-800">
@@ -376,7 +381,7 @@
           {% for item in c.related_by_address %}
             {% set rc = item.customer %}
             {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
-            {% set cu_url = neto_url('customer', item.username) %}
+            {% set cu_url = neto_url('customer', item.username) if not item.username.startswith('g-') else None %}
             <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
               {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
               {% if cu_url %}
@@ -387,6 +392,7 @@
                 </a>
               {% else %}
                 <span class="font-medium text-sky-900">{{ rc_name }}</span>
+                {% if item.username.startswith('g-') %}<span class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500" title="Guest checkout — no Neto account page; use View 360">guest</span>{% endif %}
               {% endif %}
               <span class="text-sky-800">
                 {{ (rc.email if rc else None) or '(no email)' }}
