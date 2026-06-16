@@ -67,11 +67,9 @@
   {%- set p_email = (primary.email or '') -%}
   {%- set c_addr = ([cu.address_line1, cu.city, cu.state, cu.postcode] | select | join(', ')) if cu else '' -%}
   {%- set p_addr = ([primary.address_line1, primary.city, primary.state, primary.postcode] | select | join(', ')) if primary else '' -%}
-  <div class="mt-1 grid w-full gap-x-4 gap-y-0.5 text-[11px] sm:grid-cols-3">
-    <span class="truncate" title="Phone"><i class="fas fa-phone mr-1 w-3 text-slate-400"></i><span class="{{ 'font-semibold text-rose-700' if (c_phone and p_phone and c_phone != p_phone) else muted }}">{{ c_phone or '—' }}</span></span>
-    <span class="truncate" title="Email"><i class="fas fa-envelope mr-1 w-3 text-slate-400"></i><span class="{{ 'font-semibold text-rose-700' if (c_email and p_email and c_email|lower != p_email|lower) else muted }}">{{ c_email or '—' }}</span></span>
-    <span class="truncate" title="Address"><i class="fas fa-location-dot mr-1 w-3 text-slate-400"></i><span class="{{ 'font-semibold text-rose-700' if (c_addr and p_addr and c_addr != p_addr) else muted }}">{{ c_addr or '—' }}</span></span>
-  </div>
+  <span class="ml-1 inline-flex items-center gap-1 whitespace-nowrap text-[11px]" title="Phone"><i class="fas fa-phone text-slate-400"></i><span class="{{ 'font-semibold text-rose-700' if (c_phone and p_phone and c_phone != p_phone) else muted }}">{{ c_phone or '—' }}</span></span>
+  <span class="ml-2 inline-flex items-center gap-1 text-[11px]" title="Email"><i class="fas fa-envelope text-slate-400"></i><span class="{{ 'font-semibold text-rose-700' if (c_email and p_email and c_email|lower != p_email|lower) else muted }}">{{ c_email or '—' }}</span></span>
+  <span class="ml-2 inline-flex items-center gap-1 text-[11px]" title="Address"><i class="fas fa-location-dot text-slate-400"></i><span class="{{ 'font-semibold text-rose-700' if (c_addr and p_addr and c_addr != p_addr) else muted }}">{{ c_addr or '—' }}</span></span>
 {% endmacro %}
 
 {% block content %}
@@ -344,7 +342,11 @@
       </div>
       <ul class="mt-2 list-disc pl-5 text-amber-800">
         {% for cu in banner_accounts %}
-          {% set cu_url = neto_url('customer', cu.Username) if (not (cu.Username or '').startswith('g-') or (cu.lifetime_order_count or 0) | to_float > 0) else None %}
+          {# cpanel customer page only exists once an account has a completed
+             order — a zero-order account (guest stub OR registered dupe)
+             resolves to the blank "Add New Customer" form. So link only
+             when orders > 0. #}
+          {% set cu_url = neto_url('customer', cu.Username) if ((cu.lifetime_order_count or 0) | to_float > 0) else None %}
           <li class="leading-relaxed">
             {% if cu_url %}
               <a href="{{ cu_url }}" target="_blank" rel="noopener"
@@ -392,7 +394,7 @@
              have a completed order (Neto 'Prospect'). Abandoned-checkout
              stubs (g- + zero orders) have no page — suppress only those. #}
           {% set rc_has_orders = rc and ((rc.lifetime_order_count or 0) | to_float > 0) %}
-          {% set cu_url = neto_url('customer', item.username) if (not item.username.startswith('g-') or rc_has_orders) else None %}
+          {% set cu_url = neto_url('customer', item.username) if rc_has_orders else None %}
           <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
             {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
             {% if cu_url %}
@@ -452,7 +454,7 @@
             {% set rc = item.customer %}
             {% set rc_phone = (rc.phones[0].phone if rc and rc.phones else None) %}
             {% set rc_has_orders = rc and ((rc.lifetime_order_count or 0) | to_float > 0) %}
-            {% set cu_url = neto_url('customer', item.username) if (not item.username.startswith('g-') or rc_has_orders) else None %}
+            {% set cu_url = neto_url('customer', item.username) if rc_has_orders else None %}
             <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
               {% set rc_name = (((rc.name_first or '') ~ ' ' ~ (rc.name_last or '')).strip() if rc else '') or item.username %}
               {% if cu_url %}
