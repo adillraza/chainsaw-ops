@@ -134,6 +134,41 @@ def _new_model(system_instruction: str, with_tools: bool):
     return GenerativeModel(MODEL, **kwargs)
 
 
+FOLLOWUP_INSTRUCTION = """You propose the NEXT questions a customer-service agent might ask about THIS customer, given the context and conversation so far.
+
+Output ONLY a JSON array of 2–3 short questions (each ≤ 8 words), specific to this customer and what's just been discussed — not generic. Phrase them as the agent would ask the assistant. No prose, no numbering, no markdown. If the conversation already covered something, suggest a sensible next step instead of repeating it.
+
+Good examples (shape, not content): ["What was the refund for?", "Has it been paid back yet?", "What's their most-ordered part?"]"""
+
+
+def _suggest_followups(context_block: str, convo: str) -> list[str]:
+    """Best-effort 2–3 short follow-up questions for the chip row.
+
+    Uses a cheap structured-JSON generation (array of strings) so parsing
+    is robust. Returns [] on any failure — suggestions are a nicety and
+    must never break the turn.
+    """
+    try:
+        from vertexai.generative_models import GenerationConfig
+        model = _new_model(
+            FOLLOWUP_INSTRUCTION + "\n\n" + context_block
+            + "\n\nCONVERSATION SO FAR:\n" + (convo or "(none yet)"),
+            with_tools=False)
+        cfg = GenerationConfig(
+            temperature=0.4, max_output_tokens=800,
+            response_mime_type="application/json",
+            response_schema={"type": "array", "items": {"type": "string"}},
+        )
+        resp = model.generate_content(
+            "List the follow-up questions.", generation_config=cfg)
+        items = json.loads((getattr(resp, "text", None) or "[]"))
+        if isinstance(items, list):
+            return [str(x).strip() for x in items if str(x).strip()][:3]
+    except Exception as exc:
+        log.info("c360_chat: followups failed: %s", exc)
+    return []
+
+
 def stream(phone: str, messages: list[dict], *,
            can_view_sensitive: bool = False) -> Iterator[dict[str, Any]]:
     """Yield events for one chat turn, scoped to the customer at ``phone``."""
@@ -165,6 +200,7 @@ def stream(phone: str, messages: list[dict], *,
         message_to_send: Any = last_user
         max_tool_loops = 4
         t_first = None
+        full_text = ""
         for loop in range(max_tool_loops + 1):
             response = chat.send_message(message_to_send, generation_config=gen_cfg)
             cand = response.candidates[0] if response.candidates else None
@@ -204,6 +240,16 @@ def stream(phone: str, messages: list[dict], *,
             for i in range(0, len(full_text), 30):
                 yield {"type": "token", "text": full_text[i:i + 30]}
             break
+
+        # Conversation-aware follow-up chips (best-effort, after the answer
+        # so it never delays the reply the agent is reading).
+        if full_text:
+            convo_lines = [f"{m.get('role')}: {m.get('content')}"
+                           for m in messages[-6:] if m.get("content")]
+            convo_lines.append(f"assistant: {full_text}")
+            items = _suggest_followups(_context_block(card), "\n".join(convo_lines))
+            if items:
+                yield {"type": "suggestions", "items": items}
     except Exception as exc:
         log.warning("c360_chat: generation failed: %s", exc)
         yield {"type": "error", "message": f"generation failed: {exc}"}
@@ -247,6 +293,13 @@ def brief(phone: str, *, can_view_sensitive: bool = False) -> Iterator[dict[str,
         text = (getattr(resp, "text", None) or "").strip()
         for i in range(0, len(text), 30):
             yield {"type": "token", "text": text[i:i + 30]}
+
+        # Customer-aware starter chips, seeded from the brief itself so the
+        # very first suggestions already reference this customer's situation.
+        ctx = _context_block(card)
+        items = _suggest_followups(ctx, "assistant (pre-call brief): " + text)
+        if items:
+            yield {"type": "suggestions", "items": items}
     except Exception as exc:
         log.warning("c360_chat: brief failed: %s", exc)
         yield {"type": "error", "message": f"brief failed: {exc}"}

@@ -636,10 +636,12 @@
 
       {# Composer — example chips when the thread is empty #}
       <div class="border-t border-slate-100 px-4 py-3">
-        <div x-show="messages.length === 0" class="mb-2 flex flex-wrap gap-1.5">
-          <template x-for="ex in examples" :key="ex">
-            <button type="button" @click="ask(ex)"
-                    class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700">
+        <div class="mb-2 flex flex-wrap items-center gap-1.5">
+          <span x-show="messages.length > 0"
+                class="mr-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">Follow-ups</span>
+          <template x-for="ex in chips" :key="ex">
+            <button type="button" @click="ask(ex)" :disabled="busy"
+                    class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50">
               <span x-text="ex"></span>
             </button>
           </template>
@@ -1348,12 +1350,23 @@ function c360Chat(opts) {
     busy: false,
     error: null,
     brief: { loading: true, text: '', error: null },
+    // Generic starters, shown until the backend sends customer/conversation-
+    // aware suggestions (the `suggestions` stream event).
     examples: [
       'What have they ordered before?',
       'Why have they called recently?',
       'Any past problems?',
       'What saw do they run?',
     ],
+    suggestions: [],
+    // Chips to render: dynamic suggestions once we have them, else starters.
+    get chips() {
+      return (this.suggestions && this.suggestions.length) ? this.suggestions : this.examples;
+    },
+
+    setSuggestions(items) {
+      if (Array.isArray(items) && items.length) this.suggestions = items;
+    },
 
     init() {
       try {
@@ -1418,6 +1431,7 @@ function c360Chat(opts) {
           '/customer/api/' + encodeURIComponent(this.phone) + '/brief', {},
           (evt) => {
             if (evt.type === 'token') b.text += evt.text || '';
+            else if (evt.type === 'suggestions') this.setSuggestions(evt.items);
             else if (evt.type === 'error') b.error = evt.message || 'Brief failed';
           });
       } catch (e) {
@@ -1478,6 +1492,8 @@ function c360Chat(opts) {
       } else if (evt.type === 'token') {
         assistant.content += evt.text || '';
         this.scrollToBottom();
+      } else if (evt.type === 'suggestions') {
+        this.setSuggestions(evt.items);
       } else if (evt.type === 'error') {
         this.error = evt.message || 'Unknown error';
       }
