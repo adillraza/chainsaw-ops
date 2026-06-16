@@ -830,9 +830,24 @@ class Customer360Service:
         # Phone bundle is gated on phone_lookup being loaded — if that's
         # there, call_history and call_behavior are too (same refresh
         # transaction). Single readiness probe avoids 3 round-trips.
-        if _cache_table_ready(CachedPhoneLookup, CachedPhoneLookup.phone):
-            return self._fetch_phone_bundle_from_cache(phone)
-        return self._fetch_phone_bundle_from_bq(phone)
+        if not _cache_table_ready(CachedPhoneLookup, CachedPhoneLookup.phone):
+            return self._fetch_phone_bundle_from_bq(phone)
+
+        bundle = self._fetch_phone_bundle_from_cache(phone)
+        # A cache MISS on the lookup is ambiguous: either a genuinely
+        # unknown number, OR the phone_lookup table is mid-reload (the
+        # refresh does DELETE + batched INSERT, so for a few seconds the
+        # table is non-empty but INCOMPLETE — this row may just not be
+        # re-inserted yet). The non-empty readiness probe can't tell them
+        # apart, so a real customer would flash "No matching Neto
+        # customer" during every :05/:35 refresh. Verify a miss against
+        # BQ (truth) before trusting it. Only misses pay the round-trip;
+        # cached/known callers stay on the fast path.
+        if not (bundle.get("lookup") or {}).get("usernames"):
+            bq = self._fetch_phone_bundle_from_bq(phone)
+            if (bq.get("lookup") or {}).get("usernames"):
+                return bq
+        return bundle
 
     def _fetch_phone_bundle_from_cache(self, phone: str) -> dict:
         pl = db.session.query(CachedPhoneLookup).filter_by(phone=phone).first()
