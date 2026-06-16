@@ -279,6 +279,89 @@ def _order_detail(usernames: list[str], order_id: str) -> dict[str, Any]:
     }
 
 
+def _orders_with_lines(usernames: list[str], limit: int = 5) -> dict[str, Any]:
+    """Recent orders WITH line items, straight from neto_orders.
+
+    The cached card payload's recent_orders omit line items for many
+    customers (lines empty), so the model couldn't see products. This
+    reads the warehouse so line detail is always present.
+    """
+    if not usernames:
+        return {"matched": False, "note": "Unknown caller — no orders."}
+    from google.cloud import bigquery
+    try:
+        limit = max(1, min(20, int(limit)))
+    except (TypeError, ValueError):
+        limit = 5
+    sql = f"""
+    SELECT OrderID, OrderStatus, DatePlaced,
+           SAFE_CAST(GrandTotal AS NUMERIC) AS grand_total,
+           TO_JSON_STRING(OrderLine) AS lines_json
+    FROM `{PROJECT}.dataform.neto_orders`
+    WHERE Username IN UNNEST(@u)
+    ORDER BY DatePlaced DESC
+    LIMIT @lim
+    """
+    job = kb_tools._bq().query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ArrayQueryParameter("u", "STRING", usernames),
+        bigquery.ScalarQueryParameter("lim", "INT64", limit),
+    ]))
+    orders = []
+    for row in job.result():
+        lines = []
+        try:
+            for l in (json.loads(row.lines_json) if row.lines_json else [])[:12]:
+                lines.append({"sku": l.get("SKU"), "name": l.get("ProductName"),
+                              "qty": l.get("Quantity"),
+                              "unit_price_aud": _to_float(l.get("UnitPrice"))})
+        except (TypeError, ValueError):
+            pass
+        orders.append({"order_id": row.OrderID, "status": row.OrderStatus,
+                       "date": str(row.DatePlaced or ""),
+                       "total_aud": _to_float(row.grand_total), "lines": lines})
+    return {"matched": bool(orders), "count": len(orders), "orders": orders}
+
+
+def _top_products(usernames: list[str], limit: int = 10) -> dict[str, Any]:
+    """The customer's most-frequently-ordered products, aggregated across
+    ALL their orders (by number of orders containing the SKU, then qty).
+
+    Cancelled/Quote orders are excluded to match the order count shown on
+    the card (neto_customers uses the same filter), so "frequently
+    ordered" is consistent with their lifetime order total.
+    """
+    if not usernames:
+        return {"matched": False, "note": "Unknown caller — no order history."}
+    from google.cloud import bigquery
+    try:
+        limit = max(1, min(25, int(limit)))
+    except (TypeError, ValueError):
+        limit = 10
+    sql = f"""
+    SELECT
+      JSON_VALUE(line, '$.SKU')         AS sku,
+      ANY_VALUE(JSON_VALUE(line, '$.ProductName')) AS name,
+      COUNT(DISTINCT o.OrderID)         AS orders_with_sku,
+      SUM(SAFE_CAST(JSON_VALUE(line, '$.Quantity') AS INT64)) AS total_qty
+    FROM `{PROJECT}.dataform.neto_orders` o,
+         UNNEST(JSON_QUERY_ARRAY(o.OrderLine)) AS line
+    WHERE o.Username IN UNNEST(@u)
+      AND o.OrderStatus NOT IN ('Cancelled', 'Quote')
+    GROUP BY sku
+    HAVING sku IS NOT NULL AND sku != ''
+    ORDER BY orders_with_sku DESC, total_qty DESC
+    LIMIT @lim
+    """
+    job = kb_tools._bq().query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ArrayQueryParameter("u", "STRING", usernames),
+        bigquery.ScalarQueryParameter("lim", "INT64", limit),
+    ]))
+    products = [{"sku": r.sku, "name": r.name,
+                 "orders_with_sku": r.orders_with_sku, "total_qty": r.total_qty}
+                for r in job.result()]
+    return {"matched": bool(products), "count": len(products), "products": products}
+
+
 # ---------------------------------------------------------------------------
 # Per-request dispatch builder
 # ---------------------------------------------------------------------------
@@ -296,7 +379,16 @@ def build_dispatch(*, service, card: dict,
         return _customer_profile(card)
 
     def get_recent_orders(limit: int = 5) -> dict[str, Any]:
-        return _recent_orders(card, limit)
+        # Query neto_orders for reliable line items (cached payload omits
+        # them for many customers); fall back to the cache on any failure.
+        try:
+            return _orders_with_lines(card.get("usernames") or [], limit)
+        except Exception as exc:
+            log.info("c360 get_recent_orders BQ failed, using cache: %s", exc)
+            return _recent_orders(card, limit)
+
+    def get_top_products(limit: int = 10) -> dict[str, Any]:
+        return _top_products(card.get("usernames") or [], limit)
 
     def get_calls(limit: int = 8) -> dict[str, Any]:
         return _calls(card, limit)
@@ -324,6 +416,7 @@ def build_dispatch(*, service, card: dict,
     return {
         "get_customer_profile": get_customer_profile,
         "get_recent_orders":    get_recent_orders,
+        "get_top_products":     get_top_products,
         "get_order_detail":     get_order_detail,
         "get_rmas":             get_rmas,
         "get_calls":            get_calls,
@@ -402,6 +495,22 @@ def function_declarations():
                 "duplicate/household questions."
             ),
             parameters={"type": "object", "properties": {}},
+        ),
+        FunctionDeclaration(
+            name="get_top_products",
+            description=(
+                "This customer's MOST-FREQUENTLY-ORDERED products, aggregated "
+                "across ALL their orders — each with the number of orders "
+                "containing that SKU and total quantity. Use for 'what do "
+                "they usually/frequently/regularly order', 'their top "
+                "products', 'what do they keep buying'. This is the right "
+                "tool for buying-pattern questions — get_recent_orders only "
+                "covers the latest few orders."
+            ),
+            parameters={"type": "object", "properties": {
+                "limit": {"type": "integer",
+                          "description": "How many top products (default 10, max 25)."},
+            }},
         ),
         FunctionDeclaration(
             name="get_rmas",
