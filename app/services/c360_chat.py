@@ -66,6 +66,9 @@ TOOLS (all scoped to THIS customer unless noted):
 - get_related_accounts() — other accounts linked by email/address/phone.
 - get_stock_and_price(sku) — live Neto online + Ballarat retail stock/price for a SKU (NOT customer-scoped).
 - list_products(fits_model, product_type, brand, in_stock_online_only, limit) — catalogue browse for "what fits / what do we have" (NOT customer-scoped).
+- query_warehouse(sql) — read-only SQL for DEEP-DIVE / CROSS-ACCOUNT / EMAIL questions the tools above don't cover (e.g. "average days between orders", "do these linked accounts look like the same person", "what did they email us about"). Schema + this customer's keys are in the WAREHOUSE section below. Prefer a specific tool when one fits; reach for this for anything they don't.
+
+This customer's phone may match SEVERAL Neto accounts (the WAREHOUSE keys list every one). They might be the SAME person registered repeatedly, or different people sharing a line. When asked, use query_warehouse to compare the accounts (names, addresses, emails, what/when they order) and give your read on whether it's one person or several — with the evidence.
 
 UNKNOWN CALLER: if the profile is unmatched (no Neto record for this number), say so briefly and still help with product, stock, and fitment questions via the catalogue tools.
 
@@ -208,7 +211,8 @@ def stream(phone: str, messages: list[dict], *,
             can_view_sensitive=can_view_sensitive)
 
         lean_ctx = _context_block(card, include_call_summary=False)
-        system_prompt = SYSTEM_PROMPT + "\n\n" + lean_ctx
+        system_prompt = (SYSTEM_PROMPT + "\n\n" + lean_ctx
+                         + "\n\n" + c360_tools.warehouse_primer(card))
         chat = _new_model(system_prompt, with_tools=True).start_chat(
             history=_build_history(messages), response_validation=False)
         gen_cfg = GenerationConfig(temperature=TEMPERATURE, max_output_tokens=MAX_OUTPUT)

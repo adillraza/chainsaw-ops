@@ -33,6 +33,147 @@ log = logging.getLogger(__name__)
 
 PROJECT = "chainsawspares-385722"
 
+# ---------------------------------------------------------------------------
+# query_warehouse — governed, read-only, free-form SQL for the long tail.
+# ---------------------------------------------------------------------------
+# The model writes its own SELECT against these tables. HARD guardrails:
+# read-only (SELECT only), table allowlist (deliberately EXCLUDES Deputy/
+# payroll, RingCentral call transcripts/sensitivity, and anything else
+# sensitive), and a byte cap. Customer scoping is soft (the model is told
+# the customer's keys and asked to filter) — acceptable because CS agents
+# already have cross-customer access via the cards, and it's what lets
+# them investigate "are these related accounts the same person?".
+_WH_ALLOWED_TABLES = {
+    f"{PROJECT}.dataform.neto_orders",
+    f"{PROJECT}.dataform.neto_rmas",
+    f"{PROJECT}.dataform.neto_rma_lines",
+    f"{PROJECT}.dataform.neto_customers",
+    f"{PROJECT}.dataform.neto_product_list",
+    f"{PROJECT}.dataform.rex_ballarat_inventory",
+    f"{PROJECT}.dataform.customer_related_accounts",
+    f"{PROJECT}.dataform.customer_phone_lookup",
+    f"{PROJECT}.dataform.customer_360",
+    f"{PROJECT}.email_archive.messages",
+}
+_WH_MAX_BYTES = 2 * 1024 ** 3   # 2 GB scan cap
+_WH_MAX_ROWS  = 50
+_WH_MAX_CELL  = 1500            # truncate long strings (e.g. email bodies)
+
+
+def _wh_clean(v):
+    # Coerce every cell to a JSON-native type. BigQuery returns datetimes,
+    # dates and Decimals which the Vertex SDK CANNOT serialise when the
+    # tool result is sent back to the model ("Unable to coerce value").
+    import datetime as _dt
+    from decimal import Decimal
+    if v is None or isinstance(v, (bool, int, float)):
+        return v
+    if isinstance(v, str):
+        return v[:_WH_MAX_CELL] + " …[truncated]" if len(v) > _WH_MAX_CELL else v
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, (_dt.datetime, _dt.date, _dt.time)):
+        return v.isoformat()
+    if isinstance(v, dict):
+        return {k: _wh_clean(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_wh_clean(x) for x in list(v)[:25]]
+    return str(v)
+
+
+def query_warehouse(sql: str) -> dict[str, Any]:
+    """Run a read-only SELECT against the allowlisted warehouse tables.
+
+    Enforced via a dry run before execution: statement must be SELECT, all
+    referenced tables must be allowlisted, scan must be under the byte cap.
+    Returns up to 50 rows. Errors come back as {"error": ...} so the model
+    can read the message and rewrite its query.
+    """
+    if not sql or not sql.strip():
+        return {"error": "empty sql"}
+    from google.cloud import bigquery
+    client = kb_tools._bq()
+    try:
+        dry = client.query(sql, job_config=bigquery.QueryJobConfig(
+            dry_run=True, use_query_cache=False))
+    except Exception as exc:
+        return {"error": f"SQL error (fix and retry): {exc}"}
+
+    if (dry.statement_type or "").upper() != "SELECT":
+        return {"error": "Only read-only SELECT/WITH queries are allowed."}
+    refs = {f"{t.project}.{t.dataset_id}.{t.table_id}"
+            for t in (dry.referenced_tables or [])}
+    not_allowed = refs - _WH_ALLOWED_TABLES
+    if not_allowed:
+        return {"error": f"These tables are not accessible: {sorted(not_allowed)}. "
+                         f"Allowed: {sorted(_WH_ALLOWED_TABLES)}"}
+    if (dry.total_bytes_processed or 0) > _WH_MAX_BYTES:
+        gb = (dry.total_bytes_processed or 0) / 1e9
+        return {"error": f"Query would scan {gb:.1f} GB (cap "
+                         f"{_WH_MAX_BYTES/1e9:.0f} GB) — add filters (e.g. on Username)."}
+    try:
+        job = client.query(sql, job_config=bigquery.QueryJobConfig(
+            maximum_bytes_billed=_WH_MAX_BYTES, use_query_cache=True))
+        rows = []
+        for i, r in enumerate(job.result()):
+            if i >= _WH_MAX_ROWS:
+                break
+            rows.append({k: _wh_clean(v) for k, v in dict(r).items()})
+    except Exception as exc:
+        return {"error": f"query failed: {exc}"}
+    return {"matched": bool(rows), "row_count": len(rows),
+            "truncated": len(rows) >= _WH_MAX_ROWS, "rows": rows}
+
+
+def _cluster_keys(card: dict) -> dict[str, list]:
+    """All identity keys for the customer cluster on this card — every
+    related account's username, plus every email and phone — so the model
+    can scope warehouse queries across the whole 'maybe same person' set."""
+    usernames, emails, phones = [], [], []
+
+    def _add(lst, v):
+        v = (v or "").strip()
+        if v and v not in lst:
+            lst.append(v)
+
+    for u in (card.get("usernames") or []):
+        _add(usernames, u)
+    for key in ("related_by_email", "related_by_address", "guest_stubs"):
+        for item in (card.get(key) or []):
+            _add(usernames, item.get("username"))
+    for cu in (card.get("customers") or []):
+        _add(usernames, cu.get("Username"))
+        for f in ("email", "secondary_email"):
+            _add(emails, (cu.get(f) or "").lower())
+        for p in (cu.get("phones") or []):
+            if isinstance(p, dict):
+                _add(phones, p.get("phone"))
+    _add(phones, card.get("phone"))
+    return {"usernames": usernames, "emails": emails, "phones": phones}
+
+
+def warehouse_primer(card: dict) -> str:
+    """Schema + customer-scope primer appended to the chat system prompt."""
+    k = _cluster_keys(card)
+    return f"""WAREHOUSE (query_warehouse tool) — schema + scope:
+This customer's identity keys (use these to filter; the cluster may be ONE person across several accounts):
+  usernames: {k['usernames']}
+  emails:    {k['emails']}
+  phones:    {k['phones']}
+
+Allowlisted tables (read-only; project {PROJECT}):
+- dataform.neto_orders — Username, OrderID, OrderStatus, DatePlaced (DATETIME, Melbourne), GrandTotal, ProductSubtotal, ShippingTotal, ShippingOption, Ship* (address). Line items are in OrderLine (JSON array): use UNNEST(JSON_QUERY_ARRAY(OrderLine)) AS line, then JSON_VALUE(line,'$.SKU'/'$.ProductName'/'$.Quantity'/'$.UnitPrice'/'$.ShippingTracking'). Customer link: Username.
+- dataform.neto_rmas — CustomerUsername, RmaID, OrderID, RmaStatus, DateIssued, DateApproved, RefundTotal, RefundedTotal, RefundSubtotal, ShippingRefundAmount, InternalNotes. Link: CustomerUsername.
+- dataform.neto_rma_lines — RmaID, OrderID, SKU, ProductName, Quantity, ReturnReason, ResolutionOutcome, RefundAmount. Join via RmaID.
+- dataform.neto_customers — Username, BillFirstName, BillLastName, BillStreetLine1, BillPostCode, EmailAddress, SecondaryEmailAddress, DateAdded, SalesChannel, TotalSale, TotalOrders, AOV, FirstOrderPlaced, LastOrderPlaced. Link: Username.
+- dataform.neto_product_list — SKU, Name, Brand, Model, DefaultPrice, PromotionPrice, AvailableSellQuantity, ItemURL (catalogue; not customer-scoped).
+- dataform.rex_ballarat_inventory — manufacturer_sku, short_description, available, sell_price_inc, supplier_name (Ballarat retail).
+- dataform.customer_related_accounts — per-username related accounts with match_type/match_value.
+- dataform.customer_phone_lookup — phone, usernames (ARRAY), match_count.
+- email_archive.messages — the sales@ inbox. direction, subject, from_address, from_name, to_addresses (ARRAY<STRING>), received_at, sent_at, body_preview, body_text, has_attachments, web_link. Match the customer's emails against from_address OR an element of to_addresses (use UNNEST(to_addresses)). Prefer body_text/body_preview; avoid body_html (huge).
+
+Rules: SELECT only; filter to the keys above unless explicitly investigating beyond them; always LIMIT (≤50 rows); for amounts SAFE_CAST(... AS NUMERIC). If a query errors, read the message and retry. Call query_warehouse for deep-dive / cross-account / email questions the specific tools don't cover."""
+
 
 # ---------------------------------------------------------------------------
 # Customer-scoped helpers (read from the loaded card payload)
@@ -424,6 +565,7 @@ def build_dispatch(*, service, card: dict,
         "get_call_detail":      get_call_detail,
         "get_stock_and_price":  kb_tools.get_stock_and_price,
         "list_products":        kb_tools.list_products,
+        "query_warehouse":      query_warehouse,
     }
 
 
@@ -542,6 +684,24 @@ def function_declarations():
             }, "required": ["order_id"]},
         ),
     ]
+    decls.append(FunctionDeclaration(
+        name="query_warehouse",
+        description=(
+            "Run a read-only SQL SELECT against the warehouse for DEEP-DIVE, "
+            "CROSS-ACCOUNT, or EMAIL questions the specific tools don't cover "
+            "— e.g. 'average days between orders', 'do these linked accounts "
+            "look like the same person', 'what did they email us about'. The "
+            "table schemas, this customer's identity keys, and the rules are "
+            "in the WAREHOUSE section of your instructions. SELECT only; "
+            "filter to the customer's keys; always LIMIT. If it errors, read "
+            "the message and rewrite the query."
+        ),
+        parameters={"type": "object", "properties": {
+            "sql": {"type": "string",
+                    "description": "A single read-only BigQuery SELECT (Standard SQL), fully-qualified table names, with a LIMIT."},
+        }, "required": ["sql"]},
+    ))
+
     # Reuse the catalogue tools verbatim from kb_tools so there's a single
     # source of truth for their schemas.
     catalogue = [d for d in kb_tools.function_declarations()
