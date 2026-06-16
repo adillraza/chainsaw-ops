@@ -395,13 +395,20 @@ class Customer360Service:
         existing = h.get("recent_calls") or h.get("last_5_calls") or []
         h["recent_calls"] = (today_sorted + existing)[:100]
 
-        # Recency
-        from datetime import date
-        today_dt = date.today()
+        # Recency — derive from the ACTUAL newest call time (Melbourne
+        # local), not "now". The merge window is a rolling 24h, so a
+        # merged call can have happened yesterday; hardcoding today/0
+        # here wrongly reported "0 days ago" for a yesterday call. Also
+        # ``date.today()`` is the server's UTC date — use Melbourne.
+        from datetime import datetime
+        from app.template_filters import utc_to_mel_naive
+        now_mel_date = utc_to_mel_naive(datetime.utcnow()).date()
+        newest_ct = today_sorted[0].get("call_time") if today_sorted else None
+        last_dt = newest_ct.date() if hasattr(newest_ct, "date") else now_mel_date
         if not h.get("first_call_date"):
-            h["first_call_date"] = today_dt
-        h["last_call_date"] = today_dt
-        h["days_since_last_call"] = 0
+            h["first_call_date"] = last_dt
+        h["last_call_date"] = last_dt
+        h["days_since_last_call"] = max(0, (now_mel_date - last_dt).days)
 
         return h
 
@@ -508,23 +515,30 @@ class Customer360Service:
             except Exception:
                 pass
 
+            from datetime import datetime as _dt
             from app.template_filters import utc_to_mel_naive
+            # call_event.received_at is naive UTC; the template filter
+            # convention is "naive = already Mel", so shift here.
+            call_start_mel = utc_to_mel_naive(first.received_at)
+            # is_today must reflect the actual Melbourne CALENDAR day, not
+            # the 24h merge window above — a call from 3pm yesterday is
+            # within 24h but is NOT "today" (was wrongly hardcoded True,
+            # which then forced days_since_last_call to 0 in the merge).
+            now_mel_date = utc_to_mel_naive(_dt.utcnow()).date()
             out.append({
                 # Use the actual contactId of the most recent leg (rather
                 # than the master_id used for grouping) so the call-details
                 # modal can look up the AI analysis row in BigQuery, which
                 # is keyed by contactId.
                 "session_id":       last.session_id,
-                # call_event.received_at is naive UTC; the template filter
-                # convention is "naive = already Mel", so shift here.
-                "call_time":        utc_to_mel_naive(first.received_at),
+                "call_time":        call_start_mel,
                 "_call_end":        utc_to_mel_naive(last.received_at),
                 "direction":        direction,
                 "disposition":      disposition,
                 "duration_seconds": duration_s,
                 "source":           first.source,
                 "agent_name":       agent_name,
-                "is_today":         True,
+                "is_today":         call_start_mel.date() == now_mel_date,
                 "is_active":        not terminal,
             })
 
