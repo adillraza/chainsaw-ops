@@ -66,8 +66,14 @@ UNKNOWN CALLER: if the profile is unmatched (no Neto record for this number), sa
 Be honest about gaps. A quick "I don't see any prior orders for this number" beats a confident guess."""
 
 
-def _context_block(card: dict) -> str:
+def _context_block(card: dict, *, include_call_summary: bool = True) -> str:
     """Compact headline facts about the customer for the system prompt.
+
+    ``include_call_summary=False`` (used by the chat) omits the verbatim
+    last-call summary so the model can't just paraphrase it — it must
+    call get_calls/get_call_detail to answer call-content questions,
+    which keeps answers live, complete, and transparent (tool spinner).
+    The brief uses the full version (it's a one-shot with no tools).
 
     Kept small — the model calls tools for depth. Pulls only what's
     cheap and already in the loaded card payload.
@@ -99,9 +105,12 @@ def _context_block(card: dict) -> str:
     ]
     if card.get("usernames") and len(card["usernames"]) > 1:
         lines.append(f"Linked accounts: {len(card['usernames'])} share this number")
-    if last.get("summary"):
+    if include_call_summary and last.get("summary"):
         lines.append(f"Most recent analysed call ({last.get('call_date') or '?'}, "
                      f"sentiment {last.get('sentiment_label') or '?'}): {last['summary']}")
+    elif not include_call_summary:
+        lines.append("(For call reasons/history, recent orders, or linked "
+                     "accounts, call the matching tool — don't answer from memory.)")
     return "\n".join(lines)
 
 
@@ -192,7 +201,8 @@ def stream(phone: str, messages: list[dict], *,
             service=customer_360_service, card=card,
             can_view_sensitive=can_view_sensitive)
 
-        system_prompt = SYSTEM_PROMPT + "\n\n" + _context_block(card)
+        lean_ctx = _context_block(card, include_call_summary=False)
+        system_prompt = SYSTEM_PROMPT + "\n\n" + lean_ctx
         chat = _new_model(system_prompt, with_tools=True).start_chat(
             history=_build_history(messages), response_validation=False)
         gen_cfg = GenerationConfig(temperature=TEMPERATURE, max_output_tokens=MAX_OUTPUT)
@@ -247,7 +257,7 @@ def stream(phone: str, messages: list[dict], *,
             convo_lines = [f"{m.get('role')}: {m.get('content')}"
                            for m in messages[-6:] if m.get("content")]
             convo_lines.append(f"assistant: {full_text}")
-            items = _suggest_followups(_context_block(card), "\n".join(convo_lines))
+            items = _suggest_followups(lean_ctx, "\n".join(convo_lines))
             if items:
                 yield {"type": "suggestions", "items": items}
     except Exception as exc:
