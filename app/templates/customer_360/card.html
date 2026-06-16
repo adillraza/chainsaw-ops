@@ -567,9 +567,10 @@
   {# (c360_chat); the thread lives in sessionStorage keyed by phone.   #}
   {# ----------------------------------------------------------------- #}
   {% if c.phone and not c.is_internal_line %}
+  {# No x-init — Alpine 3 auto-runs the component's init() method. Adding
+     x-init="init()" too would fire it twice (→ two briefs concatenated). #}
   <section class="mb-4"
-           x-data='c360Chat({ phone: {{ c.phone | tojson }} })'
-           x-init="init()">
+           x-data='c360Chat({ phone: {{ c.phone | tojson }} })'>
     <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
       {# Header #}
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
@@ -1404,18 +1405,25 @@ function c360Chat(opts) {
     },
 
     async loadBrief() {
+      // Guard against a second invocation (e.g. an accidental double init):
+      // two concurrent streams would both append into this.brief and
+      // produce a doubled brief.
+      if (this._briefStarted) return;
+      this._briefStarted = true;
       this.brief = { loading: true, text: '', error: null };
+      const b = this.brief;  // capture this exact object so appends can't
+                             // land on a later reassignment of this.brief
       try {
         await this.streamNdjson(
           '/customer/api/' + encodeURIComponent(this.phone) + '/brief', {},
           (evt) => {
-            if (evt.type === 'token') this.brief.text += evt.text || '';
-            else if (evt.type === 'error') this.brief.error = evt.message || 'Brief failed';
+            if (evt.type === 'token') b.text += evt.text || '';
+            else if (evt.type === 'error') b.error = evt.message || 'Brief failed';
           });
       } catch (e) {
-        this.brief.error = 'Brief unavailable';
+        b.error = 'Brief unavailable';
       } finally {
-        this.brief.loading = false;
+        b.loading = false;
       }
     },
 
