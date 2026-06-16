@@ -23,12 +23,15 @@ call's transcript/summary/audio to someone who can't already see it.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Callable
 
 from app.services import kb_tools
 
 log = logging.getLogger(__name__)
+
+PROJECT = "chainsawspares-385722"
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +155,131 @@ def _related_accounts(card: dict) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Live BigQuery lookups — RMAs / refunds and full order+shipping detail.
+# These query the warehouse directly (the cached card payload only carries
+# a thin recent-orders summary and no RMA detail at all).
+# ---------------------------------------------------------------------------
+
+def _to_float(v):
+    try:
+        return float(v) if v is not None and v != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _rmas(usernames: list[str], limit: int = 10) -> dict[str, Any]:
+    """RMAs / refunds for the customer, header + line detail (reason,
+    resolution, per-line refund). Answers "what was the refund for/amount"."""
+    if not usernames:
+        return {"matched": False, "note": "Unknown caller — no RMAs on file."}
+    from google.cloud import bigquery
+    try:
+        limit = max(1, min(20, int(limit)))
+    except (TypeError, ValueError):
+        limit = 10
+    sql = f"""
+    SELECT
+      r.RmaID, r.OrderID, r.RmaStatus, r.DateIssued, r.DateApproved,
+      SAFE_CAST(r.RefundTotal    AS NUMERIC) AS refund_total,
+      SAFE_CAST(r.RefundedTotal  AS NUMERIC) AS refunded_total,
+      SAFE_CAST(r.RefundSubtotal AS NUMERIC) AS refund_subtotal,
+      SAFE_CAST(r.ShippingRefundAmount AS NUMERIC) AS shipping_refund,
+      r.InternalNotes,
+      ARRAY(
+        SELECT AS STRUCT l.SKU, l.ProductName, l.Quantity, l.ReturnReason,
+               l.ResolutionOutcome, l.ResolutionStatus,
+               SAFE_CAST(l.RefundAmount AS NUMERIC) AS line_refund
+        FROM `{PROJECT}.dataform.neto_rma_lines` l WHERE l.RmaID = r.RmaID
+      ) AS lines
+    FROM `{PROJECT}.dataform.neto_rmas` r
+    WHERE r.CustomerUsername IN UNNEST(@u)
+    ORDER BY r.DateIssued DESC
+    LIMIT @lim
+    """
+    job = kb_tools._bq().query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ArrayQueryParameter("u", "STRING", usernames),
+        bigquery.ScalarQueryParameter("lim", "INT64", limit),
+    ]))
+    rmas = []
+    for r in job.result():
+        rmas.append({
+            "rma_id": r.RmaID, "order_id": r.OrderID, "status": r.RmaStatus,
+            "date_issued": str(r.DateIssued or ""), "date_approved": str(r.DateApproved or ""),
+            "refund_total_aud": _to_float(r.refund_total),
+            "refunded_total_aud": _to_float(r.refunded_total),
+            "refund_subtotal_aud": _to_float(r.refund_subtotal),
+            "shipping_refund_aud": _to_float(r.shipping_refund),
+            "internal_notes": r.InternalNotes,
+            "lines": [{
+                "sku": l["SKU"], "name": l["ProductName"], "qty": l["Quantity"],
+                "return_reason": l["ReturnReason"], "resolution": l["ResolutionOutcome"],
+                "resolution_status": l["ResolutionStatus"],
+                "line_refund_aud": _to_float(l["line_refund"]),
+            } for l in (r.lines or [])],
+        })
+    return {"matched": bool(rmas), "count": len(rmas), "rmas": rmas}
+
+
+def _order_detail(usernames: list[str], order_id: str) -> dict[str, Any]:
+    """Full detail for ONE order: status, totals breakdown, ship address +
+    method, and per-line items WITH tracking. Scoped to this customer."""
+    if not order_id:
+        return {"error": "order_id required"}
+    if not usernames:
+        return {"matched": False, "note": "Unknown caller."}
+    from google.cloud import bigquery
+    sql = f"""
+    SELECT
+      OrderID, OrderStatus, CompleteStatus,
+      SAFE_CAST(GrandTotal      AS NUMERIC) AS grand_total,
+      SAFE_CAST(ProductSubtotal AS NUMERIC) AS product_subtotal,
+      SAFE_CAST(ShippingTotal   AS NUMERIC) AS shipping_total,
+      ShippingOption,
+      ShipFirstName, ShipLastName, ShipStreetLine1, ShipStreetLine2,
+      ShipCity, ShipState, ShipPostCode, ShipPhone,
+      TO_JSON_STRING(OrderLine) AS order_line_json
+    FROM `{PROJECT}.dataform.neto_orders`
+    WHERE OrderID = @oid AND Username IN UNNEST(@u)
+    LIMIT 1
+    """
+    job = kb_tools._bq().query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("oid", "STRING", order_id.strip()),
+        bigquery.ArrayQueryParameter("u", "STRING", usernames),
+    ]))
+    row = next(iter(job.result()), None)
+    if row is None:
+        return {"matched": False, "order_id": order_id,
+                "note": "No order with that ID for this customer."}
+    lines = []
+    try:
+        for l in (json.loads(row.order_line_json) if row.order_line_json else []):
+            lines.append({
+                "sku": l.get("SKU"), "name": l.get("ProductName"),
+                "qty": l.get("Quantity"),
+                "unit_price_aud": _to_float(l.get("UnitPrice")),
+                "shipping_method": l.get("ShippingMethod"),
+                "tracking": l.get("ShippingTracking") or None,
+                "tracking_url": l.get("ShippingTrackingUrl") or None,
+            })
+    except (TypeError, ValueError):
+        pass
+    ship = " ".join(p for p in [
+        (row.ShipFirstName or "") + " " + (row.ShipLastName or ""),
+        row.ShipStreetLine1, row.ShipStreetLine2,
+        row.ShipCity, row.ShipState, row.ShipPostCode] if p and p.strip()).strip()
+    return {
+        "matched": True, "order_id": row.OrderID,
+        "status": row.OrderStatus, "complete_status": row.CompleteStatus,
+        "grand_total_aud": _to_float(row.grand_total),
+        "product_subtotal_aud": _to_float(row.product_subtotal),
+        "shipping_total_aud": _to_float(row.shipping_total),
+        "shipping_method": row.ShippingOption,
+        "ship_to": ship or None, "ship_phone": row.ShipPhone,
+        "lines": lines,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Per-request dispatch builder
 # ---------------------------------------------------------------------------
 
@@ -185,9 +313,19 @@ def build_dispatch(*, service, card: dict,
             details = redact_sensitive_call_details(details)
         return details
 
+    usernames = card.get("usernames") or []
+
+    def get_rmas(limit: int = 10) -> dict[str, Any]:
+        return _rmas(usernames, limit)
+
+    def get_order_detail(order_id: str) -> dict[str, Any]:
+        return _order_detail(usernames, order_id)
+
     return {
         "get_customer_profile": get_customer_profile,
         "get_recent_orders":    get_recent_orders,
+        "get_order_detail":     get_order_detail,
+        "get_rmas":             get_rmas,
         "get_calls":            get_calls,
         "get_related_accounts": get_related_accounts,
         "get_call_detail":      get_call_detail,
@@ -264,6 +402,35 @@ def function_declarations():
                 "duplicate/household questions."
             ),
             parameters={"type": "object", "properties": {}},
+        ),
+        FunctionDeclaration(
+            name="get_rmas",
+            description=(
+                "This customer's RMAs / returns / refunds — status, dates, "
+                "refund amounts (total, subtotal, shipping), internal notes, "
+                "and per-item return reason + resolution. Use for ANY refund, "
+                "return, RMA, credit, or 'how much did we refund' question. "
+                "The refund AMOUNT lives here, not in orders."
+            ),
+            parameters={"type": "object", "properties": {
+                "limit": {"type": "integer",
+                          "description": "How many recent RMAs (default 10, max 20)."},
+            }},
+        ),
+        FunctionDeclaration(
+            name="get_order_detail",
+            description=(
+                "Full detail for ONE order by order ID — status, totals "
+                "breakdown (grand/subtotal/shipping), ship-to address, "
+                "shipping method, and every line item WITH tracking number "
+                "and tracking URL. Use for shipping/tracking/'where's my "
+                "order'/full-line-detail questions. Get the order ID from "
+                "get_recent_orders first if you don't have it."
+            ),
+            parameters={"type": "object", "properties": {
+                "order_id": {"type": "string",
+                             "description": "Order ID, e.g. 'JJ626218'."},
+            }, "required": ["order_id"]},
         ),
     ]
     # Reuse the catalogue tools verbatim from kb_tools so there's a single
