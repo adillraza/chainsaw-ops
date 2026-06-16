@@ -3,10 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
+import logging
 import os
 import time
 
-from flask import current_app, jsonify, render_template, request
+from flask import (
+    Response, current_app, jsonify, render_template, request, stream_with_context,
+)
 from flask_login import current_user
 
 from app.auth.abilities import require_capability, user_can
@@ -16,6 +20,8 @@ from app.services.customer_360_service import (
     normalize_phone,
     redact_sensitive_call_details,
 )
+
+log = logging.getLogger(__name__)
 
 
 # Short-lived signing for the /listen WSS endpoint on rcx-stream-server.
@@ -142,6 +148,64 @@ def toggle_call_sensitivity(session_id: str):
     if not user_can(current_user, "support.calls.view_sensitive"):
         details = redact_sensitive_call_details(details)
     return render_template("customer_360/_call_details_modal.html", d=details)
+
+
+# ---------------------------------------------------------------------------
+# AI panel — chat + auto pre-call brief (Gemini, streamed NDJSON)
+# ---------------------------------------------------------------------------
+
+def _ndjson_stream(events):
+    """Wrap a c360_chat event generator as an x-ndjson Flask Response."""
+    @stream_with_context
+    def generate():
+        try:
+            for event in events:
+                yield json.dumps(event, default=str) + "\n"
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("c360 AI stream crashed: %s", exc)
+            yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
+
+    return Response(
+        generate(),
+        mimetype="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@customer_360_bp.route("/api/<phone>/brief", methods=["POST"])
+@require_capability("support.calls.view")
+def ai_brief(phone: str):
+    """Stream an auto-generated pre-call brief for the customer at ``phone``."""
+    from app.services import c360_chat
+    can_view = user_can(current_user, "support.calls.view_sensitive")
+    return _ndjson_stream(c360_chat.brief(phone, can_view_sensitive=can_view))
+
+
+@customer_360_bp.route("/api/<phone>/chat", methods=["POST"])
+@require_capability("support.calls.view")
+def ai_chat(phone: str):
+    """Stream one chat turn, scoped to the customer at ``phone``.
+
+    Body: ``{"messages": [{"role": "user"|"assistant", "content": "..."}, ...]}``
+    The conversation lives client-side and is replayed each turn (stateless,
+    like the KB chat). Response is application/x-ndjson — one event per line.
+    """
+    from app.services import c360_chat
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages") or []
+    cleaned: list[dict] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role, content = m.get("role"), m.get("content")
+        if role in ("user", "assistant") and isinstance(content, str):
+            cleaned.append({"role": role, "content": content})
+    if not cleaned or cleaned[-1]["role"] != "user":
+        return jsonify({"error": "last message must be from the user"}), 400
+
+    can_view = user_can(current_user, "support.calls.view_sensitive")
+    return _ndjson_stream(
+        c360_chat.stream(phone, cleaned, can_view_sensitive=can_view))
 
 
 # Convenience: a search-form POST that just redirects to /customer/<phone>.

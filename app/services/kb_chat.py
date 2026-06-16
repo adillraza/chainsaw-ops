@@ -23,12 +23,16 @@ from app.services import kb_service
 
 PROJECT  = "chainsawspares-385722"
 LOCATION = "us-central1"
-MODEL    = "gemini-2.0-flash-001"
+# gemini-2.0-flash-001 was retired by Google (now 404s for this project) —
+# bumped to the live Flash tier. 2.5-flash spends output tokens on hidden
+# "thinking" before the visible answer, so MAX_OUTPUT was raised to cover
+# both the reasoning and a (possibly long enumeration) reply.
+MODEL    = "gemini-2.5-flash"
 
-# Conservative defaults. Temperature low so answers are factual; max
-# tokens kept tight so agents on a call don't get a wall of text.
+# Temperature low so answers are factual. MAX_OUTPUT must hold 2.5-flash's
+# thinking tokens (~400) plus the answer — 800 left no room and truncated.
 TEMPERATURE      = 0.2
-MAX_OUTPUT       = 800
+MAX_OUTPUT       = 2000
 TOP_K_SOURCES    = 10   # was 5 — too tight for category questions like
                          # "any chain for 445". 10 covers ~all common
                          # length/pitch/gauge variants for a model.

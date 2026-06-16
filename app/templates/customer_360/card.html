@@ -562,6 +562,104 @@
   {% endif %}
 
   {# ----------------------------------------------------------------- #}
+  {# AI ASSISTANT — full-width panel. Auto pre-call brief at the top,  #}
+  {# chat scoped to THIS customer below. Backend is stateless          #}
+  {# (c360_chat); the thread lives in sessionStorage keyed by phone.   #}
+  {# ----------------------------------------------------------------- #}
+  {% if c.phone and not c.is_internal_line %}
+  <section class="mb-4"
+           x-data='c360Chat({ phone: {{ c.phone | tojson }} })'
+           x-init="init()">
+    <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
+      {# Header #}
+      <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        <h3 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <i class="fas fa-wand-magic-sparkles text-brand-500"></i> AI Assistant
+        </h3>
+        <button type="button" x-show="messages.length > 0" @click="newChat()"
+                class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+          <i class="fas fa-plus text-[10px]"></i> New chat
+        </button>
+      </div>
+
+      {# Pre-call brief — auto-loads on open #}
+      <div class="border-b border-slate-100 bg-brand-50/40 px-4 py-3">
+        <div class="text-[11px] font-medium uppercase tracking-wide text-brand-700">
+          <i class="fas fa-bolt text-[10px]"></i> Pre-call brief
+        </div>
+        <div class="mt-1 text-sm leading-relaxed text-slate-800">
+          <template x-if="brief.loading">
+            <span class="text-slate-400"><i class="fas fa-circle-notch fa-spin mr-1 text-xs"></i> Summarising this customer…</span>
+          </template>
+          <div x-show="!brief.loading" x-html="renderAnswer(brief.text)"></div>
+          <template x-if="brief.error">
+            <span class="text-rose-600 text-xs" x-text="brief.error"></span>
+          </template>
+        </div>
+      </div>
+
+      {# Conversation thread — only once there's a turn #}
+      <div x-show="messages.length > 0" x-ref="thread"
+           class="max-h-96 space-y-3 overflow-y-auto px-4 py-3">
+        <template x-for="(m, idx) in messages" :key="idx">
+          <div :class="m.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+            <div :class="m.role === 'user'
+                    ? 'max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-3.5 py-2 text-sm text-white'
+                    : 'max-w-[88%] rounded-2xl rounded-bl-sm border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800'">
+              <template x-if="m.role === 'user'">
+                <p class="whitespace-pre-wrap leading-relaxed" x-text="m.content"></p>
+              </template>
+              <template x-if="m.role === 'assistant'">
+                <div>
+                  <div class="leading-relaxed" x-html="renderAnswer(m.content)"></div>
+                  <template x-if="m.streaming">
+                    <span class="ml-1 inline-block h-3 w-1 animate-pulse bg-slate-400 align-middle"></span>
+                  </template>
+                  <template x-if="m.tool_status">
+                    <p class="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+                      <i class="fas fa-circle-notch fa-spin text-[10px]"></i>
+                      <span x-text="m.tool_status"></span>
+                    </p>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="error">
+          <div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+            <i class="fas fa-circle-exclamation mr-1"></i><span x-text="error"></span>
+          </div>
+        </template>
+      </div>
+
+      {# Composer — example chips when the thread is empty #}
+      <div class="border-t border-slate-100 px-4 py-3">
+        <div x-show="messages.length === 0" class="mb-2 flex flex-wrap gap-1.5">
+          <template x-for="ex in examples" :key="ex">
+            <button type="button" @click="ask(ex)"
+                    class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700">
+              <span x-text="ex"></span>
+            </button>
+          </template>
+        </div>
+        <form @submit.prevent="ask(input)" class="flex gap-2">
+          <input type="text" x-ref="composer" x-model="input"
+                 @keydown.enter.prevent="ask(input)" :disabled="busy"
+                 placeholder="Ask about this customer…"
+                 class="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 disabled:bg-slate-100">
+          <button type="submit" :disabled="busy || !input.trim()"
+                  class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+            <span x-show="!busy"><i class="fas fa-paper-plane"></i></span>
+            <span x-show="busy"><i class="fas fa-circle-notch fa-spin"></i></span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ----------------------------------------------------------------- #}
   {# 2-COLUMN GRID — left: transactional · right: call signal          #}
   {# ----------------------------------------------------------------- #}
   <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1231,5 +1329,186 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 });
+</script>
+
+{# ----------------------------------------------------------------- #}
+{# Customer 360 AI panel — Alpine component                          #}
+{# Stateless backend (c360_chat); thread persisted per-phone in      #}
+{# sessionStorage. Brief auto-loads on open; chat replays the thread #}
+{# every turn. Adapted from the KB chat component.                   #}
+{# ----------------------------------------------------------------- #}
+<script>
+function c360Chat(opts) {
+  return {
+    phone: (opts && opts.phone) || '',
+    STORAGE_KEY: 'c360Chat:' + ((opts && opts.phone) || ''),
+    messages: [],
+    input: '',
+    busy: false,
+    error: null,
+    brief: { loading: true, text: '', error: null },
+    examples: [
+      'What have they ordered before?',
+      'Why have they called recently?',
+      'Any past problems?',
+      'What saw do they run?',
+    ],
+
+    init() {
+      try {
+        const saved = sessionStorage.getItem(this.STORAGE_KEY);
+        if (saved) this.messages = JSON.parse(saved);
+      } catch (e) { /* ignore */ }
+      this.loadBrief();
+    },
+
+    persist() {
+      try { sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.messages)); }
+      catch (e) { /* ignore quota */ }
+    },
+
+    newChat() {
+      this.messages = [];
+      this.error = null;
+      this.persist();
+      this.$refs.composer && this.$refs.composer.focus();
+    },
+
+    scrollToBottom() {
+      const el = this.$refs.thread;
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+
+    // Shared NDJSON reader for both the brief and chat streams.
+    async streamNdjson(url, body, onEvent) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      if (!res.ok || !res.body) throw new Error('Server returned ' + res.status);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf('\n')) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (line) { try { onEvent(JSON.parse(line)); } catch (e) {} }
+        }
+      }
+    },
+
+    async loadBrief() {
+      this.brief = { loading: true, text: '', error: null };
+      try {
+        await this.streamNdjson(
+          '/customer/api/' + encodeURIComponent(this.phone) + '/brief', {},
+          (evt) => {
+            if (evt.type === 'token') this.brief.text += evt.text || '';
+            else if (evt.type === 'error') this.brief.error = evt.message || 'Brief failed';
+          });
+      } catch (e) {
+        this.brief.error = 'Brief unavailable';
+      } finally {
+        this.brief.loading = false;
+      }
+    },
+
+    async ask(question) {
+      const q = (question || '').trim();
+      if (!q || this.busy) return;
+      this.error = null;
+
+      this.messages.push({ role: 'user', content: q });
+      const assistantIdx = this.messages.push({
+        role: 'assistant', content: '', streaming: true,
+      }) - 1;
+      const assistant = this.messages[assistantIdx];
+      this.input = '';
+      this.busy = true;
+      this.persist();
+      this.$nextTick(() => this.scrollToBottom());
+
+      try {
+        const payload = {
+          messages: this.messages.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
+        };
+        await this.streamNdjson(
+          '/customer/api/' + encodeURIComponent(this.phone) + '/chat', payload,
+          (evt) => this.handleEvent(evt, assistant));
+      } catch (e) {
+        this.error = 'Chat failed: ' + (e.message || e);
+        if (assistant.content === '') this.messages.pop();
+      } finally {
+        assistant.streaming = false;
+        this.busy = false;
+        this.persist();
+        this.$nextTick(() => { this.scrollToBottom(); this.$refs.composer && this.$refs.composer.focus(); });
+      }
+    },
+
+    handleEvent(evt, assistant) {
+      if (evt.type === 'tool_call') {
+        const labels = {
+          get_customer_profile: 'Checking their profile…',
+          get_recent_orders:    'Pulling recent orders…',
+          get_calls:            'Reviewing call history…',
+          get_call_detail:      'Reading that call…',
+          get_related_accounts: 'Checking linked accounts…',
+          get_stock_and_price:  'Looking up live stock + price…',
+          list_products:        'Searching the catalogue…',
+        };
+        assistant.tool_status = labels[evt.name] || ('Calling ' + evt.name + '…');
+        this.scrollToBottom();
+      } else if (evt.type === 'tool_result') {
+        assistant.tool_status = null;
+      } else if (evt.type === 'token') {
+        assistant.content += evt.text || '';
+        this.scrollToBottom();
+      } else if (evt.type === 'error') {
+        this.error = evt.message || 'Unknown error';
+      }
+    },
+
+    // Light Markdown renderer — bold/italic/code/bullets + newlines.
+    // No citations/SKU-linking (Customer 360 answers aren't source-cited).
+    // x-html sink, so escape first, then layer intentional HTML.
+    renderAnswer(text) {
+      const escHtml = s => (s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      let html = escHtml(text);
+      html = html.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/(^|[^\*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
+      html = html.replace(/`([^`\n]+?)`/g,
+        '<code class="rounded bg-slate-100 px-1 py-0.5 text-[12px] font-mono">$1</code>');
+      const lines = html.split('\n');
+      const out = [];
+      let inList = false;
+      for (const ln of lines) {
+        const bulletMatch = ln.match(/^\s*[\*\-]\s+(.*)$/);
+        const isBlank = /^\s*$/.test(ln);
+        if (bulletMatch) {
+          if (!inList) { out.push('<ul class="list-disc pl-5 my-1 space-y-0.5">'); inList = true; }
+          out.push(`<li>${bulletMatch[1]}</li>`);
+        } else if (isBlank && inList) {
+          continue;
+        } else {
+          if (inList) { out.push('</ul>'); inList = false; }
+          out.push(ln);
+        }
+      }
+      if (inList) out.push('</ul>');
+      html = out.join('\n');
+      html = html.replace(/\n(?!<\/?(?:ul|li|ol|p|div|br))/g, '<br>');
+      return html;
+    },
+  };
+}
 </script>
 {% endblock %}
