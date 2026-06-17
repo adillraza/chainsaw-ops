@@ -65,18 +65,29 @@ def create_session(username: str, password: str) -> ScraperSession:
     whatever else is logged in as this user — we share the account with the
     daily scraper and any human cPanel session)."""
     s = ScraperSession()
-    resp = s.get(BASE_URL)
+    # GET the legacy login page directly. As of 2026-06-16 Maropost moved cPanel
+    # behind Maropost Identity (Keycloak SSO): GET {BASE_URL} now 302-redirects to
+    # identity.maropost.com. The legacy username/password form still lives at
+    # {BASE_URL}/login (<form id="loginform">), so hit it directly. (Legacy login
+    # is deprecated by Maropost — when removed, the verify below fails loudly and
+    # this must migrate to the OIDC/Keycloak flow.)
+    resp = s.get(f"{BASE_URL}/login")
     soup = BeautifulSoup(resp.text, "html.parser")
     title = soup.title.string.strip() if soup.title else ""
     if "just a moment" in title.lower() or resp.status_code == 403:
         raise RuntimeError(f"Cloudflare blocked the request (status={resp.status_code}, title={title!r})")
 
-    # Step 1: normal username/password login.
+    # Step 1: normal username/password login. Prefer the legacy form explicitly
+    # (id="loginform") to avoid POSTing to a Maropost Identity SSO form.
     resp2 = None
-    for form in soup.find_all("form"):
-        if form.find("input", {"type": "password"}):
-            resp2 = _submit_form(s, form, username, password)
-            break
+    login_form = soup.find("form", id="loginform")
+    if login_form is None:
+        for form in soup.find_all("form"):
+            if form.find("input", {"type": "password"}):
+                login_form = form
+                break
+    if login_form is not None:
+        resp2 = _submit_form(s, login_form, username, password)
 
     # Step 2: if Neto reports a concurrent session, take it over and retry.
     if resp2 is not None:
