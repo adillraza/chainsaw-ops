@@ -1654,10 +1654,22 @@ def capacity_validation():
             "description": r.short_description,
             "available": avail,
             "on_order": onord,
-            "msl_qty": msl_qty,
-            "smart_qty": smart_qty,
+            "rex_msl": r.msl or 0,                 # actual MSL value held in REX
+            "carton_qty": r.carton_quantity or 0,  # carton/pack size in REX
+            "msl_qty": msl_qty,                    # MSL model's proposed reorder qty
+            "smart_qty": smart_qty,                # Smart model's recommended qty
             "proposed": effective,
             "total_qty": total_qty,
+            # sales / velocity context — shown on a sub-line so staff can see why
+            # the Smart model wants to enlarge capacity for this SKU
+            "s14": r.s14 or 0,
+            "s30": r.s30 or 0,
+            "lyr30": r.lyr30 or 0,
+            "daily_velocity": r.daily_velocity or 0,
+            "seasonal_factor": r.seasonal_factor or 0,
+            "forecast_30d": r.forecast_30d or 0,
+            "coverage_days": r.coverage_days or 0,
+            "lead_days": r.lead_days or 0,
             "stored_capacity": stored_cap,
             "last_proposed": last_proposed,
             "default_capacity": stored_cap if stored_cap is not None else total_qty,

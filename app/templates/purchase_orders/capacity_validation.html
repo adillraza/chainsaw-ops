@@ -14,9 +14,11 @@
       <h2 class="text-2xl font-semibold text-slate-900">Capacity Validation</h2>
       <p class="mt-1 max-w-3xl text-sm text-slate-600">
         The Smart model wants to top up quantities or add new items. Before the Final List can act on
-        them, confirm how many units the store can physically hold. <b>MSL</b> is the normal REX restock and
-        <b>Smart</b> is the proposed order; <b>Total Qty</b> = available + on&#8209;order + the larger of the two
-        (what you'll end up with). Set <b>Capacity</b> to the most you can hold for that SKU, then submit.
+        them, confirm how many units the store can physically hold. <b>MSL</b> is the
+        value held in REX; <b>MSL Model</b> is the normal restock and <b>Smart Model</b> is the proposed
+        order; <b>Total Qty</b> = available + on&#8209;order + the larger of the two model figures
+        (what you'll end up with). The sales/velocity line under each item shows why the Smart model wants
+        more capacity. Set <b>Capacity</b> to the most you can hold for that SKU, then submit.
         {% if cached_at %}<span class="text-slate-400">· Smart data cached {{ cached_at.strftime('%d %b %Y %H:%M') }} UTC</span>{% endif %}
       </p>
     </div>
@@ -53,7 +55,8 @@
           <tr class="text-left">
             <th class="px-2 py-1.5">SKU</th><th class="px-2 py-1.5">Description</th>
             <th class="px-2 py-1.5 text-right">Avail</th><th class="px-2 py-1.5 text-right">OnOrder</th>
-            <th class="px-2 py-1.5 text-right">MSL</th><th class="px-2 py-1.5 text-right">Smart</th><th class="px-2 py-1.5 text-right">Total Qty</th>
+            <th class="px-2 py-1.5 text-right">MSL</th><th class="px-2 py-1.5 text-right">Carton Qty</th>
+            <th class="px-2 py-1.5 text-right border-l border-slate-200">MSL Model</th><th class="px-2 py-1.5 text-right">Smart Model</th><th class="px-2 py-1.5 text-right">Total Qty</th>
             <th class="px-2 py-1.5 text-center">Status</th>
             <th class="px-2 py-1.5 text-center">Have space?</th>
             <th class="px-2 py-1.5 text-right">Capacity</th>
@@ -72,7 +75,9 @@
             <td class="px-2 py-1.5 text-slate-600">{{ l.description }}</td>
             <td class="px-2 py-1.5 text-right">{{ num(l.available) }}</td>
             <td class="px-2 py-1.5 text-right">{{ num(l.on_order) }}</td>
-            <td class="px-2 py-1.5 text-right text-slate-500">{{ num(l.msl_qty) }}</td>
+            <td class="px-2 py-1.5 text-right text-slate-500">{{ num(l.rex_msl) }}</td>
+            <td class="px-2 py-1.5 text-right text-slate-500">{{ num(l.carton_qty) }}</td>
+            <td class="px-2 py-1.5 text-right text-slate-500 border-l border-slate-200">{{ num(l.msl_qty) }}</td>
             <td class="px-2 py-1.5 text-right font-semibold">{{ num(l.smart_qty) }}</td>
             <td class="px-2 py-1.5 text-right font-bold text-slate-900" x-text="total"></td>
             <td class="px-2 py-1.5 text-center">
@@ -97,6 +102,13 @@
                       x-text="saving ? '…' : (saved ? 'Saved ✓' : 'Submit')"
                       :class="saved ? 'bg-emerald-600 hover:bg-emerald-700' : ''"></button>
               <span x-show="err" x-cloak class="ml-1 text-[11px] text-red-600" x-text="err"></span>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="13" class="px-2 pb-2 pt-0 text-[11px] italic text-slate-400">
+              ↳ Sold 30d {{ l.s30 }} &middot; 14d {{ l.s14 }} &middot; {{ '%.2f'|format(l.daily_velocity) }}/day
+              &middot; Fcst30 {{ l.forecast_30d }} &middot; Covers {{ l.coverage_days }}d &middot; Lead {{ l.lead_days }}d
+              &middot; Seasonal &times;{{ '%.2f'|format(l.seasonal_factor) }} &middot; LY30 {{ l.lyr30 }}
             </td>
           </tr>
           {% endfor %}
