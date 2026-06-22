@@ -21,11 +21,18 @@ import base64
 import logging
 import re
 import urllib.parse
-import urllib.request
+
+from curl_cffi import requests as cf_requests
 
 BASE = "https://www.chainsawspares.com.au"
 ENDPOINT = BASE + "/ajax/ajax_template"
 TIMEOUT = 30
+# The storefront sits behind a Cloudflare managed bot challenge — plain urllib
+# (and even a real browser User-Agent over stdlib/curl) gets a 403 "Just a
+# moment..." interstitial, because the block is on the TLS fingerprint. We use
+# curl_cffi's browser impersonation to present a genuine Chrome TLS handshake,
+# the same approach the cPanel scrapers use.
+_IMPERSONATE = "chrome"
 
 log = logging.getLogger(__name__)
 
@@ -158,15 +165,15 @@ def storefront_quotes(
     }
     url = ENDPOINT + "?" + urllib.parse.urlencode(params)
     try:
-        req = urllib.request.Request(
+        resp = cf_requests.get(
             url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (chainsaw-ops freight calculator)",
-                "X-Requested-With": "XMLHttpRequest",
-                "Accept": "*/*",
-            },
+            impersonate=_IMPERSONATE,
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "*/*"},
+            timeout=TIMEOUT,
         )
-        raw = urllib.request.urlopen(req, timeout=TIMEOUT).read().decode("utf-8", "replace")
+        if resp.status_code != 200:
+            raise RuntimeError(f"HTTP {resp.status_code}")
+        raw = resp.text
     except Exception as exc:  # noqa: BLE001
         log.warning("storefront quote fetch failed for %s/%s", sku, postcode, exc_info=True)
         return {"available": False, "options": [], "message": f"couldn't reach storefront ({exc})"}
