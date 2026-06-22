@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import logging
 import re
+import threading
 import urllib.parse
 
 from curl_cffi import requests as cf_requests
@@ -27,6 +28,7 @@ from curl_cffi import requests as cf_requests
 BASE = "https://www.chainsawspares.com.au"
 ENDPOINT = BASE + "/ajax/ajax_template"
 TIMEOUT = 30
+
 # The storefront sits behind a Cloudflare managed bot challenge — plain urllib
 # (and even a real browser User-Agent over stdlib/curl) gets a 403 "Just a
 # moment..." interstitial, because the block is on the TLS fingerprint. We use
@@ -34,7 +36,36 @@ TIMEOUT = 30
 # the same approach the cPanel scrapers use.
 _IMPERSONATE = "chrome"
 
+# Cloudflare challenges our datacenter VPS IP on every *cold* request: the first
+# hit returns 403 but sets a __cf_bm clearance cookie, and the next request on
+# the SAME session passes (verified: a warm session then serves 200s for the
+# cookie's ~30-min life). So we keep one process-wide session warm and retry a
+# few times — steady-state calls succeed on attempt 1; the retries only earn
+# their keep on a cold start or after the cookie expires. The session is
+# serialised by a lock because the Flask dev server is threaded and curl_cffi
+# sessions are not safe to share across threads concurrently.
+_MAX_ATTEMPTS = 5
+_SESSION = None
+_SESSION_LOCK = threading.Lock()
+
 log = logging.getLogger(__name__)
+
+
+def _fetch(url: str, headers: dict) -> str:
+    """GET via a warm, browser-impersonating session, retrying past Cloudflare."""
+    global _SESSION
+    last = None
+    with _SESSION_LOCK:
+        if _SESSION is None:
+            _SESSION = cf_requests.Session()
+        for _ in range(_MAX_ATTEMPTS):
+            resp = _SESSION.get(
+                url, impersonate=_IMPERSONATE, headers=headers, timeout=TIMEOUT
+            )
+            if resp.status_code == 200:
+                return resp.text
+            last = resp.status_code
+    raise RuntimeError(f"HTTP {last} after {_MAX_ATTEMPTS} attempts")
 
 
 def _b64(s: str) -> str:
@@ -165,15 +196,7 @@ def storefront_quotes(
     }
     url = ENDPOINT + "?" + urllib.parse.urlencode(params)
     try:
-        resp = cf_requests.get(
-            url,
-            impersonate=_IMPERSONATE,
-            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "*/*"},
-            timeout=TIMEOUT,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"HTTP {resp.status_code}")
-        raw = resp.text
+        raw = _fetch(url, {"X-Requested-With": "XMLHttpRequest", "Accept": "*/*"})
     except Exception as exc:  # noqa: BLE001
         log.warning("storefront quote fetch failed for %s/%s", sku, postcode, exc_info=True)
         return {"available": False, "options": [], "message": f"couldn't reach storefront ({exc})"}
